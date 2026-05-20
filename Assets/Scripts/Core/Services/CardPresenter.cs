@@ -1,0 +1,506 @@
+﻿﻿using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using Zenject;
+using DG.Tweening;
+
+public class CardPresenter : IInitializable
+{
+    [Inject] private ICardService _cardService;
+    [Inject] private IMapDataService _mapDataService;
+    [Inject] private MapVisualEventSO _mapVisualEvent;
+    [Inject] private DiContainer _container;
+    [Inject] private IUIConfigProvider _uiConfig;
+    [Inject] private IUnitDataProvider _unitData;
+    [Inject] private IBuildingDataProvider _buildingData;
+    [Inject] private IUnitService _unitService;
+    [Inject] private PlayerModelManager _playerModelManager;
+    [Inject] private Tech_CultureTreeController _techCultureController;
+    [Inject] private IUnitRepository _unitRepository;
+    [Inject] private AudioManager _audioManager;
+
+    private ICardView _nextCardView;
+    private List<ICardView> _cardViews = new List<ICardView>();
+    private Transform _handRoot;          
+    private bool _isDealing = false;
+    private Queue<CardData> _initialDealQueue = new Queue<CardData>();
+
+    // 简单的 MonoBehaviour 类用于运行协程
+    private class CoroutineRunner : MonoBehaviour { }
+
+    public void Initialize()
+    {
+        // 创建一个临时 GameObject 来运行协程
+        var runnerGO = new GameObject("CardPresenterCoroutineRunner");
+        var runner = runnerGO.AddComponent<CoroutineRunner>();
+        runner.StartCoroutine(WaitForHandPanelAndInit(runnerGO));
+    }
+
+    private IEnumerator WaitForHandPanelAndInit(GameObject runnerGO)
+    {
+        //Debug.Log("[CardPresenter] WaitForHandPanelAndInit 开始");
+
+        // 1. 等待 Canvas 作为卡牌父物体存在
+        Transform handRoot = null;
+        //Debug.Log("[CardPresenter] 等待 Canvas...");
+        while (handRoot == null)
+        {
+            handRoot = GameObject.Find("Canvas")?.transform; 
+            if (handRoot == null)
+                yield return null;
+        }
+
+        //Debug.Log("[CardPresenter] Canvas 找到: " + handRoot.name);
+        _handRoot = handRoot;
+
+        // 2. 等待 NextCardPlaceholder 存在且拥有 RectTransform
+        RectTransform placeholderRect = null;
+        //Debug.Log("[CardPresenter] 等待 NextCardPlaceholder...");
+        while (placeholderRect == null)
+        {
+            var placeholder = _uiConfig?.NextCardPlaceholder;
+            if (placeholder != null)
+            {
+                placeholderRect = placeholder.GetComponent<RectTransform>();
+            }
+            if (placeholderRect == null)
+                yield return null;
+        }
+        //Debug.Log("[CardPresenter] NextCardPlaceholder 找到，RectTransform 正常");
+
+        // 3. 销毁临时 runner
+        if (runnerGO != null)
+        {
+            GameObject.Destroy(runnerGO);
+            //Debug.Log("[CardPresenter] 临时协程 runner 已销毁");
+        }
+
+        // 4. 准备初始 5 张卡的数据
+        //Debug.Log("[CardPresenter] 开始准备初始 5 张卡牌数据");
+        for (int i = 0; i < 5; i++)
+        {
+            int cardID = _cardService.GenerateNextCardID();
+            bool isUnit = cardID < _unitData.GetUnitIconCount();
+            Sprite cardSprite = isUnit
+                ? _unitData.GetCard(cardID)
+                : _buildingData.GetBuildingCards(cardID - (int)_unitData.GetUnitIconCount());
+            var cardData = new CardData { ID = cardID, CardSprite = cardSprite, IsUnit = isUnit };
+            _initialDealQueue.Enqueue(cardData);
+        }
+       // Debug.Log($"[CardPresenter] 初始卡牌数据准备完成，共 {_initialDealQueue.Count} 张");
+
+        // 5. 开始顺序发牌
+        //Debug.Log("[CardPresenter] 开始发牌...（5张手牌 + 1张预告卡）");
+        DealNextCardFromQueue(placeholderRect, () =>
+        {
+            //Debug.Log("[CardPresenter] 初始5张手牌已全部发放完成 → 立即生成第1张预告卡");
+            DealFirstPreviewCard(placeholderRect);
+        });
+    }
+
+    /// <summary>
+    /// 游戏开始时专用：生成并放置第一张预告卡（位置固定在 NextCardPlaceholder）
+    /// </summary>
+    private void DealFirstPreviewCard(RectTransform placeholderRect)
+    {
+        if (_nextCardView != null) return;
+
+        int cardID = _cardService.GenerateNextCardID();
+        bool isUnit = cardID < _unitData.GetUnitIconCount();
+        Sprite cardSprite = isUnit
+            ? _unitData.GetCard(cardID)
+            : _buildingData.GetBuildingCards(cardID - (int)_unitData.GetUnitIconCount());
+
+        var cardData = new CardData { ID = cardID, CardSprite = cardSprite, IsUnit = isUnit };
+
+        DealOneCard(placeholderRect, cardData, null, true);  // true = 预告卡模式
+    }
+
+    /// <summary>
+    /// 从队列中取出一张牌并发牌，完成后继续下一张（回调链）
+    /// </summary>
+    private void DealNextCardFromQueue(RectTransform placeholderRect, System.Action onAllDealt = null)
+    {
+        if (_initialDealQueue.Count == 0 || _isDealing)
+        {
+            onAllDealt?.Invoke();   // 队列为空时触发最终回调
+            return;
+        }
+
+        _isDealing = true;
+
+        CardData cardData = _initialDealQueue.Dequeue();
+        DealOneCard(placeholderRect, cardData, () =>
+        {
+            _isDealing = false;
+            if (_initialDealQueue.Count > 0)
+            {
+                DealNextCardFromQueue(placeholderRect, onAllDealt);  // 继续递归，带上最终回调
+            }
+            else
+            {
+                onAllDealt?.Invoke();   // 最后一张发完 → 执行最终回调
+            }
+        });
+    }
+
+    /// <summary>
+    /// 真正执行发一张牌的逻辑，完成后调用 onComplete
+    /// </summary>
+    private void DealOneCard(RectTransform placeholderRect, CardData cardData, System.Action onComplete, bool isNext = false)
+    {
+        //Debug.Log($"[CardPresenter] DealOneCard 被调用，cardID={cardData.ID}，IsUnit={cardData.IsUnit}，isPreview={isPreview}");
+
+        int emptySlot = -1;
+        if (!isNext)
+        {
+            emptySlot = _cardService.GetFirstEmptySlot();
+            if (emptySlot == -1)
+            {
+                Debug.Log("[CardPresenter] 手牌槽已满，跳过手牌补充");
+                onComplete?.Invoke();
+                return;
+            }
+        }
+
+        // 实例化卡牌...
+        GameObject prefab = _uiConfig.GetCardPrefab();
+        GameObject cardObj = _container.InstantiatePrefab(prefab, _handRoot);
+
+        RectTransform cardRect = cardObj.GetComponent<RectTransform>();
+        cardRect.anchoredPosition = placeholderRect.anchoredPosition;
+        cardRect.localScale = _uiConfig.NextCardSize;
+
+        var view = cardObj.GetComponent<ICardView>() ?? cardObj.AddComponent<CardController>();
+
+        Vector3 targetPosition;
+
+        if (isNext)
+        {
+            targetPosition = placeholderRect.anchoredPosition;
+
+            // 销毁旧预告卡（防止重复）
+            if (_nextCardView != null)
+            {
+                GameObject.Destroy((_nextCardView as MonoBehaviour)?.gameObject);
+            }
+
+            _nextCardView = view;
+            view.SetData(cardData, -1, targetPosition);   // placementID = -1 表示预告
+            view.IsNextCard = true;
+
+            _cardService.MarkDrawThisTurn();   // 标记已抽卡
+        }
+        else
+        {
+            Vector2 slotOffset = _cardService.GetSlotOffset(emptySlot);
+            targetPosition = (Vector3)cardRect.anchoredPosition + (Vector3)slotOffset;
+
+            view.SetData(cardData, emptySlot, targetPosition);
+            view.IsNextCard = true;                     // 动画期间临时不可拖拽
+
+            _cardService.RegisterCardView(emptySlot, view);
+            _cardViews.Add(view);                       // 保持原有 list 一致性
+        }
+
+        // 播放入场动画
+        view.PlayDealAnimation(targetPosition, () =>
+        {
+            if (!isNext)
+            {
+                view.IsNextCard = false;
+            }           
+            onComplete?.Invoke();
+        }, isNext);   
+    }
+
+    /// <summary>
+    /// 把次卡平滑移动到手牌槽位（恢复原始简洁版，无需回调）
+    /// </summary>
+    private void PromoteNextCardToHand()
+    {
+        if (_nextCardView == null) return;
+
+        int emptySlot = _cardService.GetFirstEmptySlot();
+        if (emptySlot == -1) return;
+
+        Vector2 slotOffset = _cardService.GetSlotOffset(emptySlot);
+        Vector3 targetPosition = (Vector3)_nextCardView.RectTransform.anchoredPosition
+                               + new Vector3(slotOffset.x, slotOffset.y, 0);
+
+        _nextCardView.PlacementID = emptySlot;
+        _nextCardView.IsNextCard = false;
+        _nextCardView.OriginPosition = targetPosition;
+
+        _cardService.RegisterCardView(emptySlot, _nextCardView);
+        _cardViews.Add(_nextCardView);
+
+        // 滑动 + 放大（保持 0.3s）
+        _nextCardView.RectTransform.DOAnchorPos(targetPosition, 0.3f).SetEase(Ease.OutQuad);
+        _nextCardView.RectTransform.DOScale(_uiConfig.CardSize, 0.3f).SetEase(Ease.OutQuad);
+
+        _nextCardView = null;   // 立即清空，让新卡可以立刻生成
+    }
+
+    /// <summary>
+    /// 处理拖拽结束（放置卡牌）
+    /// </summary>
+    public void HandleCardDragEnd(ICardView view, HexCellData targetCell, Vector3 releaseWorldPos)
+    {
+        if (!IsReleaseValid(view.CardID, targetCell)) return;
+
+        _cardService.RemoveCard(view.PlacementID);
+
+        if (view.CardID < _unitData.GetUnitIconCount())
+            SpawnUnit(view.CardID, targetCell.RealCenterWorldCoordinate);
+        else
+            SpawnBuilding((int)(view.CardID - _unitData.GetUnitIconCount()), targetCell.RealCenterWorldCoordinate);
+
+        (view as MonoBehaviour)?.gameObject.SetActive(false);
+        GameObject.Destroy((view as MonoBehaviour)?.gameObject);
+        _cardViews.Remove(view);
+
+        TryDealFromNextIfPossible();
+    }
+
+    private bool IsReleaseValid(int cardID, HexCellData cell)
+    {
+        if (cardID != 0 && cell.Player_City_Index.Key != 0) return false;
+        if (!cell.IsExplored) return false;
+        if (cell.HexType == Enums.HexType.LakeOrSea) return false;
+        if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
+        if (cardID < _unitData.GetUnitIconCount() && cell.IsHaveUnit()) return false;
+        return true;
+    }
+
+    // ====================== 单位生成 ======================
+    private void SpawnUnit(int unitID, Vector3 position)
+    {
+        GameObject g = Object.Instantiate(_unitData.GetUnitPrefab(unitID));
+        g.transform.SetParent(GameObject.Find("PlayerUnit").transform, false);
+        g.transform.position = position;
+        g.tag = "PlayerUnit";
+
+        g.AddComponent<UnitMovementController>();
+        _container.InjectGameObject(g);
+
+        CharacterData characterData = new CharacterData(
+            unitID,
+            g,
+            g.GetComponent<UnitMovementController>(),
+            _unitData.GetUnitData(unitID)
+        );
+
+        g.GetComponent<UnitMovementController>().characterData = characterData;
+        _unitRepository.AddPlayerUnit(g, characterData);
+        g.GetComponent<UnitMovementController>().PlayerIndex = 0;
+
+        // 面板数据初始化
+        CharacterData.InfoPanelData infoPanelData = new CharacterData.InfoPanelData();
+        infoPanelData.sprite = _unitData.GetCard(characterData.UnitID);
+        infoPanelData.name = characterData.unitData.unitName;
+        infoPanelData.skillIcon = _unitData.GetSkillIcon(characterData.UnitID);
+        infoPanelData.InfoDatas = new List<KeyValuePair<KeyValuePair<Sprite, string>, float>>();
+
+        KeyValuePair<Sprite, string> Movement = new KeyValuePair<Sprite, string>(_uiConfig.GetMovementPointsIcon(), "剩余移动力");
+        KeyValuePair<Sprite, string> MeleeAttack = new KeyValuePair<Sprite, string>(_uiConfig.GetMeleeAttackPointsIcon(), "攻击力");
+
+        if (characterData.UnitID == 0) // 移民
+        {
+            infoPanelData.InfoDatas.Add(new KeyValuePair<KeyValuePair<Sprite, string>, float>(Movement, characterData.unitData.MovementPoints));
+        }
+        else
+        {
+            infoPanelData.InfoDatas.Add(new KeyValuePair<KeyValuePair<Sprite, string>, float>(MeleeAttack, characterData.unitData.MovementPoints));
+            infoPanelData.InfoDatas.Add(new KeyValuePair<KeyValuePair<Sprite, string>, float>(Movement, characterData.unitData.MovementPoints));
+        }
+        characterData.infoPanelData = infoPanelData;
+
+        // UI 画布设置
+        Canvas canvas = g.GetComponentInChildren<Canvas>();
+        UIController unitCanvas = canvas.gameObject.AddComponent<UIController>();
+        _container.Inject(unitCanvas);
+        unitCanvas.UIType = "unitCanvas";
+        _uiConfig.AddRuntimeCanvas(canvas);
+
+        GameObject icon = canvas.transform.GetChild(0).gameObject;
+        UIController iconUI = icon.AddComponent<UIController>();
+        _container.Inject(iconUI);
+        iconUI.UIType = "unitIcon";
+
+        GameObject healthBar = canvas.transform.GetChild(1).gameObject;
+        UIController healthBarUI = healthBar.AddComponent<UIController>();
+        _container.Inject(healthBarUI);
+        healthBarUI.UIType = "healthBar";
+        characterData.healthBar = healthBar.GetComponent<Slider>();
+
+        if (g.CompareTag("PlayerUnit"))
+            healthBar.transform.GetChild(2).GetComponent<Image>().color = Color.green;
+        else if (g.CompareTag("EnemyUnit"))
+            healthBar.transform.GetChild(2).GetComponent<Image>().color = Color.red;
+
+        // 添加视野 + 占有标记
+        Vector3 hexCoord = _mapDataService.WorldToHexCoordinate(g.transform.position);
+        HexCellData h = _mapDataService.GetCell(hexCoord);
+        for (int i = 0; i < 6; i++)
+        {
+            var neighbor = _mapDataService.GetNeighbor(h, (Enums.HexDirection)i);
+            if (neighbor != null) neighbor.ExploreThisHexCell();
+        }
+        _mapVisualEvent.Raise();
+
+        h.SetHaveUnit(true, g);
+
+        if(_audioManager != null)
+        {
+            _audioManager.PlaySFX("Chimes_Harp-013");
+        }
+        else 
+        {
+            Debug.LogWarning("[CardPresenter] AudioManager 未注入，无法播放单位生成");
+        }
+    }
+
+    // ====================== 建筑生成 ======================
+    private void SpawnBuilding(int buildingID, Vector3 position)
+    {
+        Vector3 v = _mapDataService.WorldToHexCoordinate(position);
+        HexCellData h = _mapDataService.GetCell(v);
+
+        // 势力范围扩展
+        _playerModelManager.ExpandTheSphereOfInfluence(
+            v, _playerModelManager.SphereOfInfluence_HexC_HexCellData, h.Player_City_Index);
+        _playerModelManager.ExpandTheSphereOfInfluence(
+            v, _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData[h.Player_City_Index.Value], h.Player_City_Index);
+        _mapVisualEvent.Raise();
+
+        // 视野
+        for (int i = 0; i < 6; i++)
+        {
+            var neighbor = _mapDataService.GetNeighbor(h, (Enums.HexDirection)i);
+            if (neighbor != null) neighbor.ExploreThisHexCell();
+        }
+        _mapVisualEvent.Raise();
+
+        int bulidingTypeInt = buildingID;
+        GameObject g = Object.Instantiate(_buildingData.GetBuildingPrefab(bulidingTypeInt));
+        g.transform.SetParent(GameObject.Find("PlayerBuilding").transform, false);
+        g.transform.position = position;
+        g.tag = "PlayerBuilding";
+
+        BuildingController buildingController = g.AddComponent<BuildingController>();
+        _container.Inject(buildingController);
+
+        BuildingData buildingData = new BuildingData((Enums.BulidingType)(bulidingTypeInt + 1), _buildingData);
+        buildingController.buildingData = buildingData;
+        buildingData.controller = buildingController;
+        buildingController.bulidingType = (Enums.BulidingType)(bulidingTypeInt + 1);
+        h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>((Enums.BulidingType)(bulidingTypeInt + 1), g);
+
+        // 建筑类型特殊处理
+        switch (buildingController.bulidingType)
+        {
+            case Enums.BulidingType.AttackStatue:
+                _audioManager.PlaySFX("Long_Sword_Scrape 01");
+                _playerModelManager.Index_AttackBuilding.Add(_playerModelManager.AttackBuildingIndex++, g);
+                break;
+            case Enums.BulidingType.DefenseStatue:
+                _audioManager.PlaySFX("Metallic_Weapon_Hit-014");
+                _audioManager.PlaySFX("Metallic_Weapon_Hit-020");
+                _playerModelManager.Index_DefenseBuilding.Add(_playerModelManager.DefenseBuildingIndex++, g);
+                break;
+            case Enums.BulidingType.Altar:
+                _audioManager.PlaySFX("Chimes_Harp-012");
+                _playerModelManager.Index_AltarBuilding.Add(_playerModelManager.AltarBuildingIndex++, g);
+                break;
+            case Enums.BulidingType.TechnologyAndCultural:
+                _audioManager.PlaySFX("LevelUP6");
+                _playerModelManager.Index_TechnologyAndCulturalBuilding.Add(_playerModelManager.TechnologyAndCulturalBuildingIndex++, g);
+                _techCultureController.AddTechPointsPerTurn(10);
+                _techCultureController.AddCulturePointsPerTurn(10);
+                break;
+        }
+
+        if (bulidingTypeInt == 0 || bulidingTypeInt == 1)
+            h.movementCost = float.MaxValue;
+
+        buildingController.Player_City_Index = h.Player_City_Index;
+
+        // UI 画布
+        Canvas canvas = g.GetComponentInChildren<Canvas>();
+        if (canvas == null) return;
+
+        UIController buildingCanvas = canvas.gameObject.AddComponent<UIController>();
+        _container.Inject(buildingCanvas);
+        buildingCanvas.UIType = "buildingCanvas";
+        _uiConfig.AddRuntimeCanvas(canvas);
+
+        GameObject healthBar = canvas.transform.GetChild(0).gameObject;
+        UIController healthBarUI = healthBar.AddComponent<UIController>();
+        _container.Inject(healthBarUI);
+        healthBarUI.UIType = "buildingHealthBar";
+        buildingController.uiHealthBar = healthBar.GetComponent<Slider>();
+
+        if (g.tag == "PlayerBuilding")
+            healthBar.transform.GetChild(0).GetComponent<Image>().color = Color.green;
+        else if (g.tag == "EnemyBuilding")
+            healthBar.transform.GetChild(0).GetComponent<Image>().color = Color.red;
+    }
+
+    /// <summary>
+    /// 每回合结束时补充一张卡（使用队列方式或直接发牌）
+    /// </summary>
+    public void OnTurnEnded()
+    {
+        // 抽卡/发卡已完全分离，此处只需安全兜底
+        if (_nextCardView == null)
+        {
+            Debug.LogWarning("[CardPresenter] OnTurnEnded: 次卡槽意外为空，立即补充");
+            DrawNewNextCard();
+        }
+    }
+
+    /// <summary>
+    /// 尝试把次卡发到手牌（每回合只允许一次）
+    /// </summary>
+    public void TryDealFromNextIfPossible()
+    {
+        if (!_cardService.CanDealThisTurn() || _nextCardView == null) return;
+        if (_cardService.GetFirstEmptySlot() == -1) return;
+
+        // 立即锁定本回合发卡权限 
+        _cardService.MarkDealtThisTurn();
+
+        // 立即开始滑动旧次卡（不等待）
+        PromoteNextCardToHand();
+
+        // 同时立即刷新新次卡（带优雅弹出动画）
+        DrawNewNextCard();
+    }
+
+    /// <summary>
+    /// 次卡槽为空时立即抽一张新卡（与回合无关）
+    /// </summary>
+    private void DrawNewNextCard()
+    {
+        if (_nextCardView != null) return;
+
+        var placeholder = _uiConfig?.NextCardPlaceholder;
+        if (placeholder == null || placeholder.GetComponent<RectTransform>() == null)
+        {
+            Debug.LogWarning("[CardPresenter] NextCardPlaceholder 尚未就绪，跳过抽卡");
+            return;
+        }
+
+        int cardID = _cardService.GenerateNextCardID();
+        bool isUnit = cardID < _unitData.GetUnitIconCount();
+        Sprite cardSprite = isUnit
+            ? _unitData.GetCard(cardID)
+            : _buildingData.GetBuildingCards(cardID - (int)_unitData.GetUnitIconCount());
+
+        var cardData = new CardData { ID = cardID, CardSprite = cardSprite, IsUnit = isUnit };
+
+        DealOneCard(placeholder.GetComponent<RectTransform>(), cardData, null, true);
+    }
+}

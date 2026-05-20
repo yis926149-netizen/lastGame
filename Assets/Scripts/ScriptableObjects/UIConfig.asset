@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 161e26a6884c5c640b05b745d81db4ba, type: 3}
+  m_Name: UIConfig
+  m_EditorClassIdentifier: 
+  movementIndicatorPrefab: {fileID: 3534467561464214730, guid: ee3d9ea3bb75a5841ae17dcf5ad29dd8, type: 3}
+  enemyUnitIndicatorPrefab: {fileID: 2189564248013898015, guid: 36c99cabb6efd274eb76d19f7ca308df, type: 3}
+  cardPrefab: {fileID: 7411342767411356299, guid: e660341d4eb314e42b97077181c7b33b, type: 3}
+  movementPointsIcon: {fileID: 21300000, guid: fa950a1b01910f748b11781e55856d6f, type: 3}
+  meleeAttackPointsIcon: {fileID: 21300000, guid: 3ea615a2f1fa11a46aded0f677f8387d, type: 3}
+  defenseIcon: {fileID: 21300000, guid: 3d1e21dddf4239f4da44e035451b5e17, type: 3}
+  healthIcon: {fileID: 21300000, guid: c4bb57fb6d24e8a4cb6b70b9edbe2809, type: 3}

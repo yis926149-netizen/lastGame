@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1596ee1b06461ad4fb8d208ce3ddcf8d, type: 3}
+  m_Name: TechTreeIcons
+  m_EditorClassIdentifier: 
+  techIcons:
+  - {fileID: 21300000, guid: 559b2b7400687e34f93d32e6d7517381, type: 3}
+  - {fileID: 21300000, guid: e376efb414ae3c447b7cc7a717b4699e, type: 3}
+  - {fileID: 21300000, guid: 867f293b79d4c8946a8c938fd17ba570, type: 3}
+  - {fileID: 21300000, guid: 8c333c455346be84faf730304d010718, type: 3}
+  - {fileID: 21300000, guid: 02c184d71aa05df41923d2dcb6a6305d, type: 3}
+  - {fileID: 21300000, guid: bcb33f1c9b8a2b74baece83dd6d2a982, type: 3}
+  - {fileID: 21300000, guid: a696918d25e300041b376feb787d87c8, type: 3}
+  - {fileID: 21300000, guid: a9eb5f31f070e304e90c1ae2891b44f5, type: 3}
+  - {fileID: 21300000, guid: e8718e96b1b7b034dbf7de9b839c9454, type: 3}
+  - {fileID: 21300000, guid: c654856423cdd0c44b094a66a1748ed7, type: 3}
+  cultureIcons:
+  - {fileID: 21300000, guid: bd3dcb781f9886f4d8195e4f621e9526, type: 3}
+  - {fileID: 21300000, guid: 71e5955f2c14cf244b8a595ad26c6181, type: 3}
+  - {fileID: 21300000, guid: 97950fef61f66fb47b6afe0dd09ccb73, type: 3}
+  - {fileID: 21300000, guid: 4bb0a349f12353e4b865f7a04fbdcfa8, type: 3}
+  - {fileID: 21300000, guid: b1095bcf50ae54c449ee106c26dec34c, type: 3}
+  - {fileID: 21300000, guid: 40da3dea2c0e1a7438366411f46fe20b, type: 3}
+  - {fileID: 21300000, guid: f44a95dcd50607b47aa23855c30a27bb, type: 3}
+  - {fileID: 21300000, guid: 2c123ed54e6c8f348acdb53a540a1baa, type: 3}
+  - {fileID: 21300000, guid: b93a526159b1ff5408de1a642422330d, type: 3}
+  - {fileID: 21300000, guid: 6901c59b16e8a8e43a7c5eeca2e22383, type: 3}

@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: D3JLvHv8Uyi1RKFgCbG2A+dGMWgHG2HxFC3/FZdQbkYAYePqQlIH/68=
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - _unitDatabaseSO: {fileID: 11400000, guid: c3443cc91121f3c42a8c6728de881c31, type: 2}
+  - _buildingDatabaseSO: {fileID: 11400000, guid: 0bfebc4b346137d45a6303df32ba1987, type: 2}
+  - _uiConfigSO: {fileID: 11400000, guid: fbcd8c5b0eb1b9941be62064303a8be2, type: 2}
+  - _environmentModelsSO: {fileID: 11400000, guid: 642ec823dc502f44eb83692c175fad46, type: 2}
+  - _techTreeIconsSO: {fileID: 11400000, guid: 0a2af90e3af58ab4c8fc9f3eed80dad0, type: 2}
+  - _mapGenerationConfigSO: {fileID: 11400000, guid: 0a7ad5142d1fce34fb79cad5ae6024f5, type: 2}
+  - _mapVisualEventSO: {fileID: 11400000, guid: dc60f1366465c4d4a81b118cf83539be, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/docfx/main/schemas/docfx.schema.json",
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "../../Assets/Scripts",
+          "files": [ "Scripts.csproj" ],
+          "exclude": [
+            "**/obj/**",
+            "**/bin/**",
+            "**/Editor/**"   
+          ]
+        }
+      ],
+      "dest": "api",
+      "properties": {
+        "TargetFramework": "netstandard2.0",
+        "UNITY_EDITOR": "true"  
+      },
+      "filter": "filterConfig.yml",  
+      "disableGitFeatures": true,    
+      "globalNamespace": false
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": [ "**/*.{md,yml}" ],
+        "exclude": [ "_site/**" ]
+      }
+    ],
+    "resource": [
+      {
+        "files": [ "images/**" ]
+      }
+    ],
+    "output": "_site",
+    "template": [ "default", "modern" ],
+    "globalMetadata": {
+      "_appName": "FirstSite",
+      "_appTitle": "FirstSite",
+      "_enableSearch": true,
+      "pdf": true
+    }
+  }
+}

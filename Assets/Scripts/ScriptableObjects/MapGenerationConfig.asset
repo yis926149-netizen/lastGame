@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ae2adcfd643fb4846be1643aa911050f, type: 3}
+  m_Name: MapGenerationConfig
+  m_EditorClassIdentifier: 
+  OuterRadius: 3
+  SolidAreaRatio: 0.7
+  xNumber: 11
+  zNumber: 11
+  noiseSource: {fileID: 2800000, guid: 7efb954bf2db8fb44b4d9fb0ce9458f2, type: 3}
+  mapMaterial:
+  - {fileID: 2100000, guid: f8e590430e4af3542a45e7eaa017cd4b, type: 2}
+  - {fileID: 2100000, guid: 9c4b6d3952de6594cb92614744a08616, type: 2}
+  - {fileID: 2100000, guid: 68a655e9895fc74458cf1ab29e06acea, type: 2}
+  blendMask: {fileID: 2800000, guid: 13ee39f8cdf6dbe44a66c683f709d60d, type: 3}
+  blendSmooth: 1.2
+  blendContrast: 0.4
+  globalSmoothness: 0.15
+  riverMaterial:
+  - {fileID: 2100000, guid: bfa1a80ae601d824cae438b0ba505be5, type: 2}
+  minLongestLength: 5
+  maxLongestLength: 13
+  numerator: 1
+  denominator: 30
+  lakeOrSeaMaterial:
+  - {fileID: 2100000, guid: 0a9bda3e21dddd14d9460cd40a5d65ed, type: 2}
+  - {fileID: 2100000, guid: 678a781473ef03342aca8064263e7511, type: 2}

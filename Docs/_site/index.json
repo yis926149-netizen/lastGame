@@ -1,0 +1,67 @@
+{
+  "docs/getting-started.html": {
+    "href": "docs/getting-started.html",
+    "title": "Getting Started | FirstSite",
+    "summary": "Getting Started"
+  },
+  "docs/introduction.html": {
+    "href": "docs/introduction.html",
+    "title": "Introduction | FirstSite",
+    "summary": "Introduction"
+  },
+  "index.html": {
+    "href": "index.html",
+    "title": "游戏服务文档 | FirstSite",
+    "summary": "游戏服务文档 本文档包含游戏中各个核心服务的说明和使用指南。这些服务通过接口定义，由 Zenject 注入，实现了模块间的解耦，便于测试和维护。 项目简介 这是一款基于六边形网格的回合制策略游戏，玩家可以探索地图、建造城市、发展科技文化、指挥单位进行战斗。游戏采用模块化架构，核心逻辑以服务接口形式提供，包括地图数据访问、单位管理、科技文化系统、输入处理、卡牌系统等。本文档旨在帮助开发人员理解各服务的职责、依赖关系和用法。 服务列表 IMapDataService – 地图数据访问（六边形坐标、地块信息、邻居查询等） IUnitService – 单位管理（获取玩家/敌方单位、AI 势力范围等） ITechCultureService – 科技与文化系统（点数、等级、进度更新） IInputService – 输入处理（鼠标、键盘、射线检测、UI遮挡） IUnitMovement – 单位移动接口（移动、攻击移动、路径查询） ICardService – 卡牌系统核心逻辑（卡槽管理、卡牌生成） IGameStateMachine – 回合状态机（当前回合、阶段切换） IUIManagerView – UI 视图接口（更新科技文化显示、单位信息面板） IUnitRepository – 单位数据仓库（存储玩家和敌方单位） IMeshGenerator – 地图网格生成服务（用于生成地形、河流、迷雾等）"
+  },
+  "services/ICardService.html": {
+    "href": "services/ICardService.html",
+    "title": "| FirstSite",
+    "summary": "ICardService.md # ICardService ## 职责描述 管理卡牌系统的核心逻辑，包括卡槽、卡牌ID生成、抽卡/发卡机会控制等。与 `CardPresenter` 配合实现完整的卡牌流程。 ## 依赖项 - `IUnitDataProvider` - `IBuildingDataProvider` - `IUIConfigProvider` - `ITechCultureService` - `IGameStateMachine` 实现类 `CardService` 通过 Zenject 注入上述依赖。 ## 公共方法 请参考 [API 文档](../api/ICardService.html)（DocFX 自动生成）。 ## 使用示例 ```csharp public class CardPresenter { private ICardService _cardService; [Inject] public CardPresenter(ICardService cardService) { _cardService = cardService; } public void TryDealNextCard() { if (_cardService.CanDealThisTurn()) { int emptySlot = _cardService.GetFirstEmptySlot(); if (emptySlot != -1) { int cardID = _cardService.GenerateNextCardID(); // 创建卡牌视图... } } } }"
+  },
+  "services/IGameStateMachine.html": {
+    "href": "services/IGameStateMachine.html",
+    "title": "| FirstSite",
+    "summary": "IGameStateMachine.md # IGameStateMachine ## 职责描述 管理游戏回合状态机，控制当前回合和阶段。协调玩家阶段、AI阶段和结算阶段的流转，并提供当前回合数访问。 ## 依赖项 - `PlayerPhase` - `AIPhase` - `SettlementPhase` - `ICardService` - `CardPresenter` - `IUnitRepository` - `ITechCultureService` 实现类 `GameStateMachine` 通过 Zenject 注入上述依赖。 ## 公共方法 请参考 [API 文档](../api/IGameStateMachine.html)（DocFX 自动生成）。 ## 使用示例 ```csharp public class EndTurnButton { private IGameStateMachine _gameState; [Inject] public EndTurnButton(IGameStateMachine gameState) { _gameState = gameState; } public void OnClick() { if (_gameState.CurrentPhase is PlayerPhase) { _gameState.EndTurn(); } } }"
+  },
+  "services/IInputService.html": {
+    "href": "services/IInputService.html",
+    "title": "| FirstSite",
+    "summary": "IInputService.md # IInputService ## 职责描述 封装所有输入相关操作，包括鼠标、键盘、轴输入、射线检测和 UI 遮挡检测。统一输入来源，方便测试和替换。 ## 依赖项 - `EventSystem`（用于 UI 遮挡检测） - `Camera`（主摄像机，用于射线检测） 实现类 `InputService` 通过 Zenject 注入上述依赖。 ## 公共方法 请参考 [API 文档](../api/IInputService.html)（DocFX 自动生成）。 ## 使用示例 ```csharp public class PlayerInputHandler { private IInputService _input; private Camera _mainCamera; [Inject] public PlayerInputHandler(IInputService input, [Inject(Id = \"MainCamera\")] Camera mainCamera) { _input = input; _mainCamera = mainCamera; } public void Tick() { if (_input.GetMouseButtonDown(0) && !_input.IsPointerOverUI()) { // 处理左键点击 } float scroll = _input.MouseScrollDelta; if (scroll != 0) { // 缩放摄像机 } } }"
+  },
+  "services/IMapDataService.html": {
+    "href": "services/IMapDataService.html",
+    "title": "IMapDataService | FirstSite",
+    "summary": "IMapDataService 职责描述 提供地图核心数据的访问，包括六边形坐标与地块数据的映射、邻居查询、世界坐标转换等。通过该接口可以获取地图中所有地块的详细信息，如地块类型、坐标、高度、建筑、单位等。 依赖项 MapGenerationConfigSO（配置地图生成参数） 无其他运行时依赖（初始化时通过 Initialize 方法注入数据，由地图生成系统提供） 实现类 HexMapService 通过 Zenject 绑定为单例，可在任何需要的地方注入。 公共方法 请参考 API 文档（DocFX 自动生成）。 使用示例 public class ExampleUser : MonoBehaviour { private IMapDataService _mapDataService; [Inject] public void Construct(IMapDataService mapDataService) { _mapDataService = mapDataService; } void Start() { // 通过世界坐标获取地块 HexCellData cell = _mapDataService.GetCellByWorldPosition(transform.position); Debug.Log($\"当前地块坐标: {cell.HexCoordinate}\"); // 获取邻居 HexCellData neighbor = _mapDataService.GetNeighbor(cell, Enums.HexDirection.NE); if (neighbor != null) { Debug.Log($\"NE邻居高度: {neighbor.Height}\"); } } }"
+  },
+  "services/IMeshGenerator.html": {
+    "href": "services/IMeshGenerator.html",
+    "title": "服务接口：IMeshGenerator | FirstSite",
+    "summary": "服务接口：IMeshGenerator 职责描述 IMeshGenerator 负责生成六边形网格地图的所有视觉相关网格数据，包括： 地块实心区域（含河流、湖海） 矩形与三角形过渡区域（用于处理地形高度差） 河流水体网格 湖海与海岸网格 六边形网格线 移动路径连线 势力范围边缘线 迷雾轮廓 该服务将地形、河流、建筑等逻辑数据转换为具体的网格顶点、UV 和三角形索引，供 MapRenderer 构建最终的 Mesh。 依赖项 IMapDataService：用于获取地块数据（HexCellData）及邻居关系。 MapGenerationConfigSO：提供地图生成配置参数（半径、材质、混合参数等）。 上述依赖通过构造函数注入，由 Zenject 容器自动提供。 公共方法 由于接口方法数量庞大，此处按功能分类列出主要方法组，具体方法签名请参阅代码注释或自动生成的 API 文档。 地块实心区域 GetSolidAreaVertices：返回地块实心区域的顶点坐标（含河道顶点）。 GetSolidAreaVerticesUV：返回对应的 UV 坐标。 GetSolidAreaVerticesDrawOrder1/2/3：返回不同河道情况下的三角形绘制顺序。 矩形过渡区域（坡/阶梯） GetRectVertices / GetRectUV / GetRectDrawOrder：处理斜坡矩形过渡。 GetRectStepVertices / GetRectStepUV / GetRectStepDrawOrder：处理阶梯矩形过渡。 带 River 后缀的方法用于处理含河道的过渡区域。 三角过渡区域（方法一/三/四） GetTriVertices / GetTriUV / GetTriDrawOrder：基本三角过渡（三坡）。 GetTriStep3Vertices / GetTriStep3UV / GetTriStep3DrawOrder：梯-坡-梯 类型。 GetTriStep4Vertices / GetTriStep4UV / GetTriStep4DrawOrder：两梯一平坡 类型。 河流与水体 GetRiverVertices / GetRiverUV / GetRiverWater2DrawOrder / GetRiverWater3DrawOrder：生成河道内部水体网格。 GetOutgoingRiverVertices / GetOutgoingRiverSlopUV / GetOutgoingRiverSlopDrawOrder：生成河流下游过渡区域水体。 湖海与海岸 GetlakeOrSeaVertices / GetlakeOrSeaUV / GetlakeOrSeaDrawOrder：湖海实心区域。 GetlakeOrSeaRectVertices / GetlakeOrSeaRectUV / GetlakeOrSeaRectDrawOrder：湖海矩形过渡。 GetlakeOrSeaTriVertices / GetlakeOrSeaTriUV / GetlakeOrSeaTriDrawOrder：湖海三角过渡。 GetOneDirectionCoastRectVertices / GetCoastRectUV / GetCoastRectDrawOrder：海岸矩形过渡。 GetOneDirectionCoastTriVertices / GetCoastTriUV / GetCoastTriDrawOrder：海岸三角过渡。 网格线与辅助线 GetGridVertices / GetGridUV / GetGridDrawOrder：生成地块网格线。 GetAdjacentHexLineVertices / GetAdjacentHexLineUV / GetAdjacentHexLineDrawOrder：生成移动路径连线。 势力范围与迷雾 GetOneSphereOfInfluenceVertices：获取势力范围边缘的顶点组（用于绘制彩色边界线）。 GetOneSphereOfInfluenceUV / GetOneSphereOfInfluenceDrawOrder：边缘线的 UV 和绘制顺序。 GetFogVertices：计算迷雾区域的外边界和孔洞（已探索区域）顶点。 GetFogCoverVertices：生成迷雾封边（外扩）的顶点。 使用示例 IMeshGenerator 通常在 MapRenderer 中被调用，用于逐地块收集网格数据。以下是一个简化示例： public class MapRenderer : MonoBehaviour { [Inject] private IMeshGenerator _meshGenerator; [Inject] private IMapDataService _mapData; public void RenderMap() { List<Vector3> vertices = new List<Vector3>(); List<Vector2> uv = new List<Vector2>(); List<int> triangles = new List<int>(); foreach (var cell in _mapData.GetAllCells()) { int offset = vertices.Count; // 添加实心区域顶点 vertices.AddRange(_meshGenerator.GetSolidAreaVertices(ref cell)); uv.AddRange(_meshGenerator.GetSolidAreaVerticesUV(ref cell)); // 根据河流类型获取绘制顺序 List<int> drawOrder; if (cell.HexType == Enums.HexType.NoRiver) drawOrder = _meshGenerator.GetSolidAreaVerticesDrawOrder1(ref cell); else if (cell.HexType == Enums.HexType.RiverSource) drawOrder = _meshGenerator.GetSolidAreaVerticesDrawOrder2(ref cell, cell.RiverOutgoingDirection); else drawOrder = _meshGenerator.GetSolidAreaVerticesDrawOrder3(ref cell, cell.RiverIncomingDirection, cell.RiverOutgoingDirection); // 将局部索引转为全局索引 foreach (int index in drawOrder) triangles.Add(index + offset); } // 创建 Mesh（使用 MapController 工具类） Mesh mesh = MapController.CreatMesh(vertices.ToArray(), uv.ToArray(), triangles.ToArray(), ...); } } 实际使用时，还需处理过渡区域、河流、湖海等多个子网格，可参考 MapRenderer 中的完整实现。 注意事项 大部分方法接受 ref HexCellData 参数，并会修改地块内的缓存数据（如顶点列表），因此调用顺序需保证地块数据已正确初始化。 绘制顺序方法返回的索引基于当前地块内的局部顶点，调用方需根据整体顶点列表偏移量进行转换。 过渡区域的生成依赖地形高度差判断（通过 TerrainGenerator.IsType），确保在生成网格前已正确设置地块高度。"
+  },
+  "services/ITechCultureService.html": {
+    "href": "services/ITechCultureService.html",
+    "title": "| FirstSite",
+    "summary": "ITechCultureService.md # ITechCultureService ## 职责描述 管理科技和文化点数、等级，提供每回合产量，并触发 UI 更新。科技和文化树通过此接口与游戏逻辑交互。 ## 依赖项 - `IUnitDataProvider` - `IBuildingDataProvider` - `ITechTreeIconsProvider` - `IUnitRepository` - `PlayerModelManager` - `TechData` - `CultureData` 实现类 `Tech_CultureTreeController` 通过 Zenject 注入上述依赖。 ## 公共方法 请参考 [API 文档](../api/ITechCultureService.html)（DocFX 自动生成）。 ## 使用示例 ```csharp public class UIManagerPresenter { private ITechCultureService _techCultureService; [Inject] public UIManagerPresenter(ITechCultureService techCultureService) { _techCultureService = techCultureService; _techCultureService.OnTechPointsChanged += UpdateTechUI; } private void UpdateTechUI() { Debug.Log($\"科技点数: {_techCultureService.TechPoints}\"); } }"
+  },
+  "services/IUIManagerView.html": {
+    "href": "services/IUIManagerView.html",
+    "title": "| FirstSite",
+    "summary": "IUIManagerView.md # IUIManagerView ## 职责描述 定义 UI 管理器的视图接口，用于更新科技文化点数、显示/隐藏单位信息面板、刷新面板数据等。与 `UIManagerPresenter` 配合实现 UI 与逻辑的分离。 ## 依赖项 - `IUnitDataProvider` - `UIConfigSO` 实现类 `UIManager` 通过 Zenject 注入上述依赖。 ## 公共方法 请参考 [API 文档](../api/IUIManagerView.html)（DocFX 自动生成）。 ## 使用示例 ```csharp public class UIManagerPresenter { private IUIManagerView _view; [Inject] public UIManagerPresenter(IUIManagerView view) { _view = view; } public void SelectUnit(CharacterData unit) { _view.ShowUnitInfoPanel(unit); } public void UpdateTechCulture(int tech, int culture) { _view.SetTechPoints(tech); _view.SetCulturePoints(culture); } }"
+  },
+  "services/IUnitMovement.html": {
+    "href": "services/IUnitMovement.html",
+    "title": "| FirstSite",
+    "summary": "IUnitMovement.md # IUnitMovement ## 职责描述 控制单位的移动行为，包括移动到指定六边形、取消移动、重置移动力、获取可达范围等。此接口由 `UnitMovementController` 实现。 ## 依赖项 - `IMapDataService` - `MapVisualEventSO` - `UnitMovementSystem` - `UIManagerPresenter` - `AudioManager` 实现类 `UnitMovementController` 通过 Zenject 注入上述依赖。 ## 公共方法 请参考 [API 文档](../api/IUnitMovement.html)（DocFX 自动生成）。 ## 使用示例 ```csharp public class UnitCommandHandler { public void MoveUnit(IUnitMovement unit, Vector3 targetHex) { if (unit.RemainingMovement > 0) { unit.MoveTo(targetHex, Enums.MovementPurpose.MoveToDestination); } } public void ShowReachable(IUnitMovement unit) { List<Vector3> reachable = unit.GetReachableHexes(); foreach (var hex in reachable) { // 高亮显示 } } }"
+  },
+  "services/IUnitRepository.html": {
+    "href": "services/IUnitRepository.html",
+    "title": "| FirstSite",
+    "summary": "IUnitRepository.md # IUnitRepository ## 职责描述 单位数据仓库，统一管理玩家和敌方单位的实例与数据，并提供事件通知。所有单位生成、销毁时都应通过仓库记录。 ## 依赖项 无（独立数据容器，可被任何需要访问单位数据的服务注入）。 ## 公共方法 请参考 [API 文档](../api/IUnitRepository.html)（DocFX 自动生成）。 ## 使用示例 ```csharp public class UnitService : IUnitService { private IUnitRepository _repository; [Inject] public UnitService(IUnitRepository repository) { _repository = repository; } public List<CharacterData> GetAllPlayerUnits() { return _repository.AllPlayerUnits.Values.ToList(); } public void AddEnemyUnit(int aiIndex, GameObject unit, CharacterData data) { _repository.AddEnemyUnit(aiIndex, unit, data); } }"
+  },
+  "services/IUnitService.html": {
+    "href": "services/IUnitService.html",
+    "title": "| FirstSite",
+    "summary": "IUnitService.md # IUnitService ## 职责描述 提供对玩家和敌方单位的访问与管理，包括获取单位列表、添加/移除敌方单位、查询AI城市数量和势力范围等。简化对 `IUnitRepository` 和 `EnemyModelManager` 的操作。 ## 依赖项 - `IUnitRepository`（单位数据仓库） - `EnemyModelManager`（敌方势力范围、城市计数等数据） 实现类 `UnitService` 通过 Zenject 注入上述依赖。 ## 公共方法 请参考 [API 文档](../api/IUnitService.html)（DocFX 自动生成）。 ## 使用示例 ```csharp public class AITurnHandler { private IUnitService _unitService; [Inject] public AITurnHandler(IUnitService unitService) { _unitService = unitService; } public void OnAITurn() { var enemyUnits = _unitService.GetAllEnemyUnits(); foreach (var unit in enemyUnits) { // 处理AI单位逻辑 } int cityCount = _unitService.GetAICityCount(1); Debug.Log($\"AI 1 的城市数量: {cityCount}\"); } }"
+  }
+}
