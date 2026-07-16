@@ -188,10 +188,6 @@ public class CameraController : MonoBehaviour, ITickable
         float newHeight = newTarget.y;
         if (newHeight >= minZoomDistance && newHeight <= maxZoomDistance)
             _targetCameraPosition = newTarget;
-        else if (newHeight < minZoomDistance)
-            _targetCameraPosition = new Vector3(newTarget.x, minZoomDistance, newTarget.z);
-        else if (newHeight > maxZoomDistance)
-            _targetCameraPosition = new Vector3(newTarget.x, maxZoomDistance, newTarget.z);
     }
 
     // ====================== 旋转逻辑（带详细日志） ======================

@@ -274,187 +274,6 @@ public class gameOptionController : StartSceneUIController
         /// <summary>
         /// option界面mainbody部分的所有interface的UI控件的实例化
         /// </summary>
-        /*
-        //整个gameOption所有控件加起来的数量
-        interfacesUiContrlSum.Add(mainbodyInterface0Type.Count);
-        interfacesUiContrlSum.Add(mainbodyInterface1Type.Count);
-        interfacesUiContrlSum.Add(mainbodyInterface2Type.Count);
-        interfacesUiContrlSum.Add(mainbodyInterface3Type.Count);
-        interfacesUiContrlSum.Add(mainbodyInterface4Type.Count);
-        interfacesUiContrlSum.Add(mainbodyInterface5Type.Count);
-        interfacesUiContrlSum.Add(mainbodyInterface6Type.Count);
-        */
-        /*
-        List<string> mainbodyInterfaceType,
-        List<GameObject> m_interface,
-        List<string> DropDown_textTitle,
-        List<int> eachDropdowmOptionNum,
-        List<string> DropDown_textLabe,
-        List<string> InputField_text,
-        List<string> Slider_text,
-        List<string> Toggle_text,
-        int m_interfacesUiContrlSum,
-        string parents,
-
-        int i_dt = 0,
-        int eDON = 0,       
-        int i_dl = 0,
-        int i_i = 0,
-        int i_s = 0,
-        int i_t = 0
-        */
-        //还要在外面再套一层循环
-        /*
-        //for (int k= 0;k< interfacesUiContrlSum.Count; k++)
-        //{
-        //(一次循环即完成一个interface的UI控件的实例化)
-        //实例化预设的UI控件
-
-        for (int i = 0; i < mainbodyInterface0Type.Count; i++)
-        {
-
-            //实例化UI控件，并将其父物体设置为interface0  
-            if (mainbodyInterface0Type[i] == "d")
-            {
-                interface0.Add(Instantiate(DropDown, GameObject.Find("interface0").transform));
-                if (eDON0 < eachDropdowmOptionNum0.Count)  //设置单个下拉框的选项个数
-                {
-                    for (int j = 0; j < eachDropdowmOptionNum0[eDON0]; j++)  //设置单个下拉框的每个选项
-                    {
-                        TMP_Dropdown.OptionData option = new TMP_Dropdown.OptionData();
-                        interface0[i].transform.GetComponent<TMP_Dropdown>().options.Add(option);
-                    }
-                }
-                else  //下拉框选项的数量设置不足
-                {
-                    Debug.Log("下拉框选项数量设置不足");
-                }
-            }
-            else if (mainbodyInterface0Type[i] == "i")
-            {
-                interface0.Add(Instantiate(InputField, GameObject.Find("interface0").transform));
-            }
-            else if (mainbodyInterface0Type[i] == "s")
-            {
-                interface0.Add(Instantiate(Slider, GameObject.Find("interface0").transform));
-            }
-            else if (mainbodyInterface0Type[i] == "t")
-            {
-                interface0.Add(Instantiate(Toggle, GameObject.Find("interface0").transform));
-                interface0[i].GetComponent<Image>().color = new Vector4(0.2588235f, 0.4156863f, 0.7294118f, 0.2313726f);  //初始化Toggle按钮
-                interface0[i].GetComponent<UIControl>().AddButtonClickEvent(interface0[i].transform.GetComponent<UIControl>().Toggle_test);  //给Toggle按钮添加事件
-            }
-            else
-            {
-                Debug.Log("UI控件名输入错误");
-                interface0.Add(nothing);
-            }
-            //设置interface0的UI控件的名字（方便UIController的字典）
-            interface0[i].gameObject.name = "interface0_UI" + i;
-            //设置interface0的UI控件位置
-            interface0[i].transform.position += new Vector3(0, i * (-35), 0);
-            //设置UI控件文本
-            if (mainbodyInterface0Type[i] == "d")  //设置下拉框文本
-            {
-                if (i_dt0 < DropDown_textTitle0.Count)
-                {
-                    interface0[i].transform.GetChild(0).GetComponent<Text>().text = DropDown_textTitle0[i_dt0++];//设置下拉框的标题文本
-                    if (eDON0 < eachDropdowmOptionNum0.Count)  //对应的下拉框设有选项个数
-                    {
-                        for (int j = 0; j < eachDropdowmOptionNum0[eDON0]; j++)  //单个下拉框的每个选项
-                        {
-                            if (i_dl0 < DropDown_textLabe0.Count)  //设置单个下拉框的单个选项文本
-                            {
-                                interface0[i].transform.GetComponent<TMP_Dropdown>().options[j].text = DropDown_textLabe0[i_dl0++];
-                            }
-                            else  //下拉框的选项文本量设置不足
-                            {
-                                interface0[i].transform.GetComponent<TMP_Dropdown>().options[j].text = "Please enter text";
-                            }
-                        }
-                    }
-                    else  //下拉框选项的数量设置不足
-                    {
-                        Debug.Log("下拉框选项数量设置不足");
-                    }
-                }
-                else  //下拉框标题的文本设置不足
-                {
-                    interface0[i].transform.GetChild(0).GetComponent<Text>().text = "请输入文本";
-                    //以下同上理
-                    if (eDON0 < eachDropdowmOptionNum0.Count)  //对应的下拉框设有选项个数
-                    {
-                        for (int j = 0; j < eachDropdowmOptionNum0[eDON0]; j++)  //单个下拉框的每个选项
-                        {
-                            if (i_dl0 < DropDown_textLabe0.Count)  //设置单个下拉框的单个选项文本
-                            {
-                                interface0[i].transform.GetComponent<TMP_Dropdown>().options[j].text = DropDown_textLabe0[i_dl0++];
-                            }
-                            else  //下拉框的选项文本量设置不足
-                            {
-                                interface0[i].transform.GetComponent<TMP_Dropdown>().options[j].text = "Please enter text";
-                            }
-                        }
-                    }
-                    else  //下拉框选项的数量设置不足
-                    {
-                        Debug.Log("下拉框选项数量设置不足");
-                    }
-                }
-                eDON0++;  //一次循环中有关下拉框的代码全部执行完毕后，索引++
-            }
-            else if (mainbodyInterface0Type[i] == "i")  //设置输入框
-            {
-                if (i_i0 < InputField_text0.Count)
-                {
-                    interface0[i].transform.GetChild(1).GetComponent<Text>().text = InputField_text0[i_i0++];
-                }
-                else
-                {
-                    interface0[i].transform.GetChild(1).GetComponent<Text>().text = "请输入文本";
-                }
-            }
-            else if (mainbodyInterface0Type[i] == "s")  //设置滑条
-            {
-                if (i_s0 < Slider_text0.Count)
-                {
-                    interface0[i].transform.GetChild(2).GetComponent<Text>().text = Slider_text0[i_s0++];
-                }
-                else
-                {
-                    interface0[i].transform.GetChild(2).GetComponent<Text>().text = "请输入文本";
-                }
-            }
-            else if (mainbodyInterface0Type[i] == "t")  //设置选择框
-            {
-                if (i_t0 < Toggle_text0.Count)
-                {
-                    interface0[i].transform.GetChild(1).GetComponent<Text>().text = Toggle_text0[i_t0++];
-                }
-                else
-                {
-                    interface0[i].transform.GetChild(1).GetComponent<Text>().text = "请输入文本";
-                }
-            }
-            else
-            {
-                Debug.Log("该UI控件名为空");
-            }
-            //为 interface0的UI控件 加上 UIControl
-            if (interface0[i].GetComponent<UIControl>() == null)
-            {
-                interface0[i].AddComponent<UIControl>();
-            }
-            //左侧栏按钮的id
-            //LsideBarButG[i].transform.GetComponent<UIControl>().LsideBarButId = i;
-            //为左侧栏按钮添加事件
-            //LsideBarButG[i].transform.GetComponent<UIControl>().AddButtonClickEvent(LsideBarButG[i].transform.GetComponent<UIControl>().changeSecTopBarText);
-
-    }
-        
-        //}
-        //设置
-        */
         //没必要做成循环了，写成函数得了
         //interface0
         InsInterfaceUIContrl
@@ -575,12 +394,18 @@ public class gameOptionController : StartSceneUIController
             );
 
         //全部UI控件都实例化完成后。除默认interface界面，都失活
-        GameObject.Find("interface1").SetActive(false);
-        GameObject.Find("interface2").SetActive(false);
-        GameObject.Find("interface3").SetActive(false);
-        GameObject.Find("interface4").SetActive(false);
-        GameObject.Find("interface5").SetActive(false);
-        GameObject.Find("interface6").SetActive(false);
+        for (int i = 1; i <= 6; i++)
+        {
+            GameObject itf = GameObject.Find("interface" + i);
+            if (itf != null)
+            {
+                itf.SetActive(false);
+            }
+            else
+            {
+                Debug.LogWarning($"[gameOptionController] 未找到 \"interface{i}\"，无法将其失活，请检查预制体层级或命名。", this);
+            }
+        }
 
 
     }
@@ -592,9 +417,18 @@ public class gameOptionController : StartSceneUIController
     }
 
     /// <summary>
+    /// 获取目标物体上的 UIControl，没有则添加（避免直接 GetComponent 返回 null 导致空引用）
+    /// </summary>
+    private static UIControl GetOrAddUIControl(GameObject target)
+    {
+        return target.TryGetComponent<UIControl>(out var control)
+            ? control
+            : target.AddComponent<UIControl>();
+    }
+
+    /// <summary>
     /// 实例化一个interface界面的所有UI控件的方法
     /// </summary>
-   
     private void InsInterfaceUIContrl(
         List<string> mainbodyInterfaceType,
         List<GameObject> m_interface,
@@ -611,7 +445,7 @@ public class gameOptionController : StartSceneUIController
     string parents,
 
         int i_dt = 0,
-        int eDON = 0,       
+        int eDON = 0,
         int i_dl = 0,
         int i_i = 0,
         int i_s = 0,
@@ -621,18 +455,31 @@ public class gameOptionController : StartSceneUIController
         int i_te = 0
         )
     {
+        //父物体只查一次，找不到直接返回并告警（原先每个分支都 GameObject.Find(parents)，既低效又缺乏判空）
+        GameObject parentObj = GameObject.Find(parents);
+        if (parentObj == null)
+        {
+            Debug.LogError($"[gameOptionController] 未找到父界面 \"{parents}\"，跳过其 UI 控件实例化。", this);
+            return;
+        }
+        Transform parentTf = parentObj.transform;
+
         //实例化UI控件，并将其父物体设置为m_interface
         for (int i = 0; i < mainbodyInterfaceType.Count; i++)
         {
+            //current 指向本次循环真正实例化出来的控件对象，避免用 m_interface[i] 的“下标==循环序号”耦合：
+            //一旦跳过未知类型（不再往列表塞共享 nothing），下标耦合就会错位甚至越界。
+            GameObject current;
+
             if (mainbodyInterfaceType[i] == "d")
             {
-                m_interface.Add(Instantiate(DropDown, GameObject.Find(parents).transform));
+                current = Instantiate(DropDown, parentTf);
                 if (eDON < eachDropdowmOptionNum.Count)  //设置单个下拉框的选项个数
                 {
                     for (int j = 0; j < eachDropdowmOptionNum[eDON]; j++)  //设置单个下拉框的每个选项
                     {
                         TMP_Dropdown.OptionData option = new TMP_Dropdown.OptionData();
-                        m_interface[i].transform.GetComponent<TMP_Dropdown>().options.Add(option);
+                        current.transform.GetComponent<TMP_Dropdown>().options.Add(option);
                     }
                 }
                 else  //下拉框选项的数量设置不足
@@ -642,56 +489,72 @@ public class gameOptionController : StartSceneUIController
             }
             else if (mainbodyInterfaceType[i] == "i")
             {
-                m_interface.Add(Instantiate(InputField, GameObject.Find(parents).transform));
+                current = Instantiate(InputField, parentTf);
             }
             else if (mainbodyInterfaceType[i] == "s")
             {
-                m_interface.Add(Instantiate(Slider, GameObject.Find(parents).transform));
+                current = Instantiate(Slider, parentTf);
             }
             else if (mainbodyInterfaceType[i] == "to")
             {
-                m_interface.Add(Instantiate(Toggle, GameObject.Find(parents).transform));
-                m_interface[i].GetComponent<Image>().color = new Vector4(0.2588235f, 0.4156863f, 0.7294118f, 0.2313726f);  //初始化Toggle按钮
-                m_interface[i].GetComponent<UIControl>().AddButtonClickEvent(m_interface[i].transform.GetComponent<UIControl>().Toggle_test);  //给Toggle按钮添加事件
+                current = Instantiate(Toggle, parentTf);
+                if (current.TryGetComponent<Image>(out var toggleImage))
+                {
+                    toggleImage.color = new Vector4(0.2588235f, 0.4156863f, 0.7294118f, 0.2313726f);  //初始化Toggle按钮
+                }
+                GetOrAddUIControl(current).AddButtonClickEvent(GetOrAddUIControl(current).Toggle_test);  //给Toggle按钮添加事件
             }
             else if(mainbodyInterfaceType[i] == "b")
             {
-                GameObject UI = Instantiate(Bind, GameObject.Find(parents).transform);
-                UI.transform.GetChild(1).GetComponent<UIControl>().AddButtonClickEvent(UI.transform.GetChild(1).transform.GetComponent<UIControl>().Pop_up);
-                UI.transform.GetChild(2).GetComponent<UIControl>().AddButtonClickEvent(UI.transform.GetChild(2).transform.GetComponent<UIControl>().Pop_up);
-                UI.transform.GetChild(2).GetComponent<UIControl>().AddButtonClickEvent(UI.transform.GetChild(2).transform.GetComponent<UIControl>().PlayButtonSoundEffect);
-                m_interface.Add(UI);
+                current = Instantiate(Bind, parentTf);
+                //Bind 预制体依赖固定的子节点结构（GetChild(1)/(2) 为主/次绑定按钮），先校验子节点数量再接线
+                if (current.transform.childCount >= 3)
+                {
+                    UIControl priBtn = GetOrAddUIControl(current.transform.GetChild(1).gameObject);
+                    UIControl secBtn = GetOrAddUIControl(current.transform.GetChild(2).gameObject);
+                    priBtn.AddButtonClickEvent(priBtn.Pop_up);
+                    secBtn.AddButtonClickEvent(secBtn.Pop_up);
+                    secBtn.AddButtonClickEvent(secBtn.PlayButtonSoundEffect);
+                }
+                else
+                {
+                    Debug.LogError($"[gameOptionController] Bind 预制体子节点不足（需要至少 3 个，实际 {current.transform.childCount} 个），" +
+                                   $"界面 \"{parents}\" 第 {i} 项跳过按钮接线。", current);
+                }
             }
             else if (mainbodyInterfaceType[i] == "te")
             {
-                m_interface.Add(Instantiate(Text, GameObject.Find(parents).transform));
+                current = Instantiate(Text, parentTf);
             }
             else
             {
-                Debug.Log("UI控件名输入错误");
-                m_interface.Add(nothing);
+                //未知类型码：输出定位信息并跳过，绝不把共享的 nothing 占位对象当作有效控件反复改名/移动/加组件
+                Debug.LogError($"[gameOptionController] 未知 UI 控件类型码 \"{mainbodyInterfaceType[i]}\"（界面 \"{parents}\"，第 {i} 项），已跳过。", this);
+                continue;
             }
-            //设置interface0的UI控件的名字（方便UIController的字典）
-            m_interface[i].gameObject.name = parents + "_UI" + i;
-            //设置interface0的UI控件位置
-            m_interface[i].transform.position += new Vector3(0, i * (-35), 0);
+
+            m_interface.Add(current);
+            //设置UI控件的名字（方便UIController的字典）
+            current.gameObject.name = parents + "_UI" + i;
+            //设置UI控件位置
+            current.transform.position += new Vector3(0, i * (-35), 0);
             //设置UI控件文本
             if (mainbodyInterfaceType[i] == "d")  //设置下拉框文本
             {
                 if (i_dt < DropDown_textTitle.Count)
                 {
-                    m_interface[i].transform.GetChild(0).GetComponent<Text>().text = DropDown_textTitle[i_dt++];//设置下拉框的标题文本
+                    current.transform.GetChild(0).GetComponent<Text>().text = DropDown_textTitle[i_dt++];//设置下拉框的标题文本
                     if (eDON < eachDropdowmOptionNum.Count)  //对应的下拉框设有选项个数
                     {
                         for (int j = 0; j < eachDropdowmOptionNum[eDON]; j++)  //单个下拉框的每个选项
                         {
                             if (i_dl < DropDown_textLabe.Count)  //设置单个下拉框的单个选项文本
                             {
-                                m_interface[i].transform.GetComponent<TMP_Dropdown>().options[j].text = DropDown_textLabe[i_dl++];
+                                current.transform.GetComponent<TMP_Dropdown>().options[j].text = DropDown_textLabe[i_dl++];
                             }
                             else  //下拉框的选项文本量设置不足
                             {
-                                m_interface[i].transform.GetComponent<TMP_Dropdown>().options[j].text = "Please enter text";
+                                current.transform.GetComponent<TMP_Dropdown>().options[j].text = "Please enter text";
                             }
                         }
                     }
@@ -702,7 +565,7 @@ public class gameOptionController : StartSceneUIController
                 }
                 else  //下拉框标题的文本设置不足
                 {
-                    m_interface[i].transform.GetChild(0).GetComponent<Text>().text = "请输入文本";
+                    current.transform.GetChild(0).GetComponent<Text>().text = "请输入文本";
                     //以下同上理
                     if (eDON < eachDropdowmOptionNum.Count)  //对应的下拉框设有选项个数
                     {
@@ -710,11 +573,11 @@ public class gameOptionController : StartSceneUIController
                         {
                             if (i_dl < DropDown_textLabe.Count)  //设置单个下拉框的单个选项文本
                             {
-                                m_interface[i].transform.GetComponent<TMP_Dropdown>().options[j].text = DropDown_textLabe[i_dl++];
+                                current.transform.GetComponent<TMP_Dropdown>().options[j].text = DropDown_textLabe[i_dl++];
                             }
                             else  //下拉框的选项文本量设置不足
                             {
-                                m_interface[i].transform.GetComponent<TMP_Dropdown>().options[j].text = "Please enter text";
+                                current.transform.GetComponent<TMP_Dropdown>().options[j].text = "Please enter text";
                             }
                         }
                     }
@@ -729,80 +592,77 @@ public class gameOptionController : StartSceneUIController
             {
                 if (i_i < InputField_text.Count)
                 {
-                    m_interface[i].transform.GetChild(1).GetComponent<Text>().text = InputField_text[i_i++];
+                    current.transform.GetChild(1).GetComponent<Text>().text = InputField_text[i_i++];
                 }
                 else
                 {
-                    m_interface[i].transform.GetChild(1).GetComponent<Text>().text = "请输入文本";
+                    current.transform.GetChild(1).GetComponent<Text>().text = "请输入文本";
                 }
             }
             else if (mainbodyInterfaceType[i] == "s")  //设置滑条
             {
                 if (i_s < Slider_text.Count)
                 {
-                    m_interface[i].transform.GetChild(2).GetComponent<Text>().text = Slider_text[i_s++];
+                    current.transform.GetChild(2).GetComponent<Text>().text = Slider_text[i_s++];
                 }
                 else
                 {
-                    m_interface[i].transform.GetChild(2).GetComponent<Text>().text = "请输入文本";
+                    current.transform.GetChild(2).GetComponent<Text>().text = "请输入文本";
                 }
             }
             else if (mainbodyInterfaceType[i] == "to")  //设置选择框
             {
                 if (i_to < Toggle_text.Count)
                 {
-                    m_interface[i].transform.GetChild(1).GetComponent<Text>().text = Toggle_text[i_to++];
+                    current.transform.GetChild(1).GetComponent<Text>().text = Toggle_text[i_to++];
                 }
                 else
                 {
-                    m_interface[i].transform.GetChild(1).GetComponent<Text>().text = "请输入文本";
+                    current.transform.GetChild(1).GetComponent<Text>().text = "请输入文本";
                 }
             }
             else if (mainbodyInterfaceType[i] == "b")  //设置绑定框
             {
-                //设置绑定框内容文本
-                if (i_b < Bind_pritext.Count)
+                //Bind 深层子节点访问前再次校验层级，避免结构改变时 GetChild 越界
+                if (current.transform.childCount >= 2 && current.transform.GetChild(1).childCount >= 2)
                 {
-                    m_interface[i].transform.GetChild(1).GetChild(1).GetComponent<Text>().text = Bind_pritext[i_b++];
+                    //设置绑定框内容文本
+                    if (i_b < Bind_pritext.Count)
+                    {
+                        current.transform.GetChild(1).GetChild(1).GetComponent<Text>().text = Bind_pritext[i_b++];
+                    }
+                    else
+                    {
+                        current.transform.GetChild(1).GetChild(1).GetComponent<Text>().text = "请输入文本";
+                    }
+                    //设置绑定框标签文本
+                    if (i_bl < Bind_label.Count)
+                    {
+                        current.transform.GetChild(0).GetComponent<Text>().text = Bind_label[i_bl++];
+                    }
+                    else
+                    {
+                        current.transform.GetChild(0).GetComponent<Text>().text = "请输入文本";
+                    }
                 }
                 else
                 {
-                    m_interface[i].transform.GetChild(1).GetChild(1).GetComponent<Text>().text = "请输入文本";
+                    Debug.LogError($"[gameOptionController] Bind 预制体层级不满足文本设置要求（界面 \"{parents}\"，第 {i} 项），已跳过文本设置。", current);
                 }
-                //设置绑定框标签文本
-                if (i_bl < Bind_label.Count)
+            }
+            else if (mainbodyInterfaceType[i] == "te") //设置文本
+            {
+                if (i_te < Text_text.Count)
                 {
-                    m_interface[i].transform.GetChild(0).GetComponent<Text>().text = Bind_label[i_bl++];
+                    current.transform.GetChild(0).GetComponent<Text>().text = Text_text[i_te++];
                 }
                 else
                 {
-                    m_interface[i].transform.GetChild(0).GetComponent<Text>().text = "请输入文本";
+                    current.transform.GetChild(0).GetComponent<Text>().text = "请输入文本";
                 }
             }
-            else if (mainbodyInterfaceType[i] == "te") //设置绑定框
-            {
-                if (i_b < Text_text.Count)
-                {
-                    m_interface[i].transform.GetChild(0).GetComponent<Text>().text = Text_text[i_te++];
-                }
-                else
-                {
-                    m_interface[i].transform.GetChild(0).GetComponent<Text>().text = "请输入文本";
-                }
-            }
-            else
-            {
-                Debug.Log("该UI控件名为空");
-            }
-            //为 interface0的UI控件 加上 UIControl
-            if (m_interface[i].GetComponent<UIControl>() == null)
-            {
-                m_interface[i].AddComponent<UIControl>();
-            }
-            //左侧栏按钮的id
-            //LsideBarButG[i].transform.GetComponent<UIControl>().LsideBarButId = i;
-            //为左侧栏按钮添加事件
-            //LsideBarButG[i].transform.GetComponent<UIControl>().AddButtonClickEvent(LsideBarButG[i].transform.GetComponent<UIControl>().changeSecTopBarText);
+            //为 UI控件 加上 UIControl
+            GetOrAddUIControl(current);
         }
     }
 

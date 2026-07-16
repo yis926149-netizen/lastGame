@@ -63,6 +63,8 @@ public class openController : StartSceneUIController
     public GameObject open_BackRround;
     //开始游戏设定界面的预制体
     public GameObject gameOptionPerfab;
+    //开场动画期间用于禁用整块菜单交互（防止动画未结束时点击导致 UI 错位）
+    private CanvasGroup _canvasGroup;
     void Awake()
     {
         //先让其他界面失活
@@ -131,18 +133,14 @@ public class openController : StartSceneUIController
                         secButG[secButG.Count-1].transform.GetChild(0).transform.GetComponent<Text>().text = "未命名";
                     }
                     //改名，方便加字典
-                    if (i > 0)
-                    {
-                        secButG[j + secButNum[i - 1]].name = firstButBeClickedG[i].name + "_secBut" + j;
-                    }
-                    else
-                    {
-                        secButG[j].name = firstButBeClickedG[i].name + "_secBut" + j;
-                    }
+                    //直接操作刚实例化的当前按钮 secbtu（即 secButG[secButG.Count-1]），
+                    //不要用 j + secButNum[i-1] 重新计算扁平列表偏移——该公式只加了“上一分组”的数量，
+                    //而非“此前所有分组数量之和”，从第三个分组起会错误改名到前面分组的按钮上。
+                    secbtu.name = firstButBeClickedG[i].name + "_secBut" + j;
                     //为各次级按钮加上 UIControl
-                    if (secButG[j].GetComponent<UIControl>() == null)
+                    if (secbtu.GetComponent<UIControl>() == null)
                     {
-                        secButG[j].AddComponent<UIControl>();
+                        secbtu.AddComponent<UIControl>();
                     }
 
                 }
@@ -223,6 +221,15 @@ public class openController : StartSceneUIController
     //开场动画
     private void OpenAni()
     {
+        //开场动画播放期间禁用整块菜单交互，动画结束（OpenOptionAni 收尾）后再恢复
+        //用 blocksRaycasts 而非 interactable：interactable=false 会让子按钮进入 Disabled 视觉态（默认灰化变暗），
+        //blocksRaycasts=false 只是让射线穿过、按钮收不到点击，按钮外观保持正常
+        if (!TryGetComponent(out _canvasGroup))
+        {
+            _canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        }
+        _canvasGroup.blocksRaycasts = false;
+
         //左侧栏到动画开始的位置
         lSideBar.transform.localPosition += new Vector3(0, 650, 0);
         //首级按钮到动画开始的位置,并失活
@@ -242,6 +249,11 @@ public class openController : StartSceneUIController
     {
         if (fbgIndex >= firstButG.Count)
         {
+            //开场动画全部结束，恢复菜单交互
+            if (_canvasGroup != null)
+            {
+                _canvasGroup.blocksRaycasts = true;
+            }
             return;
         }
         firstButG[fbgIndex].SetActive(true);

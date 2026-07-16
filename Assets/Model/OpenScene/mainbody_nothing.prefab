@@ -1,12 +1,12 @@
 %YAML 1.1
-%TAG !u! tag:yousandi.cn,2023:
+%TAG !u! tag:unity3d.com,2011:
 --- !u!1 &6918107011535932897
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  serializedVersion: 7
+  serializedVersion: 6
   m_Component:
   - component: {fileID: 1645658778965646537}
   - component: {fileID: 6248744724302244178}
@@ -14,7 +14,6 @@ GameObject:
   - component: {fileID: 936466729276622861}
   - component: {fileID: -8149805134340392728}
   m_Layer: 0
-  m_HasEditorInfo: 1
   m_Name: mainbody_nothing
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -30,7 +29,7 @@ Transform:
   m_GameObject: {fileID: 6918107011535932897}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 843.3662, y: -46089.16, z: -213.98242}
+  m_LocalPosition: {x: 843.3662, y: -52389.16, z: -213.98242}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

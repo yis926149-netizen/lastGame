@@ -20,13 +20,15 @@ using Zenject;
 public class UIControl : MonoBehaviour
 {
     [Inject] private AudioManager _audioManager;
-    [Inject] private DiContainer _container;
 
     //用于判断该脚本属于哪个页面
     public StartSceneUIController controller;
 
     void Awake()
     {
+        //返回 StartScene（场景重新加载）时复位场景加载锁，静态字段不会随场景卸载自动重置
+        _isLoadingGameScene = false;
+
         //以向上查找的方式获取父页面
         if (transform.parent != null)
         {
@@ -35,8 +37,15 @@ public class UIControl : MonoBehaviour
             //若父物体存在该脚本
             if(controller != null )
             {
-                //有脚本，找到了父页面，添加该组件到其字典内
-                controller.ControlDic.Add(transform.name, this);
+                //有脚本，找到了父页面，添加该组件到其字典内（防重复注册，避免同名控件触发 ArgumentException）
+                if (controller.ControlDic.ContainsKey(transform.name))
+                {
+                    Debug.LogWarning($"[UIControl] 页面 \"{controller.name}\" 已存在同名控件 \"{transform.name}\"，跳过重复注册。", this);
+                }
+                else
+                {
+                    controller.ControlDic.Add(transform.name, this);
+                }
                 //Debug.Log(this + "找到了父页面"+ controller);
             }
             else
@@ -64,6 +73,14 @@ public class UIControl : MonoBehaviour
 
     void Update()
     {
+        //只有按键绑定弹窗的两个绑定按钮（priButton/secButton）才需要监听键盘输入；
+        //其余大量控件（按钮、滑条、开关、输入框）都挂了 UIControl，若都执行会每帧多次全场景 Find("Pop up")，
+        //既是无谓的性能开销，也让普通控件执行了本应只属于弹窗的逻辑。
+        if (name != "priButton" && name != "secButton")
+        {
+            return;
+        }
+
         //这是游戏设定界面的interface的按钮绑定的那个
         if (GameObject.Find("Pop up"))
         {
@@ -73,16 +90,34 @@ public class UIControl : MonoBehaviour
                 mainbody5_text = input;
                 if (BindIndex == 0)
                 {
-                    GameObject.Find("priButton").transform.GetChild(1).GetComponent<Text>().text = mainbody5_text;
+                    SetBindButtonText("priButton", mainbody5_text);
                 }
                 else if (BindIndex == 1)
                 {
-                    GameObject.Find("secButton").transform.GetChild(1).GetComponent<Text>().text = mainbody5_text;
+                    SetBindButtonText("secButton", mainbody5_text);
                 }
                 Destroy(GameObject.Find("black_Pop up blocker"));
                 Destroy(GameObject.Find("Pop up"));
             }
         }
+    }
+
+    //按名称找到绑定按钮并写入其显示文本（对每一层查找结果判空，避免层级/命名改变时空引用崩溃）
+    private static void SetBindButtonText(string buttonName, string text)
+    {
+        GameObject btn = GameObject.Find(buttonName);
+        if (btn == null || btn.transform.childCount < 2)
+        {
+            Debug.LogWarning($"[UIControl] 未找到绑定按钮 \"{buttonName}\" 或其子节点不足，无法更新绑定文本。");
+            return;
+        }
+        Text label = btn.transform.GetChild(1).GetComponent<Text>();
+        if (label == null)
+        {
+            Debug.LogWarning($"[UIControl] 绑定按钮 \"{buttonName}\" 的子节点缺少 Text 组件。");
+            return;
+        }
+        label.text = text;
     }
 
     public void AddButtonClickEvent(UnityAction action)
@@ -249,11 +284,28 @@ public class UIControl : MonoBehaviour
     public void ToGameOptionsInterface()
     {
         openController parent = transform.GetComponentInParent<openController>();
+        if (parent == null || parent.gameOption == null)
+        {
+            return;
+        }
+        //防重复点击：gameOption 已激活说明已切换过，避免重复销毁 open 与重复激活
+        if (parent.gameOption.activeSelf)
+        {
+            return;
+        }
         //销毁旧开始界面
         Destroy(parent.gameObject);
-        StartSceneUIManager.Instance.ControllerDic.Remove(parent.gameObject.name);//删掉 ControllerDic 字典的键值
+        //删掉 ControllerDic 字典的键值（单例可能因初始化时序未就绪，先判空）
+        if (StartSceneUIManager.Instance != null)
+        {
+            StartSceneUIManager.Instance.ControllerDic.Remove(parent.gameObject.name);
+        }
         //以下的不用销毁
-        GameObject.Find("open_BackRround").SetActive(false);
+        GameObject openBack = GameObject.Find("open_BackRround");
+        if (openBack != null)
+        {
+            openBack.SetActive(false);
+        }
         parent.gameOption.SetActive(true);
     }
 
@@ -269,24 +321,41 @@ public class UIControl : MonoBehaviour
     //次顶栏文本的切换
     public void changeSecTopBarText()
     {
-        GameObject.Find("secTopBarText").GetComponent<Text>().text = transform.GetChild(0).GetComponent<Text>().text;
+        GameObject secTopBar = GameObject.Find("secTopBarText");
+        if (secTopBar == null)
+        {
+            Debug.LogWarning("[UIControl] 未找到 \"secTopBarText\"，无法切换次顶栏文本。", this);
+            return;
+        }
+        secTopBar.GetComponent<Text>().text = transform.GetChild(0).GetComponent<Text>().text;
     }
 
     //mainbody的interface界面的切换
     //记录下一次interface
     private int nextInterface;
     public void changeMainbodyInterface()
-    {        
+    {
         nextInterface = this.LsideBarButId;  //点击某个左侧按钮后，记录该按钮
         //Debug.Log("preInterface：" + preInterface);
         //Debug.Log("nextInterface："+ nextInterface);
-        //所有界面都失活得了
-        for(int i=0; i < GameObject.Find("mainBody").transform.childCount; i++)
+        GameObject mainBody = GameObject.Find("mainBody");
+        if (mainBody == null)
         {
-            GameObject.Find("mainBody").transform.GetChild(i).gameObject.SetActive(false);
+            Debug.LogWarning("[UIControl] 未找到 \"mainBody\"，无法切换 interface 界面。", this);
+            return;
         }
-        //下一次界面激活
-        GameObject.Find("mainBody").transform.GetChild(nextInterface).gameObject.SetActive(true); //左侧按钮的id跟interface界面的子物体顺序相同
+        //所有界面都失活得了
+        for(int i=0; i < mainBody.transform.childCount; i++)
+        {
+            mainBody.transform.GetChild(i).gameObject.SetActive(false);
+        }
+        //下一次界面激活（左侧按钮的id跟interface界面的子物体顺序相同）
+        if (nextInterface < 0 || nextInterface >= mainBody.transform.childCount)
+        {
+            Debug.LogWarning($"[UIControl] interface 索引 {nextInterface} 超出 mainBody 子物体范围（{mainBody.transform.childCount}），已忽略。", this);
+            return;
+        }
+        mainBody.transform.GetChild(nextInterface).gameObject.SetActive(true);
     }
 
 
@@ -294,18 +363,45 @@ public class UIControl : MonoBehaviour
     //返回open界面
     
     public void backToOpen()
-    {     
+    {
+        //防重复点击：已存在 open 界面时不再重复实例化，否则会出现两个同名 open，
+        //其 StartSceneUIController.Start() 重复向 ControllerDic 注册同名键而抛 ArgumentException
+        if (GameObject.Find("open") != null)
+        {
+            return;
+        }
+        if (StartSceneUIManager.Instance == null)
+        {
+            Debug.LogError("[UIControl] backToOpen 时 StartSceneUIManager.Instance 为空，无法返回开始界面。", this);
+            return;
+        }
         gameOptionController parent = (gameOptionController)StartSceneUIManager.Instance.GetInterface("gameOption");
+        if (parent == null)
+        {
+            Debug.LogError("[UIControl] backToOpen 找不到 gameOption 页面，无法返回开始界面。");
+            return;
+        }
         //实例化一个新开始界面（重置它的全部东西）
         GameObject open_interface = Instantiate(parent.openPerfab, parent.gameObject.transform.parent.transform);
         open_interface.name = "open";
         //以下的不用实例化
 
         //测试
-        GameObject e = GameObject.Find("Canvas").transform.GetChild(0).gameObject;
-        e.SetActive(true);
-        GameObject o = e.transform.GetChild(0).gameObject;
-        o.SetActive(true);
+        GameObject canvas = GameObject.Find("Canvas");
+        if (canvas != null && canvas.transform.childCount > 0)
+        {
+            GameObject e = canvas.transform.GetChild(0).gameObject;
+            e.SetActive(true);
+            if (e.transform.childCount > 0)
+            {
+                GameObject o = e.transform.GetChild(0).gameObject;
+                o.SetActive(true);
+            }
+        }
+        else
+        {
+            Debug.LogWarning("[UIControl] backToOpen 未找到 Canvas 或其子物体，跳过背景大字恢复。", this);
+        }
 
         parent.gameOption.SetActive(false);
     }
@@ -338,14 +434,36 @@ public class UIControl : MonoBehaviour
     private int BindIndex; //用来判断哪个点击的是绑定框
     public void Pop_up()
     {
-        //实例化弹窗
-        GameObject blocker;
-        GameObject popup;
-        blocker = Instantiate(Blocker, GameObject.Find("Canvas").transform);
-        popup = Instantiate(Popup, GameObject.Find("Canvas").transform);
+        //防重复点击：已存在弹窗时不再创建第二个（否则按名称关闭只能处理其中一份，留下死弹窗）
+        if (GameObject.Find("Pop up") != null)
+        {
+            return;
+        }
 
-        _container.InjectGameObject(popup);
-        _container.InjectGameObject(blocker);
+        Transform canvas = GameObject.Find("Canvas")?.transform;
+        if (canvas == null)
+        {
+            Debug.LogError("无法打开按键绑定弹窗：场景中未找到 Canvas。");
+            return;
+        }
+
+        if (Blocker == null || Popup == null)
+        {
+            Debug.LogError("无法打开按键绑定弹窗：Blocker 或 Popup 预制体未配置。", this);
+            return;
+        }
+
+        // 弹窗不依赖注入服务，直接实例化即可。动态创建的 UIControl 会自行获取 AudioManager。
+        GameObject blocker = Instantiate(Blocker, canvas);
+        GameObject popup = Instantiate(Popup, canvas);
+
+        if (popup == null || blocker == null)
+        {
+            if (popup != null) Destroy(popup);
+            if (blocker != null) Destroy(blocker);
+            Debug.LogError("无法打开按键绑定弹窗：弹窗实例化失败。", this);
+            return;
+        }
 
         blocker.name = "black_Pop up blocker";
         popup.name = "Pop up";
@@ -386,9 +504,20 @@ public class UIControl : MonoBehaviour
     /// <summary>
     /// 切换至游戏内场景
     /// </summary>
+    //防止快速连点重复加载场景（静态锁，加载后即使按钮仍在也不会再次触发）
+    private static bool _isLoadingGameScene;
     public void ToGameScene()
     {
-        _audioManager.StopBGM();
+        if (_isLoadingGameScene)
+        {
+            return;
+        }
+        _isLoadingGameScene = true;
+
+        if (_audioManager != null)
+        {
+            _audioManager.StopBGM();
+        }
 
         SceneManager.LoadScene(1);
 

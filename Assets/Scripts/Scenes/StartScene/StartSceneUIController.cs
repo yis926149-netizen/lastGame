@@ -24,8 +24,27 @@ public class StartSceneUIController : MonoBehaviour
                 tran.gameObject.AddComponent<UIControl>();
             }
         }
+
         //让本页面载入UI管理类单例的字典中
-        StartSceneUIManager.Instance.ControllerDic.Add(transform.name, this);
+        if (StartSceneUIManager.Instance == null)
+        {
+            Debug.LogError($"[StartSceneUIController] 无法注册页面 \"{transform.name}\"：StartSceneUIManager.Instance 为空。", this);
+            return;
+        }
+
+        var controllerDic = StartSceneUIManager.Instance.ControllerDic;
+        //防重复注册：快速连点可能在旧实例注册前又创建同名页面，直接 Add 会抛 ArgumentException
+        if (controllerDic.TryGetValue(transform.name, out var existing))
+        {
+            if (existing == this)
+            {
+                return;
+            }
+            Debug.LogWarning($"[StartSceneUIController] 已存在同名页面 \"{transform.name}\"，销毁本次重复创建的实例。", this);
+            Destroy(gameObject);
+            return;
+        }
+        controllerDic.Add(transform.name, this);
     }
 
 

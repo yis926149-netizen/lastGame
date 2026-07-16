@@ -12,106 +12,106 @@ public class MapRenderer : MonoBehaviour
     [Inject] private MapGenerator mapGenerator;
     [Inject] private MapVisualEventSO _mapVisualEvent;
 
-    // äÖÈ¾µØÍ¼ÊÓ¾õ²¿·Ö
+    // ï¿½ï¿½È¾ï¿½ï¿½Í¼ï¿½Ó¾ï¿½ï¿½ï¿½ï¿½ï¿½
     public void MapRender()
     {
-        // 1. »ñÈ¡ËùÓÐÁù±ßÐÎ×ø±ê
+        // 1. ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         Vector3[] hexVertices = _mapDataService.GetHexVertices();
 
-        // 2. Éú³É¸÷ÖÖMesh
-        //Ö÷µØÍ¼Mesh´´½¨
+        // 2. ï¿½ï¿½ï¿½É¸ï¿½ï¿½ï¿½Mesh
+        //ï¿½ï¿½ï¿½ï¿½Í¼Meshï¿½ï¿½ï¿½ï¿½
         MainMapMeshCreat(hexVertices);
-        //ºÓÁ÷Mesh´´½¨
+        //ï¿½ï¿½ï¿½ï¿½Meshï¿½ï¿½ï¿½ï¿½
         RiverMeshCreat(hexVertices);
-        //ºþ»òº£Mesh´´½¨
+        //ï¿½ï¿½ï¿½ï¿½Meshï¿½ï¿½ï¿½ï¿½
         LakeOrSeaMeshCreat(hexVertices);
-        //Íø¸ñMesh´´½¨
+        //ï¿½ï¿½ï¿½ï¿½Meshï¿½ï¿½ï¿½ï¿½
         GridMeshCreat(hexVertices);
 
-        // ¸üÐÂ IMapDataService µÄÔËÐÐÊ±Êý¾Ý£¨verticesList¡¢mesh¡¢gridGameObject£©
-        // ÕâÐ©ÔÚÉÏÃæµÄ´´½¨²½ÖèÖÐ±»¸³Öµµ½ mapGenerator
+        // ï¿½ï¿½ï¿½ï¿½ IMapDataService ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ý£ï¿½verticesListï¿½ï¿½meshï¿½ï¿½gridGameObjectï¿½ï¿½
+        // ï¿½ï¿½Ð©ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½Öµï¿½ï¿½ mapGenerator
         if (_mapDataService != null && mapGenerator != null)
         {
             _mapDataService.UpdateRuntimeData(mapGenerator.verticesList, mapGenerator.mesh, mapGenerator.gridGameObject);
         }
 
-        // 3. ÊµÀý»¯µØÃ²ºÍ×ÊÔ´Ä£ÐÍ
+        // 3. Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã²ï¿½ï¿½ï¿½ï¿½Ô´Ä£ï¿½ï¿½
         InstantiateLandForms(hexVertices);
         InstantiateResources(hexVertices);
 
-        // 4. ÃÔÎí - Ê¹ÓÃÊÂ¼þÏµÍ³´¥·¢ÓÉ¸÷ FogManager ÊµÀý´¦ÀíµÄ³õÊ¼»¯
+        // 4. ï¿½ï¿½ï¿½ï¿½ - Ê¹ï¿½ï¿½ï¿½Â¼ï¿½ÏµÍ³ï¿½ï¿½ï¿½ï¿½ï¿½É¸ï¿½ FogManager Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä³ï¿½Ê¼ï¿½ï¿½
         _mapVisualEvent.FogInit();
 
     }
 
-    //Ö÷µØÍ¼Mesh´´½¨
+    //ï¿½ï¿½ï¿½ï¿½Í¼Meshï¿½ï¿½ï¿½ï¿½
     private void MainMapMeshCreat(Vector3[] hexVertices)
     {
-        //ÉùÃ÷±äÁ¿
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         List<Vector3> verticesList = new List<Vector3>();
         //UV 
         List<Vector2> uvList = new List<Vector2>();
-        //¸ßµØ»æÖÆË³Ðò
+        //ï¿½ßµØ»ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
         List<int> highDrawOrderList = new List<int>();
-        //Æ½µØ»æÖÆË³Ðò
+        //Æ½ï¿½Ø»ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
         List<int> flatDrawOrderList = new List<int>();
-        //º£µ×»æÖÆË³Ðò
+        //ï¿½ï¿½ï¿½×»ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
         List<int> seafloorDrawOrderList = new List<int>();
-        //»æÖÆË³Ðò
-        //×Ó»æÖÆË³ÁÐ±í
+        //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
+        //ï¿½Ó»ï¿½ï¿½ï¿½Ë³ï¿½Ð±ï¿½
         List<List<int>> subList = new List<List<int>>() { highDrawOrderList, flatDrawOrderList, seafloorDrawOrderList };
 
-        //¹ý¶ÉÇøÓò»æÖÆË³Ðò
-        //¾ØÐÎ
-        //×ÓÍø¸ñ»æÖÆË³Ðò
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
+        //ï¿½ï¿½ï¿½ï¿½
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
         List<List<int>> transitionRectDrawOrderList = new List<List<int>>();
-        //×Ô¼ºµÄ²ÄÖÊ
+        //ï¿½Ô¼ï¿½ï¿½Ä²ï¿½ï¿½ï¿½
         List<Material> materialAs = new List<Material>();
-        //ÁÚ¾ÓµÄ²ÄÖÊ
+        //ï¿½Ú¾ÓµÄ²ï¿½ï¿½ï¿½
         List<Material> materialBs = new List<Material>();
 
-        //Èý½Ç
-        //×ÓÍø¸ñ»æÖÆË³Ðò
+        //ï¿½ï¿½ï¿½ï¿½
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
         List<List<int>> transitionTriDrawOrderList = new List<List<int>>();
-        //¶¥µãAµÄ²ÄÖÊ - Ë³Ê±ÕëÅÅÐò
+        //ï¿½ï¿½ï¿½ï¿½Aï¿½Ä²ï¿½ï¿½ï¿½ - Ë³Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         List<Material> materialAsTri = new List<Material>();
-        //¶¥µãBµÄ²ÄÖÊ
+        //ï¿½ï¿½ï¿½ï¿½Bï¿½Ä²ï¿½ï¿½ï¿½
         List<Material> materialBsTri = new List<Material>();
-        //¶¥µãCµÄ²ÄÖÊ
+        //ï¿½ï¿½ï¿½ï¿½Cï¿½Ä²ï¿½ï¿½ï¿½
         List<Material> materialCsTri = new List<Material>();
 
-        //¹ý¶ÉÇøÓò»æÖÆË³Ðò£¨ºÃÏñÃ»ÓÃ£¿£©
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ò£¨ºï¿½ï¿½ï¿½Ã»ï¿½Ã£ï¿½ï¿½ï¿½
         List<int> transitionDrawOrderList = new List<int>();
 
-        //¸³Öµ±äÁ¿
-        //ÊµÐÄÇøÓò
+        //ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½
+        //Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
         if(hexVertices == null)
         {
-            Debug.Log("Áù±ßÐÎ×ø±êÊý×éÎªnull£¡");
+            Debug.Log("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªnullï¿½ï¿½");
             return;
         }
 
         if (hexVertices.Length == 0)
         {
-            Debug.Log("Ã»ÓÐ»ñÈ¡µ½Áù±ßÐÎ×ø±ê£¡");
+            Debug.Log("Ã»ï¿½Ð»ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ê£¡");
             return;
         }
 
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
-            //»æÖÆË³ÐòÆ«ÒÆ
+            //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Æ«ï¿½ï¿½
             int IndexOffset = verticesList.Count;
 
-            //¶¥µã×ø±êvertices
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½vertices
             verticesList.AddRange(_meshGenerator.GetSolidAreaVertices(ref hexCellData));
 
             //UV
             uvList.AddRange(_meshGenerator.GetSolidAreaVerticesUV(ref hexCellData));
 
-            //¶¥µã»æÖÆË³Ðò
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
             List<Enums.HexDirection> d;
             int index = MainMeshSolidAreaDrawOrderFunction(hexCellData, out d);
             List<int> ints = new List<int>();
@@ -130,12 +130,12 @@ public class MapRenderer : MonoBehaviour
 
             MainMeshDrawOrderElementAddRule(ref hexCellData, ints, ref subList, IndexOffset);
         }
-        //¾ØÐÎÇøÓò
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
-            //»æÖÆË³ÐòÆ«ÒÆ
+            //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Æ«ï¿½ï¿½
             int IndexOffset = verticesList.Count;
             Enums.HexDirection[] hexDirections = new Enums.HexDirection[3] { Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE };
             for (int i = 0; i < hexDirections.Length; i++)
@@ -144,25 +144,25 @@ public class MapRenderer : MonoBehaviour
                 if (_mapDataService.GetNeighbor(hexCellData, hexDirections[i]) == null) continue;
                 bool isSlope = true, isRiver = false;
                 MainMeshRectFunction(hexCellData, hexDirections[i], out isSlope, out isRiver);
-                List<int> ints = new List<int>();//ÔÝÊ±µÄÖÐ¼ä±äÁ¿
+                List<int> ints = new List<int>();//ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½ï¿½ï¿½
                 if (isSlope)
                 {
-                    //¶¥µã×ø±êvertices
+                    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½vertices
                     verticesList.AddRange(_meshGenerator.GetRectVertices(ref hexCellData, hexDirections[i], _mapDataService));
                     //UV
                     uvList.AddRange(_meshGenerator.GetRectUV(ref hexCellData, hexDirections[i], _mapDataService));
-                    //»æÖÆË³Ðò
+                    //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
                     //ints.Clear();
                     if (isRiver) { OtherMeshDrawOrderElementAddRule(ref hexCellData, _meshGenerator.GetRectSlopeRiverDrawOrder(ref hexCellData, hexDirections[i], _mapDataService), ref ints, IndexOffset); }
                     else { OtherMeshDrawOrderElementAddRule(ref hexCellData, _meshGenerator.GetRectDrawOrder(ref hexCellData, hexDirections[i], _mapDataService), ref ints, IndexOffset); }
                 }
                 else
                 {
-                    //¶¥µã×ø±êvertices
+                    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½vertices
                     verticesList.AddRange(_meshGenerator.GetRectStepVertices(ref hexCellData, hexDirections[i], _mapDataService));
                     //UV
                     uvList.AddRange(_meshGenerator.GetRectStepUV(ref hexCellData, hexDirections[i], _mapDataService));
-                    //»æÖÆË³Ðò
+                    //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
                     if (isRiver) { OtherMeshDrawOrderElementAddRule(ref hexCellData, _meshGenerator.GetRectStepRiverDrawOrder(ref hexCellData, hexDirections[i], _mapDataService), ref ints, IndexOffset); }
                     else { OtherMeshDrawOrderElementAddRule(ref hexCellData, _meshGenerator.GetRectStepDrawOrder(ref hexCellData, hexDirections[i], _mapDataService), ref ints, IndexOffset); }
                 }
@@ -175,12 +175,12 @@ public class MapRenderer : MonoBehaviour
             }
 
         }
-        //Èý½ÇÇøÓò
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
-            //»æÖÆË³ÐòÆ«ÒÆ
+            //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Æ«ï¿½ï¿½
             int IndexOffset = verticesList.Count;
 
             Enums.HexDirection[][] h = new Enums.HexDirection[2][]
@@ -189,19 +189,19 @@ public class MapRenderer : MonoBehaviour
                 new[] { Enums.HexDirection.E, Enums.HexDirection.SE }
             };
 
-            //Ã¿¸öµØ¿é¹ÜÁ½¸öÈý½Ç¹ý¶ÉÇøÓò£¨NE_E¡¢E_SE£©           
+            //Ã¿ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½NE_Eï¿½ï¿½E_SEï¿½ï¿½           
             for (int i = 0; i < 2; i++)
             {
                 if (_mapDataService.GetNeighbor(hexCellData, h[i][0]) == null || _mapDataService.GetNeighbor(hexCellData, h[i][1]) == null) continue;
                 IndexOffset = verticesList.Count;
-                List<int> ints = new List<int>();//ÔÝÊ±µÄÖÐ¼ä±äÁ¿
-                //»æÖÆ·½·¨
+                List<int> ints = new List<int>();//ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½ï¿½ï¿½
+                //ï¿½ï¿½ï¿½Æ·ï¿½ï¿½ï¿½
                 Enums.TriType triType = MainMeshTriFunction(hexCellData, h[i][0], h[i][1]);
-                //¶¥µã×ø±êvertices
+                //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½vertices
                 verticesList.AddRange(GetTriVerticesFunction(triType, ref hexCellData, h[i][0], h[i][1]));
                 //UV
                 uvList.AddRange(GetTriUVFunction(triType, ref hexCellData, h[i][0], h[i][1]));
-                //»æÖÆË³Ðò1           
+                //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½1           
                 //ints.Clear();
                 OtherMeshDrawOrderElementAddRule(ref hexCellData, GetTriDrawOrderFunction(triType, ref hexCellData, h[i][0], h[i][1]), ref ints, IndexOffset);
 
@@ -214,30 +214,30 @@ public class MapRenderer : MonoBehaviour
             }
         }
 
-        //µ÷ÓÃCreatMesh()
-        //Èý½ÇÐÎ»æÖÆË³Ðò
+        //ï¿½ï¿½ï¿½ï¿½CreatMesh()
+        //ï¿½ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
         int[][] arrArawOrder = new int[3 + transitionRectDrawOrderList.Count + transitionRectDrawOrderList.Count][];
-        //º£µ×
+        //ï¿½ï¿½ï¿½ï¿½
         arrArawOrder[0] = subList[2].ToArray();
-        //Æ½µØ
+        //Æ½ï¿½ï¿½
         arrArawOrder[1] = subList[1].ToArray();
-        //¸ßµØ
+        //ï¿½ßµï¿½
         arrArawOrder[2] = subList[0].ToArray();
-        //¾ØÐÎ¹ý¶ÉÇøÓò
+        //ï¿½ï¿½ï¿½Î¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
         int transitionOffset = 3;
         for (int i = 0; i < transitionRectDrawOrderList.Count; i++)
         {
             arrArawOrder[transitionOffset + i] = transitionRectDrawOrderList[i].ToArray();
         }
-        //Èý½Ç¹ý¶ÉÇøÓò
+        //ï¿½ï¿½ï¿½Ç¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         transitionOffset = transitionRectDrawOrderList.Count + 3;
         for (int i = 0; i < transitionTriDrawOrderList.Count; i++)
         {
             arrArawOrder[transitionOffset + i] = transitionTriDrawOrderList[i].ToArray();
         }
 
-        // ´´½¨Ö÷µØÍ¼ Mesh£¬²¢±£´æÔËÐÐÊ±Êý¾Ýµ½ mapGenerator
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ Meshï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ýµï¿½ mapGenerator
         Mesh mainMesh = MapController.CreatMesh(
                    verticesList.ToArray(),
                    uvList.ToArray(),
@@ -256,7 +256,7 @@ public class MapRenderer : MonoBehaviour
                    _config.globalSmoothness
                   );
 
-        // ½«Éú³ÉµÄ¶¥µãÁÐ±íÓë Mesh ´«»Ø MapGenerator£¨¹©ºóÐøÊ¹ÓÃ£©
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ÉµÄ¶ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½ Mesh ï¿½ï¿½ï¿½ï¿½ MapGeneratorï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½Ã£ï¿½
         if (mapGenerator != null)
         {
             mapGenerator.verticesList = verticesList;
@@ -264,33 +264,33 @@ public class MapRenderer : MonoBehaviour
         }
     }
 
-    //ºÓÁ÷Mesh´´½¨
+    //ï¿½ï¿½ï¿½ï¿½Meshï¿½ï¿½ï¿½ï¿½
     private void RiverMeshCreat(Vector3[] hexVertices)
     {
-        //ÉùÃ÷±äÁ¿
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         GameObject RiverWater = new GameObject("RiverWater");
-        //¶¥µãÊý×é
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         List<Vector3> verticesRiverWater = new List<Vector3>();
         //UV 
         List<Vector2> uvRiverWater = new List<Vector2>();
-        //Èý½ÇÐÎ»æÖÆË³Ðò
+        //ï¿½ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
         List<int> drawOrderRiverWater = new List<int>();
 
-        //±äÁ¿¸³Öµ
-        //ÊµÐÄÇøÓò        
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+        //Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½        
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            List<int> ints = new List<int>();//ÔÝÊ±µÄÖÐ¼ä±äÁ¿
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            List<int> ints = new List<int>();//ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½ï¿½ï¿½
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
-            //»æÖÆË³ÐòÆ«ÒÆ
+            //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Æ«ï¿½ï¿½
             int IndexOffset = verticesRiverWater.Count;
 
             if (RiverMeshSolidAreaDrawOrderFunction(hexCellData) == null) continue;
 
-            //¶¥µã×ø±ê
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             verticesRiverWater.AddRange(_meshGenerator.GetRiverVertices(ref hexCellData));
-            //¶¥µã»æÖÆË³Ðò
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
             List<int> l = new List<int>();
             l = RiverMeshSolidAreaDrawOrderFunction(hexCellData);
             ints.Clear();
@@ -299,20 +299,20 @@ public class MapRenderer : MonoBehaviour
             //UV
             uvRiverWater.AddRange(_meshGenerator.GetRiverUV(ref hexCellData, l));
         }
-        //ÏÂÓÎ¹ý¶ÉÇøÓò
+        //ï¿½ï¿½ï¿½Î¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            List<int> ints = new List<int>();//ÔÝÊ±µÄÖÐ¼ä±äÁ¿
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            List<int> ints = new List<int>();//ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½ï¿½ï¿½
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
-            //»æÖÆË³ÐòÆ«ÒÆ
+            //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Æ«ï¿½ï¿½
             int IndexOffset = verticesRiverWater.Count;
 
-            //¸ÃµØ¿éÏÂÓÎ¹ý¶ÉÇøÓò
-            //¶¥µã×ø±ê - ºÓË®²»·ÖÆÂ»ò½×ÌÝ
+            //ï¿½ÃµØ¿ï¿½ï¿½ï¿½ï¿½Î¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ - ï¿½ï¿½Ë®ï¿½ï¿½ï¿½ï¿½ï¿½Â»ï¿½ï¿½ï¿½ï¿½
             verticesRiverWater.AddRange(_meshGenerator.GetOutgoingRiverVertices(ref hexCellData, _mapDataService));
 
-            //¶¥µã»æÖÆË³Ðò
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
             List<int> l = new List<int>();
             l.AddRange(RiverMeshDownstreamDrawOrderFunction(ref hexCellData));
             OtherMeshDrawOrderElementAddRule(ref hexCellData, l, ref ints, IndexOffset);
@@ -321,7 +321,7 @@ public class MapRenderer : MonoBehaviour
             uvRiverWater.AddRange(_meshGenerator.GetOutgoingRiverSlopUV(ref hexCellData));
         }
 
-        //µ÷ÓÃCreatMesh()
+        //ï¿½ï¿½ï¿½ï¿½CreatMesh()
         if (drawOrderRiverWater.Count % 3 == 0 && drawOrderRiverWater.Count != 0)
         {
 
@@ -329,40 +329,40 @@ public class MapRenderer : MonoBehaviour
         }
     }
 
-    //ºþ»òº£Mesh´´½¨
+    //ï¿½ï¿½ï¿½ï¿½Meshï¿½ï¿½ï¿½ï¿½
     private void LakeOrSeaMeshCreat(Vector3[] hexVertices)
     {
         GameObject LakeOrSea = new GameObject("LakeOrSea");
-        //¶¥µãÊý×é
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         List<Vector3> verticesLakeOrSea = new List<Vector3>();
         //UV 
         List<Vector2> uvLakeOrSea = new List<Vector2>();
-        //ºþ»òº£»æÖÆË³Ðò
+        //ï¿½ï¿½ï¿½òº£»ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
         List<int> drawOrderLakeOrSea = new List<int>();
-        //º£°¶»æÖÆË³Ðò
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
         List<int> drawOrderCoast = new List<int>();
 
-        //ÏÈÈ·¶¨ÄÄÐ©ÊÇ¡°ºþ»òº£¡±µØ¿é
+        //ï¿½ï¿½È·ï¿½ï¿½ï¿½ï¿½Ð©ï¿½Ç¡ï¿½ï¿½ï¿½ï¿½òº£¡ï¿½ï¿½Ø¿ï¿½
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
-            //Èô²»ÊÇ¡°ºþ»òº£¡±¼´Ìø¹ý
+            //ï¿½ï¿½ï¿½ï¿½ï¿½Ç¡ï¿½ï¿½ï¿½ï¿½òº£¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             if (!isLakeOrSea(hexCellData)) { continue; }
             hexCellData.HexType = Enums.HexType.LakeOrSea;
             hexCellData.isCoast = true;
         }
 
-        //ÊµÐÄÇøÓò
+        //Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            List<int> ints = new List<int>();//ÔÝÊ±µÄÖÐ¼ä±äÁ¿
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            List<int> ints = new List<int>();//ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½ï¿½ï¿½
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
             int IndexOffset = verticesLakeOrSea.Count;
-            //Èô²»ÊÇ¡°ºþ»òº£¡±¼´Ìø¹ý
+            //ï¿½ï¿½ï¿½ï¿½ï¿½Ç¡ï¿½ï¿½ï¿½ï¿½òº£¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             if (hexCellData.HexType != Enums.HexType.LakeOrSea) { continue; }
-            //Ñ°ÕÒº£°¶µØ¸ñ
+            //Ñ°ï¿½Òºï¿½ï¿½ï¿½ï¿½Ø¸ï¿½
             bool isCoast = (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null) && (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).HexType != Enums.HexType.LakeOrSea) ||
                            (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null) && (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).HexType != Enums.HexType.LakeOrSea) ||
                            (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null) && (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).HexType != Enums.HexType.LakeOrSea) ||
@@ -370,25 +370,25 @@ public class MapRenderer : MonoBehaviour
                            (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.W) != null) && (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.W).HexType != Enums.HexType.LakeOrSea) ||
                            (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NW) != null) && (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NW).HexType != Enums.HexType.LakeOrSea);
 
-            //¶¥µã×ø±ê
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             verticesLakeOrSea.AddRange(_meshGenerator.GetlakeOrSeaVertices(ref hexCellData));
             //UV
             uvLakeOrSea.AddRange(_meshGenerator.GetlakeOrSeaUV(ref hexCellData));
 
-            //¶¥µã»æÖÆË³Ðò
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
             List<int> l = new List<int>();
             l.AddRange(LakeOrSeaMeshSolidAreaDrawOrderFunction(ref hexCellData));
             OtherMeshDrawOrderElementAddRule(ref hexCellData, l, ref ints, IndexOffset);
             drawOrderLakeOrSea.AddRange(ints);
         }
-        //¾ØÐÎ¹ý¶ÉÇøÓò
+        //ï¿½ï¿½ï¿½Î¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            List<int> ints = new List<int>();//ÔÝÊ±µÄÖÐ¼ä±äÁ¿
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            List<int> ints = new List<int>();//ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½ï¿½ï¿½
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
             int IndexOffset = verticesLakeOrSea.Count;
-            //Èô²»ÊÇ¡°ºþ»òº£¡±¼´Ìø¹ý
+            //ï¿½ï¿½ï¿½ï¿½ï¿½Ç¡ï¿½ï¿½ï¿½ï¿½òº£¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             if (hexCellData.HexType != Enums.HexType.LakeOrSea) { continue; }
 
             Enums.HexDirection[] hexDirections = new Enums.HexDirection[3] { Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE };
@@ -397,12 +397,12 @@ public class MapRenderer : MonoBehaviour
             {
                 if (_mapDataService.GetNeighbor(hexCellData, hexDirections[i]) != null && _mapDataService.GetNeighbor(hexCellData, hexDirections[i]).lakeOrSeaVertices.Count != 0)
                 {
-                    //¶¥µã×ø±ê
+                    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                     IndexOffset = verticesLakeOrSea.Count;
                     verticesLakeOrSea.AddRange(_meshGenerator.GetlakeOrSeaRectVertices(ref hexCellData, hexDirections[i], _mapDataService));
                     //UV
                     uvLakeOrSea.AddRange(_meshGenerator.GetlakeOrSeaRectUV(ref hexCellData, hexDirections[i], _mapDataService));
-                    //»æÖÆË³Ðò          
+                    //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½          
                     List<int> l = new List<int>();
                     l.AddRange(LakeOrSeaMeshRectDrawOrderFunction(hexCellData, hexDirections[i]));
                     ints.Clear();
@@ -411,14 +411,14 @@ public class MapRenderer : MonoBehaviour
                 }
             }
         }
-        //Èý½Ç¹ý¶ÉÇøÓò 
+        //ï¿½ï¿½ï¿½Ç¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            List<int> ints = new List<int>();//ÔÝÊ±µÄÖÐ¼ä±äÁ¿
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            List<int> ints = new List<int>();//ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½ï¿½ï¿½
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
             int IndexOffset = verticesLakeOrSea.Count;
-            //Èô²»ÊÇ¡°ºþ»òº£¡±¼´Ìø¹ý
+            //ï¿½ï¿½ï¿½ï¿½ï¿½Ç¡ï¿½ï¿½ï¿½ï¿½òº£¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             if (hexCellData.HexType != Enums.HexType.LakeOrSea) { continue; }
 
             Enums.HexDirection[][] h = new Enums.HexDirection[2][]
@@ -434,13 +434,13 @@ public class MapRenderer : MonoBehaviour
                     _mapDataService.GetNeighbor(hexCellData, h[i][0]).lakeOrSeaVertices.Count != 0 &&
                     _mapDataService.GetNeighbor(hexCellData, h[i][1]).lakeOrSeaVertices.Count != 0)
                 {
-                    //¶¥µã×ø±ê
+                    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                     IndexOffset = verticesLakeOrSea.Count;
                     verticesLakeOrSea.AddRange(_meshGenerator.GetlakeOrSeaTriVertices(ref hexCellData, h[i][0], h[i][1], _mapDataService));
                     //UV
                     uvLakeOrSea.AddRange(_meshGenerator.GetlakeOrSeaTriUV(ref hexCellData, h[i][0], h[i][1], _mapDataService));
 
-                    //Èý½Ç»æÖÆË³Ðò
+                    //ï¿½ï¿½ï¿½Ç»ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
                     List<int> l = new List<int>();
                     l.AddRange(LakeOrSeaMeshTriDrawOrderFunction(hexCellData, h[i][0], h[i][1]));
                     ints.Clear();
@@ -450,17 +450,17 @@ public class MapRenderer : MonoBehaviour
             }
 
         }
-        //º£°¶Íø¸ñ - ¾ØÐÎ
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ - ï¿½ï¿½ï¿½ï¿½
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            List<int> ints = new List<int>();//ÔÝÊ±µÄÖÐ¼ä±äÁ¿
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            List<int> ints = new List<int>();//ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½ï¿½ï¿½
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
             int IndexOffset = verticesLakeOrSea.Count;
-            //Èô²»ÊÇ¡°ºþ»òº£¡±¼´Ìø¹ý
+            //ï¿½ï¿½ï¿½ï¿½ï¿½Ç¡ï¿½ï¿½ï¿½ï¿½òº£¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             if (hexCellData.HexType != Enums.HexType.LakeOrSea) { continue; }
 
-            //º£°¶µÄ·½Ïò
+            //ï¿½ï¿½ï¿½ï¿½ï¿½Ä·ï¿½ï¿½ï¿½
             List<Enums.HexDirection> coastDirections = new List<Enums.HexDirection>();
             Enums.HexDirection[] hexDirections = { Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE, Enums.HexDirection.SW, Enums.HexDirection.W, Enums.HexDirection.NW };
             foreach (Enums.HexDirection h in hexDirections)
@@ -471,8 +471,8 @@ public class MapRenderer : MonoBehaviour
                 }
             }
 
-            ///¾ØÐÎ
-            //¶¥µã×ø±ê
+            ///ï¿½ï¿½ï¿½ï¿½
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             List<Vector3> v = new List<Vector3>();
             foreach (Enums.HexDirection h in coastDirections)
             {
@@ -481,24 +481,24 @@ public class MapRenderer : MonoBehaviour
             verticesLakeOrSea.AddRange(v);
             //UV
             uvLakeOrSea.AddRange(_meshGenerator.GetCoastRectUV(ref hexCellData, v.ToArray()));
-            //Èý½Ç»æÖÆË³Ðò    
+            //ï¿½ï¿½ï¿½Ç»ï¿½ï¿½ï¿½Ë³ï¿½ï¿½    
             List<int> l = new List<int>();
             l.AddRange(CoastMeshRectDrawOrderFunction(hexCellData, v.ToArray()));
             ints.Clear();
             OtherMeshDrawOrderElementAddRule(ref hexCellData, l, ref ints, IndexOffset);
             drawOrderCoast.AddRange(ints);
         }
-        //º£°¶Íø¸ñ - Èý½Ç
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ - ï¿½ï¿½ï¿½ï¿½
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            List<int> ints = new List<int>();//ÔÝÊ±µÄÖÐ¼ä±äÁ¿
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            List<int> ints = new List<int>();//ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½ï¿½ï¿½
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
             int IndexOffset = verticesLakeOrSea.Count;
-            //Èô²»ÊÇ¡°ºþ»òº£¡±¼´Ìø¹ý
+            //ï¿½ï¿½ï¿½ï¿½ï¿½Ç¡ï¿½ï¿½ï¿½ï¿½òº£¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             if (hexCellData.HexType != Enums.HexType.LakeOrSea) { continue; }
 
-            //º£°¶µÄ·½Ïò
+            //ï¿½ï¿½ï¿½ï¿½ï¿½Ä·ï¿½ï¿½ï¿½
             List<Enums.HexDirection> coastDirections = new List<Enums.HexDirection>();
             Enums.HexDirection[] hexDirections = { Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE, Enums.HexDirection.SW, Enums.HexDirection.W, Enums.HexDirection.NW };
             foreach (Enums.HexDirection h in hexDirections)
@@ -509,7 +509,7 @@ public class MapRenderer : MonoBehaviour
                 }
             }
 
-            //Èý½Ç
+            //ï¿½ï¿½ï¿½ï¿½
             List<Vector3> v = new List<Vector3>();
             foreach (Enums.HexDirection h in coastDirections)
             {
@@ -518,7 +518,7 @@ public class MapRenderer : MonoBehaviour
             verticesLakeOrSea.AddRange(v);
             //UV
             uvLakeOrSea.AddRange(_meshGenerator.GetCoastTriUV(ref hexCellData, v.ToArray()));
-            //Èý½Ç»æÖÆË³Ðò
+            //ï¿½ï¿½ï¿½Ç»ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
             List<int> l = new List<int>();
             l.AddRange(CoastMeshTriDrawOrderFunction(hexCellData, v.ToArray()));
             ints.Clear();
@@ -528,40 +528,40 @@ public class MapRenderer : MonoBehaviour
 
 
         int[][] arrArawOrderLakeOrSea = new int[2][];
-        //º£°¶Íø¸ñ
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         arrArawOrderLakeOrSea[0] = drawOrderCoast.ToArray();
-        //ºþ»òº£Íø¸ñ
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         arrArawOrderLakeOrSea[1] = drawOrderLakeOrSea.ToArray();
         MapController.CreatMesh(verticesLakeOrSea.ToArray(), uvLakeOrSea.ToArray(), arrArawOrderLakeOrSea, LakeOrSea, _config.lakeOrSeaMaterial);
 
     }
 
-    //Íø¸ñMesh´´½¨
+    //ï¿½ï¿½ï¿½ï¿½Meshï¿½ï¿½ï¿½ï¿½
     private void GridMeshCreat(Vector3[] hexVertices)
     {
-        //Íø¸ñÏß
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         GameObject GridLine = new GameObject("GridLine");
-        //¶¥µãÊý×é
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         List<Vector3> verticesGridLine = new List<Vector3>();
         //UV 
         List<Vector2> uvGridLine = new List<Vector2>();
-        //»æÖÆË³Ðò
+        //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
         List<List<int>> drawOrderGridLine = new List<List<int>>();
 
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            List<int> ints = new List<int>();//ÔÝÊ±µÄÖÐ¼ä±äÁ¿
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            List<int> ints = new List<int>();//ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½ï¿½ï¿½
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
             int IndexOffset = verticesGridLine.Count;
-            //ÈôÊÇ¡°ºþ»òº£¡±¼´Ìø¹ý
+            //ï¿½ï¿½ï¿½Ç¡ï¿½ï¿½ï¿½ï¿½òº£¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             if (isLakeOrSea(hexCellData)) { continue; }
 
-            //¶¥µã×ø±ê            
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½            
             verticesGridLine.AddRange(_meshGenerator.GetGridVertices(ref hexCellData));
             //UV
             uvGridLine.AddRange(_meshGenerator.GetGridUV(ref hexCellData));
-            //¶¥µã»æÖÆË³Ðò
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
             List<int> l = new List<int>();
             l.AddRange(_meshGenerator.GetGridDrawOrder(ref hexCellData));
             ints.Clear();
@@ -570,12 +570,12 @@ public class MapRenderer : MonoBehaviour
         }
 
         Shader gridLineShader = Shader.Find("Custom/GridLine") ?? Shader.Find("Unlit/Color") ?? Shader.Find("Hidden/InternalErrorShader");
-        //ÎªÃ¿¸öµØ¿éÍø¸ñÏßµ¥¶À´´½¨Ò»¸öGameObject
+        //ÎªÃ¿ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ßµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½GameObject
         for (int j = 0, i = 0; j < hexVertices.Length; j++)
         {
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
-            //ÈôÊÇ¡°ºþ»òº£¡±¼´Ìø¹ý
+            //ï¿½ï¿½ï¿½Ç¡ï¿½ï¿½ï¿½ï¿½òº£¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             if (isLakeOrSea(hexCellData)) { continue; }
 
             GameObject go = new GameObject($"SubGridLine_{j}");
@@ -588,14 +588,14 @@ public class MapRenderer : MonoBehaviour
         mapGenerator.gridGameObject = GridLine;
     }
 
-    //ÅÐ¶ÏÄ³¸öµØ¿éÊÇ·ñÎªºþ»òº£
+    //ï¿½Ð¶ï¿½Ä³ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½Ç·ï¿½Îªï¿½ï¿½ï¿½ï¿½
     private bool isLakeOrSea(HexCellData hexCellData)
     {
-        //Èô¸ß¶ÈÎª0£¬ÔòÎªºþ»òº£
+        //ï¿½ï¿½ï¿½ß¶ï¿½Îª0ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½
         return !(hexCellData.Height > 0);
     }
 
-    //Ö÷µØÍ¼MeshÊµÐÄÇøÓò»æÖÆË³ÐòÑ¡ÔñÂß¼­
+    //ï¿½ï¿½ï¿½ï¿½Í¼MeshÊµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ß¼ï¿½
     private int MainMeshSolidAreaDrawOrderFunction(HexCellData hexCellData, out List<Enums.HexDirection> direction)
     {
         int drawOrder;
@@ -603,46 +603,46 @@ public class MapRenderer : MonoBehaviour
 
         if (hexCellData.HexType == Enums.HexType.RiverSource)
         {
-            //ÀÄõü + ·½Ïò
+            //ï¿½ï¿½ï¿½ï¿½ + ï¿½ï¿½ï¿½ï¿½
             drawOrder = 2;
             direction.Add(hexCellData.RiverOutgoingDirection);
         }
         else if (hexCellData.HexType == Enums.HexType.RiverMidstream)
         {
-            //ÖÐÓÎ + ½øÈë + ³öÈ¥·½Ïò
+            //ï¿½ï¿½ï¿½ï¿½ + ï¿½ï¿½ï¿½ï¿½ + ï¿½ï¿½È¥ï¿½ï¿½ï¿½ï¿½
             drawOrder = 3;
             direction.Add(hexCellData.RiverIncomingDirection);
             direction.Add(hexCellData.RiverOutgoingDirection);
         }
         else if (hexCellData.HexType == Enums.HexType.RiverEnd)
         {
-            //ÖÕµã + ·½Ïò
+            //ï¿½Õµï¿½ + ï¿½ï¿½ï¿½ï¿½
             drawOrder = 2;
             direction.Add(hexCellData.RiverIncomingDirection);
         }
         else
         {
-            //ÎÞºÓÁ÷µØ¿é
+            //ï¿½Þºï¿½ï¿½ï¿½ï¿½Ø¿ï¿½
             drawOrder = 1;
         }
 
         return drawOrder;
     }
 
-    //Ö÷µØÍ¼Mesh¾ØÐÎ¹ý¶ÉÇøÓò»æÖÆË³ÐòÑ¡ÔñÂß¼­
+    //ï¿½ï¿½ï¿½ï¿½Í¼Meshï¿½ï¿½ï¿½Î¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ß¼ï¿½
     private void MainMeshRectFunction(HexCellData hexCellData, Enums.HexDirection direction, out bool isSlope, out bool isRiver)
     {
         isRiver = false;
         isSlope = true;
-        //ÅÐ¶Ï¹ý¶ÉÇøÓòµÄ»æÖÆ·½·¨
+        //ï¿½Ð¶Ï¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä»ï¿½ï¿½Æ·ï¿½ï¿½ï¿½
         Enums.RectType[] rectTypes = new Enums.RectType[] { };
         Enums.TriType[] triTypes = new Enums.TriType[] { };
         TerrainGenerator.IsType(hexCellData, out rectTypes, out triTypes, _mapDataService);
 
-        //ÓÐÎÞ¶ÔÓ¦ÁÚ¾Ó
+        //ï¿½ï¿½ï¿½Þ¶ï¿½Ó¦ï¿½Ú¾ï¿½
         if (_mapDataService.GetNeighbor(hexCellData, direction) == null) { return; }
 
-        //ÓÐÎÞºÓ
+        //ï¿½ï¿½ï¿½Þºï¿½
         if ((hexCellData.RiverIncomingDirection == direction || hexCellData.RiverOutgoingDirection == direction) &&
             (hexCellData.hasRiver && _mapDataService.GetNeighbor(hexCellData, direction).hasRiver))
         { isRiver = true; }
@@ -658,10 +658,10 @@ public class MapRenderer : MonoBehaviour
         }
     }
 
-    //Ö÷µØÍ¼MeshÈý½Ç¹ý¶ÉÇøÓòÂß¼­
+    //ï¿½ï¿½ï¿½ï¿½Í¼Meshï¿½ï¿½ï¿½Ç¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß¼ï¿½
     private Enums.TriType MainMeshTriFunction(HexCellData hexCellData, Enums.HexDirection directionA, Enums.HexDirection directionB)
     {
-        //ÅÐ¶Ï¹ý¶ÉÇøÓòµÄ»æÖÆ·½·¨
+        //ï¿½Ð¶Ï¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä»ï¿½ï¿½Æ·ï¿½ï¿½ï¿½
         Enums.RectType[] rectTypes = new Enums.RectType[] { };
         Enums.TriType[] triTypes = new Enums.TriType[] { };
         TerrainGenerator.IsType(hexCellData, out rectTypes, out triTypes, _mapDataService);
@@ -670,12 +670,12 @@ public class MapRenderer : MonoBehaviour
         if (directionA == Enums.HexDirection.NE && directionB == Enums.HexDirection.E) { index = 0; }
         else if (directionA == Enums.HexDirection.E && directionB == Enums.HexDirection.SE) { index = 1; }
 
-        //ÓÐÎÞ¶ÔÓ¦ÁÚ¾Ó
+        //ï¿½ï¿½ï¿½Þ¶ï¿½Ó¦ï¿½Ú¾ï¿½
         if (_mapDataService.GetNeighbor(hexCellData, directionA) == null || _mapDataService.GetNeighbor(hexCellData, directionB) == null) { return Enums.TriType.zero; }
 
         return triTypes[index];
     }
-    //¶¥µã
+    //ï¿½ï¿½ï¿½ï¿½
     private List<Vector3> GetTriVerticesFunction(Enums.TriType triType, ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1)
     {
         List<Vector3> triVertices = new List<Vector3>();
@@ -684,14 +684,14 @@ public class MapRenderer : MonoBehaviour
             case Enums.TriType.one:
                 return _meshGenerator.GetTriVertices(ref hexCellData, direction0, direction1, _mapDataService);
             case Enums.TriType.two:
-                Debug.Log("ÔÝÎÞ´Ë·½·¨");
+                Debug.Log("ï¿½ï¿½ï¿½Þ´Ë·ï¿½ï¿½ï¿½");
                 return triVertices;
             case Enums.TriType.three:
                 return _meshGenerator.GetTriStep3Vertices(ref hexCellData, direction0, direction1, _mapDataService);
             case Enums.TriType.four:
                 return _meshGenerator.GetTriStep4Vertices(ref hexCellData, direction0, direction1, _mapDataService);
             default:
-                Debug.Log("ÊäÈëµÄTriType³ö´í");
+                Debug.Log("ï¿½ï¿½ï¿½ï¿½ï¿½TriTypeï¿½ï¿½ï¿½ï¿½");
                 return triVertices;
         }
     }
@@ -704,18 +704,18 @@ public class MapRenderer : MonoBehaviour
             case Enums.TriType.one:
                 return _meshGenerator.GetTriUV(ref hexCellData, direction0, direction1, _mapDataService);
             case Enums.TriType.two:
-                Debug.Log("ÔÝÎÞ´Ë·½·¨");
+                Debug.Log("ï¿½ï¿½ï¿½Þ´Ë·ï¿½ï¿½ï¿½");
                 return triUV;
             case Enums.TriType.three:
                 return _meshGenerator.GetTriStep3UV(ref hexCellData, direction0, direction1);
             case Enums.TriType.four:
                 return _meshGenerator.GetTriStep4UV(ref hexCellData, direction0, direction1);
             default:
-                Debug.Log("ÊäÈëµÄTriType³ö´í");
+                Debug.Log("ï¿½ï¿½ï¿½ï¿½ï¿½TriTypeï¿½ï¿½ï¿½ï¿½");
                 return triUV;
         }
     }
-    //»æÖÆË³Ðò
+    //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½
     private List<int> GetTriDrawOrderFunction(Enums.TriType triType, ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1)
     {
         List<int> triUV = new List<int>();
@@ -724,19 +724,19 @@ public class MapRenderer : MonoBehaviour
             case Enums.TriType.one:
                 return _meshGenerator.GetTriDrawOrder(ref hexCellData, direction0, direction1, _mapDataService);
             case Enums.TriType.two:
-                Debug.Log("ÔÝÎÞ´Ë·½·¨");
+                Debug.Log("ï¿½ï¿½ï¿½Þ´Ë·ï¿½ï¿½ï¿½");
                 return triUV;
             case Enums.TriType.three:
                 return _meshGenerator.GetTriStep3DrawOrder(ref hexCellData, direction0, direction1);
             case Enums.TriType.four:
                 return _meshGenerator.GetTriStep4DrawOrder(ref hexCellData, direction0, direction1, _mapDataService);
             default:
-                Debug.Log("ÊäÈëµÄTriType³ö´í");
+                Debug.Log("ï¿½ï¿½ï¿½ï¿½ï¿½TriTypeï¿½ï¿½ï¿½ï¿½");
                 return triUV;
         }
     }
 
-    //ºÓË®MeshÊµÐÄÇøÓò»æÖÆË³ÐòÑ¡ÔñÂß¼­
+    //ï¿½ï¿½Ë®MeshÊµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ß¼ï¿½
     private List<int> RiverMeshSolidAreaDrawOrderFunction(HexCellData hexCellData)
     {
         switch (hexCellData.HexType)
@@ -748,24 +748,24 @@ public class MapRenderer : MonoBehaviour
             case Enums.HexType.RiverEnd:
                 return _meshGenerator.GetRiverWater2DrawOrder(hexCellData.RiverIncomingDirection);
             default:
-                //Debug.Log("³ö´í£¬ÀíÓ¦²»¿Éµ½´ï´Ë´¦");
+                //Debug.Log("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½Éµï¿½ï¿½ï¿½Ë´ï¿½");
                 return null;
         }
     }
 
-    //ºÓË®MeshÏÂÓÎ¹ý¶ÉÇøÓò»æÖÆË³ÐòÑ¡ÔñÂß¼­
+    //ï¿½ï¿½Ë®Meshï¿½ï¿½ï¿½Î¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ß¼ï¿½
     private int[] RiverMeshDownstreamDrawOrderFunction(ref HexCellData hexCellData)
     {
         return _meshGenerator.GetOutgoingRiverSlopDrawOrder(ref hexCellData);
     }
 
-    //ºþ»òº£MeshÊµÐÄÇøÓò»æÖÆË³ÐòÑ¡ÔñÂß¼­
+    //ï¿½ï¿½ï¿½ï¿½MeshÊµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ß¼ï¿½
     private int[] LakeOrSeaMeshSolidAreaDrawOrderFunction(ref HexCellData hexCellData)
     {
         return _meshGenerator.GetlakeOrSeaDrawOrder(ref hexCellData);
     }
 
-    //ºþ»òº£Mesh¾ØÐÎ¹ý¶ÉÇøÓò»æÖÆË³ÐòÑ¡ÔñÂß¼­
+    //ï¿½ï¿½ï¿½ï¿½Meshï¿½ï¿½ï¿½Î¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ß¼ï¿½
     private List<int> LakeOrSeaMeshRectDrawOrderFunction(HexCellData hexCellData, Enums.HexDirection direction)
     {
         if (_mapDataService.GetNeighbor(hexCellData, direction) != null && _mapDataService.GetNeighbor(hexCellData, direction).lakeOrSeaVertices.Count != 0)
@@ -774,12 +774,12 @@ public class MapRenderer : MonoBehaviour
         }
         else
         {
-            Debug.Log("³ö´í£¬Õý³£Çé¿ö²»Ó¦À´µ½ÕâÀï");
+            Debug.Log("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
             return null;
         }
     }
 
-    //ºþ»òº£MeshÈý½Ç¹ý¶ÉÇøÓò»æÖÆË³ÐòÑ¡ÔñÂß¼­
+    //ï¿½ï¿½ï¿½ï¿½Meshï¿½ï¿½ï¿½Ç¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ß¼ï¿½
     private List<int> LakeOrSeaMeshTriDrawOrderFunction(HexCellData hexCellData, Enums.HexDirection directionA, Enums.HexDirection directionB)
     {
         if (_mapDataService.GetNeighbor(hexCellData, directionA) != null &&
@@ -791,30 +791,30 @@ public class MapRenderer : MonoBehaviour
         }
         else
         {
-            Debug.Log("³ö´íÁË£¬Õý³£Çé¿ö²»¿ÉÄÜµ½Õâ");
+            Debug.Log("ï¿½ï¿½ï¿½ï¿½ï¿½Ë£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Üµï¿½ï¿½ï¿½");
             return null;
         }
     }
 
-    //º£°¶Mesh¾ØÐÎ¹ý¶ÉÇøÓò»æÖÆË³ÐòÑ¡ÔñÂß¼­
+    //ï¿½ï¿½ï¿½ï¿½Meshï¿½ï¿½ï¿½Î¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ß¼ï¿½
     private List<int> CoastMeshRectDrawOrderFunction(HexCellData hexCellData, Vector3[] v)
     {
         return _meshGenerator.GetCoastRectDrawOrder(ref hexCellData, v);
     }
 
-    //º£°¶MeshÈý½Ç¹ý¶ÉÇøÓò»æÖÆË³ÐòÑ¡ÔñÂß¼­
+    //ï¿½ï¿½ï¿½ï¿½Meshï¿½ï¿½ï¿½Ç¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ß¼ï¿½
     private List<int> CoastMeshTriDrawOrderFunction(HexCellData hexCellData, Vector3[] v)
     {
         return _meshGenerator.GetCoastTriDrawOrder(ref hexCellData, v);
     }
 
 
-    //»æÖÆË³ÐòµÄÌí¼Ó¹æÔò - 1.Ö÷µØÍ¼Íø¸ñ»ù´¡µØ¿é¹æÔò¡¢2.Õý³£Ìí¼Ó¹æÔò
+    //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¹ï¿½ï¿½ï¿½ - 1.ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½2.ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¹ï¿½ï¿½ï¿½
     private void MainMeshDrawOrderElementAddRule(ref HexCellData hexCellData, List<int> drawOrder, ref List<List<int>> subList, int IndexOffset)
     {
         foreach (int i in drawOrder)
         {
-            //²»ÄÜÖ±½Ó¼ÓÈë£¬ÐèÒªÔ¤´¦Àí
+            //ï¿½ï¿½ï¿½ï¿½Ö±ï¿½Ó¼ï¿½ï¿½ë£¬ï¿½ï¿½ÒªÔ¤ï¿½ï¿½ï¿½ï¿½
             switch (hexCellData.Height)
             {
                 case 0:
@@ -830,12 +830,12 @@ public class MapRenderer : MonoBehaviour
         }
     }
 
-    //»æÖÆË³ÐòµÄÌí¼Ó¹æÔò - 2.Õý³£Ìí¼Ó¹æÔò
+    //ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¹ï¿½ï¿½ï¿½ - 2.ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¹ï¿½ï¿½ï¿½
     private void OtherMeshDrawOrderElementAddRule(ref HexCellData hexCellData, List<int> drawOrder, ref List<int> ints, int IndexOffset)
     {
         foreach (int i in drawOrder)
         {
-            //²»ÄÜÖ±½Ó¼ÓÈë£¬ÐèÒªÔ¤´¦Àí
+            //ï¿½ï¿½ï¿½ï¿½Ö±ï¿½Ó¼ï¿½ï¿½ë£¬ï¿½ï¿½ÒªÔ¤ï¿½ï¿½ï¿½ï¿½
             ints.Add(i + IndexOffset);
         }
     }
@@ -846,7 +846,7 @@ public class MapRenderer : MonoBehaviour
 
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
             if((int)hexCellData.landFormType == 4) { continue; }
             hexCellData.landFormModel = Instantiate(environmentModelsProvider.GetLandFormPrefab((int)hexCellData.landFormType));
@@ -861,9 +861,9 @@ public class MapRenderer : MonoBehaviour
         GameObject Resource = new GameObject("Resource");
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //¸ù¾ÝÁù±ßÐÎ×ø±ê»ñÈ¡hexCell
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
-            if ((int)hexCellData.resourceType == 4) { continue; }
+            if ((int)hexCellData.resourceType >= 4) { continue; }
             hexCellData.resourceModel = Instantiate(environmentModelsProvider.GetResourcePrefab((int)hexCellData.resourceType));
             hexCellData.resourceModel.transform.position = hexCellData.RealCenterWorldCoordinate + new Vector3(0, 0, 0);
             hexCellData.resourceModel.AddComponent<ModelController>();
