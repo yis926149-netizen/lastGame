@@ -22,6 +22,9 @@
 # Visual Studio cache directory
 .vs/
 
+# Local editor settings
+.vscode/
+
 # Gradle cache directory
 .gradle/
 
@@ -56,6 +59,12 @@ sysinfo.txt
 *.aab
 *.unitypackage
 *.app
+/[Bb]in/
+/AuditReports/
+
+# Generated documentation output
+/Docs/_site/
+/Docs/_site_*/
 
 # Crashlytics generated file
 crashlytics-build.properties
