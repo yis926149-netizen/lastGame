@@ -1,4 +1,20 @@
-- name: Docs
+- name: 首页
+  href: index.md
+- name: 入门
   href: docs/
+- name: 服务
+  items:
+  - name: 地图数据
+    href: services/IMapDataService.md
+  - name: 单位仓库
+    href: services/IUnitRepository.md
+  - name: 单位移动
+    href: services/IUnitMovement.md
+  - name: 卡牌
+    href: services/ICardService.md
+  - name: 科技文化
+    href: services/ITechCultureService.md
+  - name: 游戏状态机
+    href: services/IGameStateMachine.md
 - name: API
   href: api/

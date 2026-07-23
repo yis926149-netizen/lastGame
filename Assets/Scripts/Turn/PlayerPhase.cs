@@ -33,7 +33,14 @@ public class PlayerPhase : MonoBehaviour, IPhase
 
     public bool CanExit()
     {
-        return true;   // 可添加“是否还有单位未操作”等限制
+        foreach (var unit in _unitRepository.AllPlayerUnits.Values)
+        {
+            if (unit?.unitMovementController != null && unit.unitMovementController.IsBusy)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     public void Exit()

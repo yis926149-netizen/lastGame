@@ -5,22 +5,22 @@ using UnityEngine;
 
 public class UnitRepository : IUnitRepository
 {
-    // Íæ¼Òµ¥Î»
+    // ï¿½ï¿½Òµï¿½Î»
     private readonly Dictionary<GameObject, CharacterData> _playerUnits = new();
     public IReadOnlyDictionary<GameObject, CharacterData> AllPlayerUnits => _playerUnits;
 
-    // µÐ·½µ¥Î»£¨°´AI·Ö×é£©
+    // ï¿½Ð·ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½AIï¿½ï¿½ï¿½é£©
     private readonly List<Dictionary<GameObject, CharacterData>> _enemyUnitGroups = new();
     public IReadOnlyList<IReadOnlyDictionary<GameObject, CharacterData>> AllEnemyUnitGroups =>
         _enemyUnitGroups.Select(g => (IReadOnlyDictionary<GameObject, CharacterData>)g).ToList();
 
-    // ÊÂ¼þÊµÏÖ
+    // ï¿½Â¼ï¿½Êµï¿½ï¿½
     public event Action<GameObject, CharacterData> OnPlayerUnitAdded;
     public event Action<GameObject> OnPlayerUnitRemoved;
     public event Action<int, GameObject, CharacterData> OnEnemyUnitAdded;
     public event Action<GameObject> OnEnemyUnitRemoved;
 
-    // Íæ¼Òµ¥Î»²Ù×÷
+    // ï¿½ï¿½Òµï¿½Î»ï¿½ï¿½ï¿½ï¿½
     public CharacterData GetPlayerUnit(GameObject unitObject) =>
         _playerUnits.TryGetValue(unitObject, out var data) ? data : null;
 
@@ -29,6 +29,9 @@ public class UnitRepository : IUnitRepository
 
     public void AddPlayerUnit(GameObject unitObject, CharacterData data)
     {
+        if (unitObject == null || data == null) return;
+        RemoveEnemyUnit(unitObject);
+        if (_playerUnits.TryGetValue(unitObject, out var existing) && existing == data) return;
         _playerUnits[unitObject] = data;
         OnPlayerUnitAdded?.Invoke(unitObject, data);
     }
@@ -39,7 +42,7 @@ public class UnitRepository : IUnitRepository
             OnPlayerUnitRemoved?.Invoke(unitObject);
     }
 
-    // µÐ·½µ¥Î»²Ù×÷
+    // ï¿½Ð·ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½
     public IReadOnlyDictionary<GameObject, CharacterData> GetEnemyUnitGroup(int aiIndex)
     {
         EnsureGroupCapacity(aiIndex + 1);
@@ -65,21 +68,26 @@ public class UnitRepository : IUnitRepository
 
     public void AddEnemyUnit(int aiIndex, GameObject unitObject, CharacterData data)
     {
+        if (aiIndex < 0 || unitObject == null || data == null) return;
         EnsureGroupCapacity(aiIndex + 1);
+        if (_enemyUnitGroups[aiIndex].TryGetValue(unitObject, out var existing) && existing == data && !_playerUnits.ContainsKey(unitObject)) return;
+        RemovePlayerUnit(unitObject);
+        RemoveEnemyUnit(unitObject);
         _enemyUnitGroups[aiIndex][unitObject] = data;
         OnEnemyUnitAdded?.Invoke(aiIndex, unitObject, data);
     }
 
     public void RemoveEnemyUnit(GameObject unitObject)
     {
+        bool removed = false;
         for (int i = 0; i < _enemyUnitGroups.Count; i++)
         {
             if (_enemyUnitGroups[i].Remove(unitObject))
             {
-                OnEnemyUnitRemoved?.Invoke(unitObject);
-                return;
+                removed = true;
             }
         }
+        if (removed) OnEnemyUnitRemoved?.Invoke(unitObject);
     }
 
     private void EnsureGroupCapacity(int requiredCount)

@@ -3,7 +3,6 @@
 
 ### ITechCultureService.md
 
-```markdown
 # ITechCultureService
 
 ## 职责描述
@@ -41,3 +40,4 @@ public class UIManagerPresenter
         Debug.Log($"科技点数: {_techCultureService.TechPoints}");
     }
 }
+```

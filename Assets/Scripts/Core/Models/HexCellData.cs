@@ -67,6 +67,14 @@ public class HexCellData
     public List<Vector2> SolidAreaUV = new List<Vector2>();
     //实心44颜色顶点数组
     public List<Color> SolidAreaColors = new List<Color>();
+    //该地块在地形合并Mesh中的实心区域首顶点索引
+    public int MeshSolidAreaVertexStartIndex = -1;
+    //该地块在地形合并Mesh中的过渡区域顶点范围列表（起始索引，顶点数）
+    public List<(int start, int count)> MeshTransitionVertexRanges = new List<(int start, int count)>();
+    //该地块在海洋/湖泊合并Mesh中的顶点范围列表（起始索引，顶点数）——用于运行时迷雾更新
+    public List<(int start, int count)> MeshWaterVertexRanges = new List<(int start, int count)>();
+    //该地块在河流合并Mesh中的顶点范围列表（起始索引，顶点数）——用于运行时迷雾更新
+    public List<(int start, int count)> MeshRiverVertexRanges = new List<(int start, int count)>();
 
     //NE矩形顶点组
     public List<Vector3> NERectVertices = new List<Vector3>();
@@ -138,6 +146,8 @@ public class HexCellData
 
     //水位高度 - 若水位大于海拔，则形成湖或海
     public float lakeOrSeaWaterLevel = 2;
+    // 该格所属水体的水面高度（Height 单位），由 MapRenderer 从 seaLevel 配置填入
+    public float waterLevel;
     // 是否为海岸地块
     public bool isCoast;
     //湖或海实心区域顶点组
@@ -209,6 +219,10 @@ public class HexCellData
     //该地块是否被玩家探索
     public bool IsExplored { get; private set; }
 
+    //该地块当前是否在己方视野内（三态记忆迷雾：每回合/每次行动重算，反复 true↔false）。
+    // 未探索=!IsExplored；记忆区=IsExplored&&!IsVisible；可见=IsVisible。
+    public bool IsVisible;
+
     //该地块的建筑类型
     public KeyValuePair<Enums.BulidingType, GameObject> BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(Enums.BulidingType.NoBuilding, null);
 
@@ -228,7 +242,7 @@ public class HexCellData
         //Debug.Log("IsExplored：" + IsExplored);
         //测试用
         //单位不能下海
-        if (this.Height == 0)
+        if (WaterLevelConfig.IsWater(this))
         {          
             movementCost = float.MaxValue;
             
@@ -255,39 +269,8 @@ public class HexCellData
         //进攻、防御建筑不能路过，不能停留
         if (BulidingTypeOnHex_Building.Key == Enums.BulidingType.AttackStatue || BulidingTypeOnHex_Building.Key == Enums.BulidingType.DefenseStatue) { movementCost = float.MaxValue; }
 
-        //显示已探索地块上的东西
-        if(BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding)
-        {
-            //BulidingTypeOnHex_Building.Value.transform.GetChild(0).gameObject.SetActive(true);
-            if(BulidingTypeOnHex_Building.Value != null)
-            {
-                BulidingTypeOnHex_Building.Value.transform.gameObject.SetActive(true);
-            }
-
-            //Debug.Log(" BulidingTypeOnHex：" + BulidingTypeOnHex_Building.Value);
-        }
-        if (HaveUnit.Key)
-        {
-            // 第一步：先确保父对象 HaveUnit.Value 未被销毁
-            if (HaveUnit.Value == null)
-            {
-                HaveUnit = new KeyValuePair<bool, GameObject>(false, null);
-                return;
-            }
-
-            // 第二步：安全获取子对象
-            //Transform childTransform = HaveUnit.Value.transform.GetChild(0);
-            Transform t = HaveUnit.Value.transform;
-            if (t == null || t.gameObject == null)
-            {
-                HaveUnit = new KeyValuePair<bool, GameObject>(false, null);
-                return;
-            }
-
-            // 第三步：安全设置激活状态
-            t.gameObject.SetActive(true);
-        }
-
+        //物体显隐不再在此处零散处理：统一由 MapRenderer.SyncCellObjectVisibility
+        //（OnMapVisualChanged 事件驱动，按"归属×三态"规则集中同步）。
     }
 
     //设置该地块是否有单位

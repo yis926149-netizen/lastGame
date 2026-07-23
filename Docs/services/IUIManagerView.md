@@ -3,7 +3,6 @@
 
 ### IUIManagerView.md
 
-```markdown
 # IUIManagerView
 
 ## 职责描述
@@ -41,3 +40,4 @@ public class UIManagerPresenter
         _view.SetCulturePoints(culture);
     }
 }
+```

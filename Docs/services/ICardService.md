@@ -3,7 +3,6 @@
 
 ### ICardService.md
 
-```markdown
 # ICardService
 
 ## 职责描述
@@ -46,3 +45,4 @@ public class CardPresenter
         }
     }
 }
+```

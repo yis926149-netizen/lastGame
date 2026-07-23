@@ -15,7 +15,7 @@ public class MeshGenerator : MonoBehaviour
 
         m_mesh = new Mesh();
         m_mesh.name = "GeneratedMesh";
-        m_meshFilter.mesh = m_mesh;
+        m_meshFilter.sharedMesh = m_mesh;
     }
 
     /// <summary>
@@ -35,7 +35,7 @@ public class MeshGenerator : MonoBehaviour
         // 设置材质
         if (m_meshRenderer != null)
         {
-            m_meshRenderer.material = material;
+            m_meshRenderer.sharedMaterial = material;
         }
 
         // --- 1. 准备三角剖分器 ---
@@ -78,5 +78,13 @@ public class MeshGenerator : MonoBehaviour
         // 重新计算法线（由于在 XZ 平面，法线将统一指向上方 Vector3.up）
         m_mesh.RecalculateNormals();
         m_mesh.RecalculateBounds();
+    }
+
+    private void OnDestroy()
+    {
+        if (m_mesh != null)
+        {
+            Destroy(m_mesh);
+        }
     }
 }

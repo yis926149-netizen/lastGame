@@ -26,6 +26,11 @@ public class UIControl : MonoBehaviour
 
     void Awake()
     {
+        if (_audioManager == null)
+        {
+            ProjectContext.Instance.Container.Inject(this);
+        }
+
         //返回 StartScene（场景重新加载）时复位场景加载锁，静态字段不会随场景卸载自动重置
         _isLoadingGameScene = false;
 
@@ -51,22 +56,6 @@ public class UIControl : MonoBehaviour
             else
             {
                 Debug.Log(this + "没找到父页面");
-            }
-        }
-    }
-
-    void OnEnable()
-    {
-        if (_audioManager == null)
-        {
-            _audioManager = FindObjectOfType<AudioManager>();
-            if (_audioManager == null)
-            {
-                Debug.LogError("找不到 AudioManager！请检查场景中是否存在 + 是否DontDestroyOnLoad");
-            }
-            else
-            {
-                Debug.LogWarning("自动注入失败，使用 FindObjectOfType 补救获得 AudioManager");
             }
         }
     }
@@ -146,7 +135,8 @@ public class UIControl : MonoBehaviour
     {
         openController parent = transform.GetComponentInParent<openController>();
         //开关覆盖物
-        Invoke("OpenCovering", 0.1f);
+        OpenCovering();
+        CancelInvoke("CloseCovering");
         Invoke("CloseCovering", 1.2f);//所有动画流程也就1.1秒左右（）
         //当UI按钮被按下后其整体向左移(按下某个具体按钮时，只有一个函数会响应)
         if (parent.preBeClicked == -1)
@@ -242,7 +232,7 @@ public class UIControl : MonoBehaviour
         openController parent = transform.GetComponentInParent<openController>();
         for (int i = SecOptionOrderMin; i < SecOptionOrderMax; i++)
         {
-            parent.secButG[i].transform.position = parent.secButG[i].transform.position + new Vector3(-200, 0, 0);
+            DOTween.Kill(parent.secButG[i].transform);
             parent.secButG[i].SetActive(false);
         }
     }
@@ -293,7 +283,7 @@ public class UIControl : MonoBehaviour
         {
             return;
         }
-        //销毁旧开始界面
+        DOTween.Kill(parent.gameObject.transform);
         Destroy(parent.gameObject);
         //删掉 ControllerDic 字典的键值（单例可能因初始化时序未就绪，先判空）
         if (StartSceneUIManager.Instance != null)
@@ -403,6 +393,7 @@ public class UIControl : MonoBehaviour
             Debug.LogWarning("[UIControl] backToOpen 未找到 Canvas 或其子物体，跳过背景大字恢复。", this);
         }
 
+        DOTween.Kill(parent.gameOption.transform);
         parent.gameOption.SetActive(false);
     }
     
@@ -522,6 +513,15 @@ public class UIControl : MonoBehaviour
         SceneManager.LoadScene(1);
 
         //_audioManager.PlayBGM("Theme_Mistery_But_Then_Happy_Loop");
+    }
+
+    public void QuitGame()
+    {
+#if UNITY_EDITOR
+        Debug.Log("[UIControl] 退出游戏仅在 Player 中生效。");
+#else
+        Application.Quit();
+#endif
     }
 
     //播放按钮音效

@@ -23,16 +23,12 @@ public class HexController : MonoBehaviour
         }
 
         float height = hexCellData.Height;
-        switch (height)
+        int bucket = WaterLevelConfig.ClassifyHeight(height);
+        switch (bucket)
         {
-            case 0:
-                return mapMaterial[2];
-            case 1:
-                return mapMaterial[1];
-            case 2:
-                return mapMaterial[0];
-            default:
-                return mapMaterial[0];
+            case 0: return mapMaterial[2]; // 水域
+            case 1: return mapMaterial[1]; // 低地
+            default: return mapMaterial[0]; // 高地
         }
     }
 }

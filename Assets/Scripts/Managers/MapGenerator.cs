@@ -6,49 +6,56 @@ using Zenject;
 
 public class MapGenerator : MonoBehaviour
 {
-    //×¢Èë
+    //×¢ï¿½ï¿½
     [Inject] private IUIConfigProvider uiConfigProvider;
     [Inject] private IMapDataService _mapDataService;
     [Inject] private MapGenerationConfigSO _config; 
     [Inject] private IEnvironmentModelsProvider environmentModelsProvider;
 
-    //´Î¿¨
+    //ï¿½Î¿ï¿½
     public GameObject NextCardPlaceholder;
 
-    //Ëæ»ú³öÉúµãµÄÖĞĞÄÎ»ÖÃ
+    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½
     public Vector3 SpawnHexCenterPoint = new Vector3();
 
-    //È«²¿µØ¿éµÄÖĞĞÄµãÊÀ½ç×ø±ê
+    //È«ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     [HideInInspector]
     public List<Vector3> centerWorldCoordinates = new List<Vector3>();
-    //µØ¿éÖĞĞÄµãµÄÊÀ½ç×ø±ê_µØ¿éµÄÁù±ßĞÎ×ø±ê_×Öµä
+    //ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½Äµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½_ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½_ï¿½Öµï¿½
     [HideInInspector]
     public Dictionary<Vector3, Vector3> CenterWorldC_HexC = new Dictionary<Vector3, Vector3>();
-    //µØ¿éµÄÁù±ßĞÎ×ø±ê_µØ¿éµÄHexCell_×Öµä
+    //ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½_ï¿½Ø¿ï¿½ï¿½HexCell_ï¿½Öµï¿½
     [HideInInspector]
     public Dictionary<Vector3, HexCellData> HexC_HexCellData = new Dictionary<Vector3, HexCellData>();
-    //µØ¿éÉú³ÉµÄË³Ğò_µØ¿éµÄHexCell_×Öµä
+    //ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½Éµï¿½Ë³ï¿½ï¿½_ï¿½Ø¿ï¿½ï¿½HexCell_ï¿½Öµï¿½
     [HideInInspector]
     public Dictionary<int, HexCellData> GenerateOrder_HexCellData = new Dictionary<int, HexCellData>();
 
-    //µØÍ¼ÔËĞĞÊ±Êı¾İ
+    //ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
     public List<Vector3> verticesList;
     public Mesh mesh;
     public GameObject gridGameObject;
 
-    // Éú³ÉµØÍ¼Êı¾İ£¬²¢Ìî³äµ½ IMapDataService ÖĞ
+    // ï¿½ï¿½ï¿½Éµï¿½Í¼ï¿½ï¿½ï¿½İ£ï¿½ï¿½ï¿½ï¿½ï¿½äµ½ IMapDataService ï¿½ï¿½
     public Vector3[] Generate()
     {
-        // ÉèÖÃ´Î¿¨Õ¼Î»¶ÔÏó
+        // ï¿½ï¿½ï¿½Ã´Î¿ï¿½Õ¼Î»ï¿½ï¿½ï¿½ï¿½
         uiConfigProvider.SetNextCardPlaceholder(NextCardPlaceholder);
 
-        // ³õÊ¼»¯¾²Ì¬ÔëÉùÍ¼
+        // ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Ì¬ï¿½ï¿½ï¿½ï¿½Í¼
         HexMetrics.noiseSource = _config.noiseSource;
+        // æ³¨å…¥æœ‰ç•Œç«–ç›´æ‰°åŠ¨å¼ºåº¦ = elevationStep * verticalPerturbRatioï¼ˆä¿è¯æ°´ä¸‹ä¸æ…ç©¿ã€é™†åœ°ä¸æ²‰æ°´ï¼‰
+        HexMetrics.yPerturbStrength = _config.elevationStep * _config.verticalPerturbRatio;
 
-        // µØÍ¼Êı¾İÉú³É£¬Ìî³äËùÓĞ×ÖµäºÍ×ø±êÊı¾İ
+        centerWorldCoordinates.Clear();
+        CenterWorldC_HexC.Clear();
+        HexC_HexCellData.Clear();
+        GenerateOrder_HexCellData.Clear();
+
+        // ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         MapDataGeneration(out Vector3[] hexVertices);
 
-        // ³õÊ¼»¯µØÍ¼·şÎñ£¬´«ÈëÒÑÉú³ÉºÃµÄÊı¾İ
+        // ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ñ£¬´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÉºÃµï¿½ï¿½ï¿½ï¿½ï¿½
         InitializeMapDataService(hexVertices);
 
         return hexVertices;
@@ -63,10 +70,10 @@ public class MapGenerator : MonoBehaviour
             centerWorldToHex: CenterWorldC_HexC,
             mapGameObject: transform.gameObject,
 
-            //µØÍ¼Éú³É
+            //ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½
             hexVertices: hexVertices,
 
-            //µØÍ¼ÔËĞĞÊ±Êı¾İ
+            //ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
             verticesList: verticesList,
             mesh: mesh,
             gridGameObject: gridGameObject
@@ -75,103 +82,99 @@ public class MapGenerator : MonoBehaviour
 
     private void MapDataGeneration(out Vector3[] hexVertices)
     {
-        //¶ÁĞ´Êı¾İ²ãµÄ³õÊ¼ÉèÖÃ
+        int seed = _config.useFixedSeed
+            ? _config.randomSeed
+            : (int)(System.DateTime.UtcNow.Ticks & int.MaxValue);
+        SeedService.Initialize(seed);
+
+        // ä»é…ç½®åŒæ­¥æ°´ä½é˜ˆå€¼ï¼Œç¡®ä¿åç»­ HexCellData æ„é€ æ—¶ IsWater() åˆ¤å®šæ­£ç¡®
+        WaterLevelConfig.WaterLevel = _config.seaLevel;
+
         int x = _config.xNumber;
         int z = _config.zNumber;
         float InnerRadius = _config.InnerRadius;
         float OuterRadius = _config.OuterRadius;
-        TerrainGenerator.TerrainHeights terrainHeights = new TerrainGenerator.TerrainHeights(0.05f, 3, 0.6f, 0.4f, 0.5f);
+        TerrainGenerator.TerrainHeights terrainHeights = new TerrainGenerator.TerrainHeights(0.05f, 3, 0.6f, _config.minHeight, _config.maxHeight);
         int minLongestLength = _config.minLongestLength;
         int maxLongestLength = _config.maxLongestLength;
         float riverSourceGenerationProbability = _config.RiverSourceGenerationProbability;
 
-        //Éú³ÉÈ«²¿µØ¿é¸ß¶È
-        List<float> heights = TerrainHeightGeneration(x, z, terrainHeights);
+        System.Random terrainRandom = SeedService.GetRandom("Terrain");
+        System.Random riverRandom = SeedService.GetRandom("River");
+        System.Random landFormRandom = SeedService.GetRandom("LandForm");
+        System.Random resourceRandom = SeedService.GetRandom("Resource");
 
-        //¹¹½¨µØ¿é¼äµÄÊı¾İÁªÏµ£¨Áù±ßĞÎ×ø±ê£©0.866025404f * 3f
+        List<float> heights = TerrainHeightGeneration(x, z, terrainHeights, terrainRandom);
+
         hexVertices = HexCoordinatesGeneration(x, z, InnerRadius, OuterRadius, heights);
 
-        // RiverGenerator ÒÀÀµ IMapDataService ¶ÁµØ¿éÊı¾İ£¬ÕâÀïÏÈÍê³ÉÒ»´Î³õÊ¼»¯
-        // ·ñÔòµ±ºÓÁ÷Ô´Í·ÊıÁ¿ > 0 Ê±»áÔÚ HexMapService ÄÚ²¿´¥·¢¿ÕÒıÓÃ¡£
         InitializeMapDataService(hexVertices);
 
-        //±ê¶¨ºÓÁ÷µØ¿é
-        RiverGenerator.RiverGeneration(x, z, minLongestLength, maxLongestLength, riverSourceGenerationProbability, _mapDataService);
-
-        //±ê¶¨µØ¿éµÄµØÃ²ºÍ×ÊÔ´ÀàĞÍ
-        LandFormDataGeneration(hexVertices);
-        ResourceDataGeneration(hexVertices);
+        RiverGenerator.RiverGeneration(x, z, minLongestLength, maxLongestLength, riverSourceGenerationProbability, _mapDataService, riverRandom);
+        LandFormDataGeneration(hexVertices, landFormRandom);
+        ResourceDataGeneration(hexVertices, resourceRandom);
     }
 
-    //Éú³ÉÈ«²¿µØ¿é¸ß¶È
-    private List<float> TerrainHeightGeneration(int xNumber, int zNumber, TerrainGenerator.TerrainHeights terrainHeights)
+    private List<float> TerrainHeightGeneration(int xNumber, int zNumber, TerrainGenerator.TerrainHeights terrainHeights, System.Random random)
     {
-        //µØ¿é¸ß¶ÈÔÚÕâ´¦Àí
         List<float> height = new List<float>();
-        /*
-        //ÆµÂÊ£º¿ØÖÆµØĞÎÇø¿é´óĞ¡£¨ÖµÔ½Ğ¡£¬Çø¿éÔ½´óÔ½Á¬¹á£©-0.03~0.08£¨Íø¸ñÔ½´ó£¬ÖµÔ½Ğ¡£©
-        //float frequency = UnityEngine.Random.Range(0.05f, 0.08f);
-        ///float frequency = 0.05f;
-        //°Ë¶È£º·Ö²ãµş¼ÓÏ¸½Ú£¨ÖµÔ½¶à£¬Ï¸½ÚÔ½·á¸»µ«²»ËéÆ¬»¯£©-  2~4£¨3 ¸ö¸ß¶ÈÎŞĞè¹ı¶àÏ¸½Ú£©
-        //int octaves = UnityEngine.Random.Range(2, 4);
-        ///int octaves = 3;
-        //³ÖĞøĞÔ£º¿ØÖÆ¸ßÆµÏ¸½ÚµÄ¹±Ï×¶È£¨ÖµÔ½Ğ¡£¬µØĞÎÔ½Æ½»¬£©- 0.4~0.6
-        //float persistence = UnityEngine.Random.Range(0.4f, 0.5f);
-        ///float persistence = 0.6f;
-        //ãĞÖµ1 - £¨0£¬T1£©
-        //float T1 = UnityEngine.Random.Range(0.5f, 0.6f);
-        ///float T1 = 0.4f;
-        //ãĞÖµ2 - £¨T1,T2£©
-        //float T2 = UnityEngine.Random.Range(T1 + 0.05f, 0.7f);
-        ///float T2 = 0.5f;
-        */
-        int[,] arrHeight = TerrainGenerator.GenerateTerrainHeight(xNumber, zNumber, terrainHeights.frequency, terrainHeights.octaves, terrainHeights.persistence, terrainHeights.T1, terrainHeights.T2);
 
-        for (int i = 0; i < arrHeight.GetLength(0); i++)
+        int[,] arrHeight = TerrainGenerator.GenerateTerrainHeight(xNumber, zNumber, random,
+            terrainHeights.frequency, terrainHeights.octaves, terrainHeights.persistence,
+            terrainHeights.minHeight, terrainHeights.maxHeight);
+
+        for (int z = 0; z < arrHeight.GetLength(1); z++)
         {
-            for (int j = 0; j < arrHeight.GetLength(1); j++)
+            for (int x = 0; x < arrHeight.GetLength(0); x++)
             {
-                //Debug.Log("height£º" + arrHeight[i, j]);
-                height.Add(arrHeight[i, j]);
+                height.Add(arrHeight[x, z]);
             }
+        }
+
+        if (height.Count > 0)
+        {
+            float max = height[0];
+            for (int i = 1; i < height.Count; i++)
+                if (height[i] > max) max = height[i];
+            WaterLevelConfig.MaxHeight = max;
         }
 
         return height;
     }
 
-    //¹¹½¨µØ¿é¼äµÄÊı¾İÁªÏµ£¨Áù±ßĞÎ×ø±ê£©
+    //ï¿½ï¿½ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ïµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ê£©
     private Vector3[] HexCoordinatesGeneration(int xNum, int zNum, float InnerRadius, float OuterRadius, List<float> height)
     {
-        //¼ÆËãÉú³ÉÄÄĞ©µØ¿é(¼ÆËãÁù±ßĞÎ×ø±ê)
-        //È«µØÍ¼µØ¿éµÄÁù±ßĞÎ×ø±ê
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ğ©ï¿½Ø¿ï¿½(ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
+        //È«ï¿½ï¿½Í¼ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         Vector3[] hexVertices = new Vector3[xNum * zNum];
         int generateOrder = 0;
         for (int j = 0; j < zNum; j++)
         {
             for (int i = 0; i < xNum; i++)
             {
-                //Æ«ÒÆ
+                //Æ«ï¿½ï¿½
                 int offset = j / 2;
                 hexVertices[j * xNum + i] = new Vector3(i - offset, -(i - offset) - j, j);
 
-                //°´ÕÕÁù±ßĞÎ×ø±êÉú³É - È«µØÍ¼µØ¿éÖĞĞÄµãµÄÊÀ½ç×ø±ê
+                //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ - È«ï¿½ï¿½Í¼ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½Äµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
                 float x = (hexVertices[j * xNum + i].x * 2 * InnerRadius) + (hexVertices[j * xNum + i].z * 1 * InnerRadius);
                 float y = 0;
                 float z = hexVertices[j * xNum + i].z * 1.5f * OuterRadius;
-                //±£´æÈ«²¿µØ¿éµÄÖĞĞÄµãÊÀ½ç×ø±ê
-                //Debug.Log("new Vector3(x, y, z)£º" + new Vector3(x, y, z));
+                //ï¿½ï¿½ï¿½ï¿½È«ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+                //Debug.Log("new Vector3(x, y, z)ï¿½ï¿½" + new Vector3(x, y, z));
                 centerWorldCoordinates.Add(new Vector3(x, y, z));
-                //Ìí¼ÓµØ¿éÖĞĞÄµãµÄÊÀ½ç×ø±ê_µØ¿éµÄÁù±ßĞÎ×ø±ê_×Öµä
+                //ï¿½ï¿½ï¿½ÓµØ¿ï¿½ï¿½ï¿½ï¿½Äµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½_ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½_ï¿½Öµï¿½
                 CenterWorldC_HexC.Add(new Vector3(x, y, z), hexVertices[j * xNum + i]);
-                //Ìí¼ÓµØ¿éµÄÁù±ßĞÎ×ø±ê_µØ¿éµÄHexCell_×Öµä£¨µØ¿éÊµĞÄÇøÓòÀàĞÍÏÈÈ«²¿ÉèÖÃÎªÎŞºÓÁ÷£¬ºóÃæÔÙĞŞ¸Ä£©
-                //Debug.Log("height[generateOrder]£º" + height[generateOrder]);
+                //ï¿½ï¿½ï¿½ÓµØ¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½_ï¿½Ø¿ï¿½ï¿½HexCell_ï¿½Öµä£¨ï¿½Ø¿ï¿½Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½Şºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ş¸Ä£ï¿½
+                //Debug.Log("height[generateOrder]ï¿½ï¿½" + height[generateOrder]);
                 HexCellData hexCellData = new HexCellData(Enums.HexType.NoRiver, generateOrder, hexVertices[j * xNum + i], new Vector3(x, y, z), height[generateOrder]);
                 HexC_HexCellData.Add(hexVertices[j * xNum + i], hexCellData);
-                //Ìí¼ÓµØ¿éÉú³ÉµÄË³Ğò_µØ¿éµÄHexCell_×Öµä
+                //ï¿½ï¿½ï¿½ÓµØ¿ï¿½ï¿½ï¿½ï¿½Éµï¿½Ë³ï¿½ï¿½_ï¿½Ø¿ï¿½ï¿½HexCell_ï¿½Öµï¿½
                 GenerateOrder_HexCellData.Add(generateOrder++, hexCellData);
 
-                //Áù±ßĞÎ×ø±ê
-                //Debug.Log($" - {generateOrder} - ºÅµØ¿é£¬Áù±ßĞÎ×ø±êÊÇ£º{hexVertices[j * xNum + i]}");
+                //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+                //Debug.Log($" - {generateOrder} - ï¿½ÅµØ¿é£¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç£ï¿½{hexVertices[j * xNum + i]}");
             }
         }
         generateOrder = 0;
@@ -179,48 +182,48 @@ public class MapGenerator : MonoBehaviour
         return hexVertices;
     }
 
-    private void LandFormDataGeneration(Vector3[] hexVertices)
+    private void LandFormDataGeneration(Vector3[] hexVertices, System.Random random)
     {
-        System.Random random = new System.Random();
-
-        //µØÃ²Éú³É¹æÔò£ºÏÖÔÚ¼òµ¥µÄËæ»úÉú³É
+        //ï¿½ï¿½Ã²ï¿½ï¿½ï¿½É¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú¼òµ¥µï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //¸ù¾İÁù±ßĞÎ×ø±ê»ñÈ¡hexCell;
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell;
             HexCellData hexCellData = HexC_HexCellData[hexVertices[j]];
-            //ÈôÊÇ¡°ºş»òº£¡±¼´Ìø¹ı
-            if (isLakeOrSea(hexCellData)) { continue; }
-            //µØÃ²
+            //ï¿½ï¿½ï¿½Ç¡ï¿½ï¿½ï¿½ï¿½òº£¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+            if (isLakeOrSea(hexCellData) || hexCellData.hasRiver) { continue; }
+            //ï¿½ï¿½Ã²
             hexCellData.landFormType = (Enums.LandFormType)Mathf.Clamp(random.Next(0, Enum.GetValues(typeof(Enums.LandFormType)).Length + 9), 0, Enum.GetValues(typeof(Enums.LandFormType)).Length - 1);
             if (hexCellData.landFormType == Enums.LandFormType.None) continue;
         }
     }
 
-    private void ResourceDataGeneration(Vector3[] hexVertices)
+    private void ResourceDataGeneration(Vector3[] hexVertices, System.Random random)
     {
-        System.Random random = new System.Random();
-        GameObject Resource = new GameObject("Resource");
-
-        //×ÊÔ´Éú³É¹æÔò£ºÏÖÔÚ¼òµ¥µÄËæ»úÉú³É
+        //ï¿½ï¿½Ô´ï¿½ï¿½ï¿½É¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú¼òµ¥µï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //¸ù¾İÁù±ßĞÎ×ø±ê»ñÈ¡hexCell;
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡hexCell;
             HexCellData hexCellData = HexC_HexCellData[hexVertices[j]];
-            //ÈôÊÇ¡°ºş»òº£¡±¼´Ìø¹ı
-            if (isLakeOrSea(hexCellData)) { continue; }
-            //Èô´æÔÚ¡°µØÃ²¡±ÔòÌø¹ı
+            //ï¿½ï¿½ï¿½Ç¡ï¿½ï¿½ï¿½ï¿½òº£¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+            if (isLakeOrSea(hexCellData) || hexCellData.hasRiver) { continue; }
+            //ï¿½ï¿½ï¿½ï¿½ï¿½Ú¡ï¿½ï¿½ï¿½Ã²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             if (hexCellData.landFormType != Enums.LandFormType.None) { continue; }
 
-            //µØÃ²
-            hexCellData.resourceType = (Enums.ResourceType)Mathf.Clamp(random.Next(0, Enum.GetValues(typeof(Enums.ResourceType)).Length + 13), 0, Enum.GetValues(typeof(Enums.ResourceType)).Length - 1);
+            hexCellData.resourceType = MapRandomResourceRoll(random.Next(0, 18));
             if (hexCellData.resourceType == Enums.ResourceType.None) continue;
         }
     }
 
-    //ÅĞ¶ÏÄ³¸öµØ¿éÊÇ·ñÎªºş»òº£
+    public static Enums.ResourceType MapRandomResourceRoll(int roll)
+    {
+        return roll >= 0 && roll < (int)Enums.ResourceType.HealthPack
+            ? (Enums.ResourceType)roll
+            : Enums.ResourceType.None;
+    }
+
+    //ï¿½Ğ¶ï¿½Ä³ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½Ç·ï¿½Îªï¿½ï¿½ï¿½ï¿½
     private bool isLakeOrSea(HexCellData hexCellData)
     {
-        //Èô¸ß¶ÈÎª0£¬ÔòÎªºş»òº£
-        return !(hexCellData.Height > 0);
+        return WaterLevelConfig.IsWater(hexCellData);
     }
 }

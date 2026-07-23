@@ -3,30 +3,31 @@ using UnityEngine;
 
 public interface IMapDataService
 {
-    // »ù´¡Êý¾Ý·ÃÎÊ
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý·ï¿½ï¿½ï¿½
     HexCellData GetCell(Vector3 hexCoordinate);
     HexCellData GetCell(int generateOrder);
     bool TryGetCell(Vector3 hexCoordinate, out HexCellData cell);
     bool TryGetCell(int generateOrder, out HexCellData cell);
     List<HexCellData> GetAllCells();
 
-    // ÊÀ½ç×ø±ê×ª»»
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½
     Vector3 WorldToHexCoordinate(Vector3 worldPosition);
+    bool TryWorldToHexCoordinate(Vector3 worldPosition, out Vector3 hexCoordinate);
     HexCellData GetCellByWorldPosition(Vector3 worldPosition);
     List<Vector3> GetAllWorldCoordinates();
     List<Vector3> GetAllHexCoordinates();
     Dictionary<Vector3, HexCellData> GetHexToCell();
     Dictionary<int, HexCellData> GetOrderToCell();
-    // ÁÚ¾Ó²éÑ¯
+    // ï¿½Ú¾Ó²ï¿½Ñ¯
     HexCellData GetNeighbor(HexCellData cell, Enums.HexDirection direction);
     List<HexCellData> GetNeighbors(HexCellData cell);
 
-    // µØÍ¼¶ÔÏó£¨¿ÉÑ¡£¬¹©ÐèÒªÒýÓÃµØÍ¼ÎïÌåµÄµØ·½Ê¹ÓÃ£©
+    // ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ó£¨¿ï¿½Ñ¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½Ãµï¿½Í¼ï¿½ï¿½ï¿½ï¿½ÄµØ·ï¿½Ê¹ï¿½Ã£ï¿½
     GameObject MapGameObject { get; }
 
     public Vector3[] GetHexVertices();
 
-    // ³õÊ¼»¯·½·¨£¬ÓÉµØÍ¼Éú³ÉÍê³Éºóµ÷ÓÃ£¨×¢ÈëÊý¾Ý£©
+    // ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Éµï¿½Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Éºï¿½ï¿½ï¿½Ã£ï¿½×¢ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½
     void Initialize(
         Dictionary<Vector3, HexCellData> hexToCell,
         Dictionary<int, HexCellData> orderToCell,
@@ -34,16 +35,16 @@ public interface IMapDataService
         Dictionary<Vector3, Vector3> centerWorldToHex,
         GameObject mapGameObject,
 
-        //µØÍ¼Éú³É
+        //ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½
         Vector3[] hexVertices,
 
-        //µØÍ¼ÔËÐÐÊ±Êý¾Ý
+        //ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
         List<Vector3> verticesList,
         Mesh mesh,
         GameObject gridGameObject
 
     );
 
-    // ÔÚÔËÐÐÊ±ºóÐø¸üÐÂµØÍ¼ÔËÐÐÊ±Êý¾Ý£¨¶¥µãÁÐ±í¡¢mesh¡¢Íø¸ñ¶ÔÏó£©
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Âµï¿½Í¼ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ý£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½meshï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     void UpdateRuntimeData(List<Vector3> verticesList, Mesh mesh, GameObject gridGameObject);
 }

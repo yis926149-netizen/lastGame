@@ -1,21 +1,21 @@
 [System.Serializable]
 public class UnitData
 {
-    //±àºÅ
+    //ï¿½ï¿½ï¿½
     public int id;
-    //Ãû×Ö
+    //ï¿½ï¿½ï¿½ï¿½
     public string unitName;
-    //ÒÆ¶¯Á¦
+    //ï¿½Æ¶ï¿½ï¿½ï¿½
     public float MovementPoints;
-    //ÑªÁ¿
+    //Ñªï¿½ï¿½
     public int hp;
-    //¹¥»÷·¶Î§
+    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î§
     public int BasicAttackRange;
-    //¹¥»÷Á¦
+    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     public int BasicAttackValue;
-    //·ÀÓùÁ¦
+    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     public float Defense;
-    //ÊÓÒ°·¶Î§ - ÅÐ¶ÏÐ§¹ûÈçÑ°Â·
+    //ï¿½ï¿½Ò°ï¿½ï¿½Î§ - ï¿½Ð¶ï¿½Ð§ï¿½ï¿½ï¿½ï¿½Ñ°Â·
     public float ViewPoints;
 
     public UnitData(int id, string unitName, float MovementPoints, int hp, int attackRange, int attackValue, float viewPoints, float defense)
@@ -28,5 +28,18 @@ public class UnitData
         this.BasicAttackValue = attackValue;
         ViewPoints = viewPoints;
         Defense = defense;
+    }
+
+    public UnitData(UnitData source)
+        : this(
+            source.id,
+            source.unitName,
+            source.MovementPoints,
+            source.hp,
+            source.BasicAttackRange,
+            source.BasicAttackValue,
+            source.ViewPoints,
+            source.Defense)
+    {
     }
 }

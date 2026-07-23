@@ -3,7 +3,6 @@
 
 ### IUnitRepository.md
 
-```markdown
 # IUnitRepository
 
 ## 职责描述
@@ -37,3 +36,4 @@ public class UnitService : IUnitService
         _repository.AddEnemyUnit(aiIndex, unit, data);
     }
 }
+```

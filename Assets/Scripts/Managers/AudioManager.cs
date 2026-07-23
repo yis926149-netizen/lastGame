@@ -21,7 +21,26 @@ public class AudioManager : MonoBehaviour
 
     void Awake()
     {
+        EnsureSeparateAudioSources();
         InitDictionary();
+    }
+
+    private void EnsureSeparateAudioSources()
+    {
+        if (bgmSource == null)
+        {
+            bgmSource = gameObject.AddComponent<AudioSource>();
+            Debug.LogWarning("[AudioManager] BGM AudioSource was missing and has been created.", this);
+        }
+
+        if (sfxSource == null || sfxSource == bgmSource)
+        {
+            sfxSource = gameObject.AddComponent<AudioSource>();
+            Debug.LogWarning("[AudioManager] SFX requires a separate AudioSource; a dedicated source has been created.", this);
+        }
+
+        bgmSource.playOnAwake = false;
+        sfxSource.playOnAwake = false;
     }
 
     private void Start()
@@ -38,12 +57,35 @@ public class AudioManager : MonoBehaviour
     void InitDictionary()
     {
         bgmDict = new Dictionary<string, AudioClip>();
-        foreach (var clip in bgmClips)
-            bgmDict[clip.name] = clip;
+        RegisterClips(bgmClips, bgmDict, "BGM");
 
         sfxDict = new Dictionary<string, AudioClip>();
-        foreach (var clip in sfxClips)
-            sfxDict[clip.name] = clip;
+        RegisterClips(sfxClips, sfxDict, "SFX");
+    }
+
+    private void RegisterClips(List<AudioClip> clips, Dictionary<string, AudioClip> target, string channel)
+    {
+        if (clips == null)
+        {
+            Debug.LogWarning($"[AudioManager] {channel} clip list is not configured.", this);
+            return;
+        }
+
+        foreach (AudioClip clip in clips)
+        {
+            if (clip == null)
+            {
+                Debug.LogWarning($"[AudioManager] {channel} clip list contains a missing reference.", this);
+                continue;
+            }
+
+            if (target.ContainsKey(clip.name))
+            {
+                Debug.LogWarning($"[AudioManager] Duplicate {channel} clip name: {clip.name}. The last clip will be used.", this);
+            }
+
+            target[clip.name] = clip;
+        }
     }
 
     // =========================
@@ -52,13 +94,13 @@ public class AudioManager : MonoBehaviour
 
     public void PlayBGM(string name, bool loop = true)
     {
-        if (!bgmDict.ContainsKey(name))
+        if (string.IsNullOrEmpty(name) || !bgmDict.TryGetValue(name, out AudioClip clip))
         {
             Debug.LogWarning("BGM 没找到: " + name);
             return;
         }
 
-        bgmSource.clip = bgmDict[name];
+        bgmSource.clip = clip;
         bgmSource.loop = loop;
         bgmSource.volume = bgmVolume;
         bgmSource.Play();
@@ -75,13 +117,13 @@ public class AudioManager : MonoBehaviour
 
     public void PlaySFX(string name)
     {
-        if (!sfxDict.ContainsKey(name))
+        if (string.IsNullOrEmpty(name) || !sfxDict.TryGetValue(name, out AudioClip clip))
         {
             Debug.LogWarning("SFX 没找到: " + name);
             return;
         }
 
-        sfxSource.PlayOneShot(sfxDict[name], sfxVolume);
+        sfxSource.PlayOneShot(clip, sfxVolume);
     }
 
     // =========================
@@ -90,12 +132,12 @@ public class AudioManager : MonoBehaviour
 
     public void SetBGMVolume(float v)
     {
-        bgmVolume = v;
-        bgmSource.volume = v;
+        bgmVolume = Mathf.Clamp01(v);
+        bgmSource.volume = bgmVolume;
     }
 
     public void SetSFXVolume(float v)
     {
-        sfxVolume = v;
+        sfxVolume = Mathf.Clamp01(v);
     }
 }

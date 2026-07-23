@@ -1,5 +1,5 @@
 %YAML 1.1
-%TAG !u! tag:yousandi.cn,2023:
+%TAG !u! tag:unity3d.com,2011:
 --- !u!84 &8400000
 RenderTexture:
   m_ObjectHideFlags: 0
@@ -25,7 +25,6 @@ RenderTexture:
   m_SRGB: 0
   m_UseDynamicScale: 0
   m_BindMS: 0
-  m_ResolveFromTextureMS: 0
   m_EnableCompatibleFormat: 1
   m_EnableRandomWrite: 0
   m_TextureSettings:

@@ -11,6 +11,8 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     [Inject] private IMapDataService _mapDataService;
     [Inject] private CardPresenter _presenter;
     [Inject] private IUIConfigProvider _uiConfig;
+    [Inject] private LazyInject<IGameStateMachine> _gameStateMachine;
+    [Inject] private LazyInject<PlayerInputHandler> _playerInputHandler;
 
     private RectTransform _rectTransform;
     private Image _image;
@@ -104,11 +106,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     public void ClearHighlights()
     {
-        foreach (var cell in _mapDataService.GetAllCells())
-        {
-            if (cell.GridMesh != null)
-                cell.GridMesh.SetActive(false);
-        }
+        _playerInputHandler.Value.ClearCardDragHighlight();
     }
 
     public void OnPointerEnter(PointerEventData eventData)
@@ -129,13 +127,23 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        if (IsNextCard) return;
+        if (IsNextCard || _gameStateMachine.Value.CurrentPhase is not PlayerPhase)
+        {
+            eventData.pointerDrag = null;
+            return;
+        }
+        _playerInputHandler.Value.ForceDeselectUnit();
         _isDragging = true;                        
     }
 
     public void OnDrag(PointerEventData eventData)
     {
-        if (IsNextCard) return;
+        if (IsNextCard || !_isDragging) return;
+        if (_gameStateMachine.Value.CurrentPhase is not PlayerPhase)
+        {
+            CancelDrag();
+            return;
+        }
 
         transform.SetAsLastSibling();               
 
@@ -154,7 +162,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     public void OnEndDrag(PointerEventData eventData)
     {
-        if (IsNextCard) return;
+        if (IsNextCard || !_isDragging) return;
 
         transform.SetSiblingIndex(originalSiblingIndex);   
         _isDragging = false;
@@ -167,11 +175,31 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
             HexCellData targetCell = _mapDataService.GetCellByWorldPosition(hit.point);
             if (targetCell != null)
             {
-                _presenter.HandleCardDragEnd(this, targetCell, hit.point);
-                return;
+                if (_presenter.HandleCardDragEnd(this, targetCell, hit.point))
+                    return;
             }
         }
 
+        ResetToOrigin();
+    }
+
+    private void OnApplicationFocus(bool hasFocus)
+    {
+        if (hasFocus || !_isDragging) return;
+
+        CancelDrag();
+    }
+
+    private void OnDisable()
+    {
+        _rectTransform?.DOKill();
+    }
+
+    private void CancelDrag()
+    {
+        _isDragging = false;
+        transform.SetSiblingIndex(originalSiblingIndex);
+        ClearHighlights();
         ResetToOrigin();
     }
 }

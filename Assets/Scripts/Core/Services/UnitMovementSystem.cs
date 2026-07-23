@@ -10,6 +10,7 @@ public class UnitMovementSystem : ITickable
 
     // 正在移动的单位列表
     private List<MovingUnit> _movingUnits = new List<MovingUnit>();
+    private readonly Dictionary<Vector3, IUnitMovement> _reservedDestinations = new Dictionary<Vector3, IUnitMovement>();
 
     public UnitMovementSystem(IMapDataService mapDataService, MapVisualEventSO mapVisualEvent)
     {
@@ -24,17 +25,50 @@ public class UnitMovementSystem : ITickable
     {
         //Debug.Log($"[UnitMovementSystem] RequestMove: unit={unit.gameObject.name}, target={targetHex}, purpose={purpose}");
 
+        if (unit == null || unit.gameObject == null)
+        {
+            return false;
+        }
+
         if (unit.RemainingMovement <= 0)
         {
             Debug.LogWarning("[UnitMovementSystem] RequestMove rejected: no movement points.");
             return false;
         }
 
+        if (_movingUnits.Exists(mu => mu.Unit == unit))
+        {
+            return false;
+        }
+
+        Vector3 startHex = unit.CurrentHexCoordinate;
+        Vector3 destinationHex = targetHex;
+
+        if (purpose == Enums.MovementPurpose.MoveToAttack)
+        {
+            if (!TryFindAttackDestination(unit, targetHex, out destinationHex))
+            {
+                Debug.LogWarning("[UnitMovementSystem] RequestMove failed: no legal attack position.");
+                return false;
+            }
+        }
+
+        if (_reservedDestinations.TryGetValue(destinationHex, out var reservingUnit) && reservingUnit != unit)
+        {
+            return false;
+        }
+
+        var destinationCell = _mapDataService.GetCell(destinationHex);
+        if (destinationCell == null || (destinationCell.IsHaveUnit() && destinationCell.GetUnit() != unit.gameObject))
+        {
+            return false;
+        }
+
         // 1. 计算原始最短路径
         if (!CalculateMinMovementCostBetweenTwoHexes(
             new List<Vector3>(_mapDataService.GetAllHexCoordinates()),
-            unit.CurrentHexCoordinate,
-            targetHex,
+            startHex,
+            destinationHex,
             purpose,
             out float _,
             out List<Vector3> path))
@@ -45,15 +79,6 @@ public class UnitMovementSystem : ITickable
 
         // 2. 路径截断逻辑修复
         List<Vector3> actualPath = new List<Vector3>(path ?? new List<Vector3>());
-
-        if (purpose == Enums.MovementPurpose.MoveToAttack)
-        {
-            // 只要是攻击移动，且路径里有目标点，就必须移除最后一位（敌方地块）
-            if (actualPath.Count > 0)
-            {
-                actualPath.RemoveAt(actualPath.Count - 1);
-            }
-        }
 
         // 3. 处理“已在原地/已在邻位”的情况
         if (actualPath.Count == 0)
@@ -87,19 +112,40 @@ public class UnitMovementSystem : ITickable
         }
 
         // 5. 提交移动任务
-        var startCell = _mapDataService.GetCell(unit.CurrentHexCoordinate);
-        startCell?.SetHaveUnit(false, unit.gameObject);
-
         var movingUnit = new MovingUnit
         {
             Unit = unit,
             Path = actualPath,
             CurrentPathIndex = 0,
-            Purpose = purpose
+            Purpose = purpose,
+            StartHex = startHex,
+            DestinationHex = destinationHex,
+            StartRemainingMovement = unit.RemainingMovement
         };
+        _reservedDestinations[destinationHex] = unit;
         _movingUnits.Add(movingUnit);
 
         return true;
+    }
+
+    public void CancelMove(IUnitMovement unit)
+    {
+        if (unit == null) return;
+
+        for (int i = _movingUnits.Count - 1; i >= 0; i--)
+        {
+            var movingUnit = _movingUnits[i];
+            if (movingUnit.Unit != unit) continue;
+
+            RestoreStartCell(movingUnit);
+            ReleaseReservation(movingUnit);
+            _movingUnits.RemoveAt(i);
+        }
+    }
+
+    public bool IsDestinationReserved(Vector3 hexCoordinate)
+    {
+        return _reservedDestinations.ContainsKey(hexCoordinate);
     }
 
     // Zenject 每帧调用（Tick）
@@ -112,6 +158,7 @@ public class UnitMovementSystem : ITickable
             var mu = _movingUnits[i];
             if (mu.Unit == null || mu.Unit.gameObject == null)
             {
+                ReleaseReservation(mu);
                 _movingUnits.RemoveAt(i);
                 continue;
             }
@@ -119,11 +166,84 @@ public class UnitMovementSystem : ITickable
             bool finished = UpdateMovement(mu);
             if (finished)
             {
-                // 移动完成，回调单位
-                mu.Unit.OnMoveFinished();
+                CommitDestination(mu);
                 _movingUnits.RemoveAt(i);
+                mu.Unit.OnMoveFinished();
             }
         }
+    }
+
+    private bool TryFindAttackDestination(IUnitMovement unit, Vector3 targetHex, out Vector3 destinationHex)
+    {
+        destinationHex = unit.CurrentHexCoordinate;
+        if (HexDistance(unit.CurrentHexCoordinate, targetHex) <= 1f)
+        {
+            return true;
+        }
+
+        List<Vector3> allPoints = new List<Vector3>(_mapDataService.GetAllHexCoordinates());
+        float bestCost = float.MaxValue;
+        bool found = false;
+        HexCellData targetCell = _mapDataService.GetCell(targetHex);
+        if (targetCell == null) return false;
+
+        for (int i = 0; i < 6; i++)
+        {
+            HexCellData neighbor = _mapDataService.GetNeighbor(targetCell, (Enums.HexDirection)i);
+            if (neighbor == null || !CanEnterCell(neighbor, unit.gameObject, false)) continue;
+            if (_reservedDestinations.TryGetValue(neighbor.HexCoordinate, out var reservingUnit) && reservingUnit != unit) continue;
+
+            if (CalculateMinMovementCostBetweenTwoHexes(
+                allPoints,
+                unit.CurrentHexCoordinate,
+                neighbor.HexCoordinate,
+                Enums.MovementPurpose.MoveToDestination,
+                out float cost,
+                out _) && cost <= unit.RemainingMovement && cost < bestCost)
+            {
+                bestCost = cost;
+                destinationHex = neighbor.HexCoordinate;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
+    private void CommitDestination(MovingUnit movingUnit)
+    {
+        HexCellData startCell = _mapDataService.GetCell(movingUnit.StartHex);
+        HexCellData destinationCell = _mapDataService.GetCell(movingUnit.DestinationHex);
+
+        if (startCell != null && startCell.GetUnit() == movingUnit.Unit.gameObject && startCell != destinationCell)
+        {
+            startCell.SetHaveUnit(false, null);
+        }
+        destinationCell?.SetHaveUnit(true, movingUnit.Unit.gameObject);
+        ReleaseReservation(movingUnit);
+    }
+
+    private void RestoreStartCell(MovingUnit movingUnit)
+    {
+        HexCellData startCell = _mapDataService.GetCell(movingUnit.StartHex);
+        if (startCell == null || (startCell.IsHaveUnit() && startCell.GetUnit() != movingUnit.Unit.gameObject)) return;
+
+        movingUnit.Unit.gameObject.transform.position = startCell.RealCenterWorldCoordinate;
+        movingUnit.Unit.RemainingMovement = movingUnit.StartRemainingMovement;
+        startCell.SetHaveUnit(true, movingUnit.Unit.gameObject);
+    }
+
+    private void ReleaseReservation(MovingUnit movingUnit)
+    {
+        if (_reservedDestinations.TryGetValue(movingUnit.DestinationHex, out var unit) && unit == movingUnit.Unit)
+        {
+            _reservedDestinations.Remove(movingUnit.DestinationHex);
+        }
+    }
+
+    private static float HexDistance(Vector3 a, Vector3 b)
+    {
+        return (Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y) + Mathf.Abs(a.z - b.z)) * 0.5f;
     }
 
     // 单步移动更新
@@ -331,7 +451,10 @@ public class UnitMovementSystem : ITickable
             processedNodes.Add(A.Key); // 标记为已处理
 
             //3.获取点A的全部邻接点及其花费 Dictionary<Vector3, float> neighbor_Cost
-            Dictionary<Vector3, float> neighbor_Cost = GetAllNeighborsAndCosts(A.Key, _mapDataService, endHexCoordinate);
+            Vector3? allowedBlockedTarget = movementPurpose == Enums.MovementPurpose.MoveToAttack
+                ? endHexCoordinate
+                : (Vector3?)null;
+            Dictionary<Vector3, float> neighbor_Cost = GetAllNeighborsAndCosts(A.Key, _mapDataService, allowedBlockedTarget);
             //若A的邻接点不在allPoints内，则剔除出neighbor_Cost
             List<Vector3> neighbor_CostKeysList = new List<Vector3>(neighbor_Cost.Keys);
             List<Vector3> toRemove = new List<Vector3>();
@@ -526,11 +649,10 @@ public class UnitMovementSystem : ITickable
             // 不存在邻居
             if (neighborCell == null) continue;
 
-            // 邻居不可通行
-            if (neighborCell.movementCost == -1)
+            bool isTarget = targetHex.HasValue && neighborCell.HexCoordinate == targetHex.Value;
+            if (!CanEnterCell(neighborCell, null, isTarget))
             {
-                // 核心修复：如果这个不可通行的格子正是我们要寻找的终点，破例允许加入（赋予基础花费1让路径连通）
-                if (targetHex.HasValue && neighborCell.HexCoordinate == targetHex.Value)
+                if (isTarget)
                 {
                     d.Add(neighborCell.HexCoordinate, 1f);
                 }
@@ -543,6 +665,17 @@ public class UnitMovementSystem : ITickable
         return d;
     }
 
+    private static bool CanEnterCell(HexCellData cell, GameObject movingUnit, bool allowOccupiedTarget)
+    {
+        if (cell == null || cell.movementCost < 0f || float.IsNaN(cell.movementCost) || float.IsInfinity(cell.movementCost) || cell.movementCost == float.MaxValue)
+        {
+            return false;
+        }
+
+        if (!cell.IsHaveUnit()) return true;
+        return cell.GetUnit() == movingUnit || allowOccupiedTarget;
+    }
+
     // 内部数据结构
     private class MovingUnit
     {
@@ -550,5 +683,8 @@ public class UnitMovementSystem : ITickable
         public List<Vector3> Path;
         public int CurrentPathIndex;
         public Enums.MovementPurpose Purpose;
+        public Vector3 StartHex;
+        public Vector3 DestinationHex;
+        public float StartRemainingMovement;
     }
 }

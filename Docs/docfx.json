@@ -4,7 +4,7 @@
     {
       "src": [
         {
-          "src": "../../Assets/Scripts",
+          "src": "../Assets/Scripts",
           "files": [ "Scripts.csproj" ],
           "exclude": [
             "**/obj/**",
@@ -18,7 +18,6 @@
         "TargetFramework": "netstandard2.0",
         "UNITY_EDITOR": "true"  
       },
-      "filter": "filterConfig.yml",  
       "disableGitFeatures": true,    
       "globalNamespace": false
     }
@@ -38,8 +37,8 @@
     "output": "_site",
     "template": [ "default", "modern" ],
     "globalMetadata": {
-      "_appName": "FirstSite",
-      "_appTitle": "FirstSite",
+      "_appName": "六边形回合制策略游戏",
+      "_appTitle": "六边形回合制策略游戏",
       "_enableSearch": true,
       "pdf": true
     }

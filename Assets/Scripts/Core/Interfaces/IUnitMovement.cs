@@ -4,22 +4,23 @@ using System.Collections.Generic;
 
 public interface IUnitMovement
 {
-    GameObject gameObject { get; }                // µ¥Î»×ÔÉí
-    Vector3 CurrentHexCoordinate { get; }         // µ±Ç°ËùÔÚµÄÁù±ßÐÎ×ø±ê
-    float RemainingMovement { get; set; }         // Ê£ÓàÒÆ¶¯Á¦£¨ÔÊÐíÏµÍ³ÐÞ¸Ä£©
-    float MaxMovement { get; }                     // ×î´óÒÆ¶¯Á¦
-    bool IsMoving { get; }                         // ÊÇ·ñÕýÔÚÒÆ¶¯
+    GameObject gameObject { get; }                // ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½
+    Vector3 CurrentHexCoordinate { get; }         // ï¿½ï¿½Ç°ï¿½ï¿½ï¿½Úµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    float RemainingMovement { get; set; }         // Ê£ï¿½ï¿½ï¿½Æ¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÏµÍ³ï¿½Þ¸Ä£ï¿½
+    float MaxMovement { get; }                     // ï¿½ï¿½ï¿½ï¿½Æ¶ï¿½ï¿½ï¿½
+    bool IsMoving { get; }                         // ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ¶ï¿½
+    bool IsBusy { get; }                           // ï¿½Æ¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½ï¿½Ú½ï¿½ï¿½ï¿½
 
-    /// <summary>ÒÆ¶¯µ½Ä¿±êÁù±ßÐÎ</summary>
+    /// <summary>ï¿½Æ¶ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</summary>
     void MoveTo(Vector3 targetHex, Enums.MovementPurpose purpose = Enums.MovementPurpose.MoveToDestination);
-    /// <summary>È¡Ïûµ±Ç°ÒÆ¶¯</summary>
+    /// <summary>È¡ï¿½ï¿½ï¿½ï¿½Ç°ï¿½Æ¶ï¿½</summary>
     void CancelMove();
-    /// <summary>ÖØÖÃÒÆ¶¯Á¦£¨ÐÂ»ØºÏÊ±µ÷ÓÃ£©</summary>
+    /// <summary>ï¿½ï¿½ï¿½ï¿½ï¿½Æ¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â»Øºï¿½Ê±ï¿½ï¿½ï¿½Ã£ï¿½</summary>
     void ResetMovement();
 
-    /// <summary>»ñÈ¡µ±Ç°µ¥Î»¿É´ïµÄÁù±ßÐÎ×ø±êÁÐ±í£¨»ùÓÚÊ£ÓàÒÆ¶¯Á¦£©</summary>
+    /// <summary>ï¿½ï¿½È¡ï¿½ï¿½Ç°ï¿½ï¿½Î»ï¿½É´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê£ï¿½ï¿½ï¿½Æ¶ï¿½ï¿½ï¿½ï¿½ï¿½</summary>
     List<Vector3> GetReachableHexes();
 
-    /// <summary>ÒÆ¶¯Íê³ÉÊ±µÄ»Øµ÷£¨ÓÉÏµÍ³µ÷ÓÃ£©</summary>
+    /// <summary>ï¿½Æ¶ï¿½ï¿½ï¿½ï¿½Ê±ï¿½Ä»Øµï¿½ï¿½ï¿½ï¿½ï¿½ÏµÍ³ï¿½ï¿½ï¿½Ã£ï¿½</summary>
     void OnMoveFinished();
 }

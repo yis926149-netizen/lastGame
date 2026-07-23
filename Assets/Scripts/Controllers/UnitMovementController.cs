@@ -18,6 +18,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     [Inject] private UnitMovementSystem _movementSystem;
     [Inject] private UIManagerPresenter _uiPresenter;
     [Inject] private AudioManager _audioManager;
+    [Inject] private UnitRemovalService _unitRemovalService;
 
     //与之对应的CharacterData - 在生产单位模型时外部设置的
     public CharacterData characterData;
@@ -47,9 +48,12 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     {
         get
         {
+            if (_isDeathScheduled) return false;
+            if (currentMovementPoints <= 0) return false;
             // 系统移动中、攻击过程中（靠近、攻击动画、返回）均不可选
             if (isMoving) return false;
             if (GoToAttackPosition || CommenceAttack || isAttack || ReturnToOriginalPosition) return false;
+            if (isRangedAttack && attackedUnit != null) return false;
             return true;
         }
     }
@@ -103,6 +107,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     public int PlayerIndex = -1;
 
     private bool _isMeleeAttackInProgress = false;
+    private bool _isDeathScheduled = false;
 
     // ---------- IUnitMovement 接口实现 ----------
     public GameObject gameObject => base.gameObject;
@@ -118,6 +123,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     public float MaxMovement => MaxMovementPoints;
 
     public bool IsMoving => isMoving;
+    public bool IsBusy => isMoving || isAttackingInProgress || GoToAttackPosition || CommenceAttack || isAttack || ReturnToOriginalPosition || (isRangedAttack && attackedUnit != null);
 
     // UnitMovementController.cs
 
@@ -162,12 +168,39 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
     public void CancelMove()
     {
-        // 暂不需要实现，可由系统处理
+        _movementSystem.CancelMove(this);
+        isMoving = false;
+        movementPurpose = Enums.MovementPurpose.None;
+        attackedUnit = null;
     }
 
     public void ResetMovement()
     {
         RestoreUnitMovementStandbyParameters();
+    }
+
+    public bool TryStartRangedAttack(GameObject target)
+    {
+        if (target == null || characterData?.unitData == null) return false;
+        if (!CanBeSelected || characterData.unitData.BasicAttackRange <= 1) return false;
+
+        Vector3 currentHex = _mapDataService.WorldToHexCoordinate(transform.position);
+        Vector3 targetHex = _mapDataService.WorldToHexCoordinate(target.transform.position);
+        float distance = (Mathf.Abs(currentHex.x - targetHex.x) +
+                          Mathf.Abs(currentHex.y - targetHex.y) +
+                          Mathf.Abs(currentHex.z - targetHex.z)) * 0.5f;
+        if (distance > characterData.unitData.BasicAttackRange) return false;
+
+        var targetUnit = target.GetComponent<UnitMovementController>();
+        if (targetUnit != null && (targetUnit.characterData == null || targetUnit.characterData.currentHp <= 0)) return false;
+
+        var targetBuilding = target.GetComponent<BuildingController>();
+        if (targetUnit == null && (targetBuilding?.buildingData == null || targetBuilding.buildingData.currentHp <= 0)) return false;
+
+        attackedUnit = target;
+        attackTarget = target.tag;
+        isRangedAttack = true;
+        return true;
     }
 
     public List<Vector3> GetReachableHexes()
@@ -188,17 +221,19 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
         _uiPresenter.RefreshCurrentUnitInfo();
 
-        // 添加一环视野
-        HexCellData h = _mapDataService.GetCellByWorldPosition(transform.position);
-        for (int i = 0; i < 6; i++)
+        // 添加一环视野（仅玩家单位可写玩家专属的 IsExplored；
+        // AI 单位的探索由 AIFogService 独立维护，绝不能污染玩家迷雾）
+        if (PlayerIndex == 0)
         {
-            if (_mapDataService.GetNeighbor(h, (Enums.HexDirection)i) != null)
-                _mapDataService.GetNeighbor(h, (Enums.HexDirection)i).ExploreThisHexCell();
+            HexCellData h = _mapDataService.GetCellByWorldPosition(transform.position);
+            for (int i = 0; i < 6; i++)
+            {
+                if (_mapDataService.GetNeighbor(h, (Enums.HexDirection)i) != null)
+                    _mapDataService.GetNeighbor(h, (Enums.HexDirection)i).ExploreThisHexCell();
+            }
         }
+        // 无论玩家/AI 移动都刷新一次视觉：玩家侧需重算 IsVisible 与敌方单位显隐
         _mapVisualEvent.Raise();
-
-        // 将停留地块的存在单位标记设置为真
-        h.SetHaveUnit(true, gameObject);
 
         // 如果本次移动目的是攻击，则触发攻击逻辑
         if (movementPurpose == Enums.MovementPurpose.MoveToAttack && attackedUnit != null)
@@ -237,17 +272,41 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     //死亡
     private void UnitDeath()
     {
-        if (characterData.currentHp <= 0)
+        if (_isDeathScheduled || characterData == null || characterData.currentHp > 0) return;
+
+        _isDeathScheduled = true;
+        _unitRemovalService.DeactivateUnit(gameObject);
+        foreach (var collider in GetComponentsInChildren<Collider>())
         {
-            animator.SetBool("isDeath", true);
-            _audioManager.PlaySFX("cartoon_trumpet_fail(5)");
-            Invoke("Destroy", 2.2f);
+            collider.enabled = false;
         }
+        animator.SetBool("isDeath", true);
+        _audioManager.PlaySFX("cartoon_trumpet_fail(5)");
+        Invoke(nameof(RemoveUnit), 2.2f);
     }
 
-    private void Destroy()
+    private void RemoveUnit()
     {
-        Destroy(gameObject);
+        _unitRemovalService.DestroyDeactivatedUnit(gameObject);
+    }
+
+    public void PrepareForRemoval()
+    {
+        isMoving = false;
+        movementPurpose = Enums.MovementPurpose.None;
+        isAttackingInProgress = false;
+        _isMeleeAttackInProgress = false;
+        GoToAttackPosition = false;
+        ReturnToOriginalPosition = false;
+        CommenceAttack = false;
+        isAttack = false;
+        attackedUnit = null;
+        enemyAttacker = null;
+
+        if (characterData != null)
+        {
+            characterData.isSelected = false;
+        }
     }
 
     private void UnitAttacked()
@@ -305,11 +364,11 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         }
 
         float TerrainElevation = 0;
-        switch (attackerHex.Height - h.Height)
-        {
-            case -1: TerrainElevation = -0.5f; break;
-            case 1: TerrainElevation = 0.5f; break;
-        }
+        float heightDiff = attackerHex.Height - h.Height;
+        if (heightDiff > 0.01f)
+            TerrainElevation = 0.5f;
+        else if (heightDiff < -0.01f)
+            TerrainElevation = -0.5f;
 
         float AttackPower = attacker.currentAttackValue;
         float AttackGain = 1 + attacker.Resource_Animals + AttackStatueGain + TerrainElevation;

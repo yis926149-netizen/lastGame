@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Zenject;
 
-public class PlayerInputHandler : ITickable
+public class PlayerInputHandler : ITickable, System.IDisposable
 {
     private Material _pathMaterial;
 
@@ -14,11 +14,11 @@ public class PlayerInputHandler : ITickable
     private readonly UnitMovementSystem _movementSystem;
     private readonly IGameStateMachine _gameState;
     private readonly IUIConfigProvider _uiConfig;
-    private readonly CameraController _cameraController;
     private readonly IMeshGenerator _meshGenerator;
     private readonly UIManagerPresenter _uiPresenter;   // ??I????? UIManager
     private readonly Canvas _targetUICanvas;
     private readonly MapGenerator _mapGenerator;
+    private readonly IUnitRepository _unitRepository;
 
     // ???????
     private readonly Color _defaultMovementColor = new Color(1f, 0.84f, 0f, 0.7f); // (1, 0.84, 0, 0.7)
@@ -37,6 +37,7 @@ public class PlayerInputHandler : ITickable
     private bool _isDraggingCard;
     private bool _selectedUnitIsRanged;
     private HexCellData _lastDraggingHighlightCell;
+    private bool _lastDraggingGridWasActive;
 
     private bool _isInitialized;
 
@@ -47,9 +48,9 @@ public class PlayerInputHandler : ITickable
         UnitMovementSystem movementSystem,
         IGameStateMachine gameState,
         IUIConfigProvider uiConfig,
-        CameraController cameraController,
         IMeshGenerator meshGenerator,
         UIManagerPresenter uiPresenter,          // ??? Presenter
+        IUnitRepository unitRepository,
         [Inject(Id = "TargetUICanvas")] Canvas targetUICanvas,
         MapGenerator mapGenerator
     )
@@ -59,9 +60,11 @@ public class PlayerInputHandler : ITickable
         _movementSystem = movementSystem;
         _gameState = gameState;
         _uiConfig = uiConfig;
-        _cameraController = cameraController;
         _meshGenerator = meshGenerator;
         _uiPresenter = uiPresenter;
+        _unitRepository = unitRepository;
+        unitRepository.OnPlayerUnitRemoved += OnUnitRemoved;
+        unitRepository.OnEnemyUnitRemoved += OnUnitRemoved;
         _targetUICanvas = targetUICanvas;
         _mapGenerator = mapGenerator;
         Shader pathShader = Shader.Find("Custom/MovementPath")
@@ -76,6 +79,14 @@ public class PlayerInputHandler : ITickable
         if (parent != null)
             _movementIndicator.transform.SetParent(parent);
         _movementIndicator.SetActive(false);
+    }
+
+    private void OnUnitRemoved(GameObject unit)
+    {
+        if (_selectedUnit == unit)
+        {
+            DeselectUnit();
+        }
     }
 
     private void EnsureInitialized()
@@ -99,16 +110,18 @@ public class PlayerInputHandler : ITickable
     public void Tick()
     {
         EnsureInitialized();
-        _cameraController.Tick();
 
         if (_gameState.CurrentPhase is not PlayerPhase)
+        {
+            CancelCardDragging();
             return;
+        }
 
-        if (_input.GetMouseButtonDown(0) && !IsPointerOverAnyUI())
+        if (_input.GetMouseButtonDown(0) && !IsPointerOverBlockingUI())
         {
             HandleLeftClick();
         }
-        else if (_input.GetMouseButtonDown(1) && !IsPointerOverAnyUI())
+        else if (_input.GetMouseButtonDown(1) && !IsPointerOverBlockingUI())
         {
             HandleRightClick();
         }
@@ -128,17 +141,14 @@ public class PlayerInputHandler : ITickable
 
     private void HandleLeftClick()
     {
-        int unitLayerMask = LayerMask.GetMask("Default", "Units");
-        if (_input.RaycastFromScreen(_input.MousePosition, out RaycastHit unitHit, 100f, unitLayerMask))
+        if (TryGetTaggedTarget(out GameObject unit, "PlayerUnit"))
         {
-            if (unitHit.transform.CompareTag("PlayerUnit"))
-            {
-                if (unitHit.transform.TryGetComponent<UnitMovementController>(out var controller) && !controller.CanBeSelected)
-                    return;
-
-                SelectUnit(unitHit.transform.gameObject);
+            var controller = unit.GetComponent<UnitMovementController>();
+            if (controller != null && !controller.CanBeSelected)
                 return;
-            }
+
+            SelectUnit(unit);
+            return;
         }
 
         if (_selectedUnit != null)
@@ -163,11 +173,8 @@ public class PlayerInputHandler : ITickable
     {
         if (_selectedUnit == null) return;
 
-        int layerMask = LayerMask.GetMask("Default", "EnemyUnit", "EnemyBuilding");
-
-        if (_input.RaycastFromScreen(_input.MousePosition, out RaycastHit hit, 100f, layerMask))
+        if (TryGetTaggedTarget(out GameObject target, "EnemyUnit", "EnemyBuilding"))
         {
-            GameObject target = hit.transform.gameObject;
             string targetTag = target.tag;
 
             var unitCtrl = _selectedUnit.GetComponent<UnitMovementController>();
@@ -195,12 +202,10 @@ public class PlayerInputHandler : ITickable
                     // ??????????????????????????????????? 0.05 ???
                     if (distance <= attackRange + 0.05f)
                     {
-                        unitCtrl.attackedUnit = target;
-                        unitCtrl.attackTarget = targetTag;
-                        unitCtrl.isAttack = true;
-                        unitCtrl.isRangedAttack = true;
-                        unitCtrl.currentMovementPoints = 0;
-                        DeselectUnit();
+                        if (unitCtrl.TryStartRangedAttack(target))
+                        {
+                            DeselectUnit();
+                        }
                     }
                     else
                     {
@@ -209,38 +214,76 @@ public class PlayerInputHandler : ITickable
                 }
                 else
                 {
-                    // ?????????????????
                     var unitMovement = _selectedUnit.GetComponent<IUnitMovement>();
-                    bool canAttack = false;
-                    Vector3 destinationHex = targetHex;
-
-                    if (_reachableHexes.Any(c => c.HexCoordinate == targetHex))
-                    {
-                        canAttack = true;
-                        destinationHex = targetHex;
-                    }
-                    else
-                    {
-                        var validNeighbor = _reachableHexes.FirstOrDefault(c =>
-                            GetHexDistance(c.HexCoordinate, targetHex) <= 1.05f);
-
-                        if (validNeighbor != null)
-                        {
-                            canAttack = true;
-                            destinationHex = validNeighbor.HexCoordinate;
-                        }
-                    }
-
-                    if (canAttack)
-                    {
-                        unitCtrl.attackedUnit = target;
-                        unitCtrl.attackTarget = targetTag;
-                        unitMovement.MoveTo(destinationHex, Enums.MovementPurpose.MoveToAttack);
-                        DeselectUnit();
-                    }
+                    unitCtrl.attackedUnit = target;
+                    unitCtrl.attackTarget = targetTag;
+                    unitMovement.MoveTo(targetHex, Enums.MovementPurpose.MoveToAttack);
+                    DeselectUnit();
                 }
             }
         }
+    }
+
+    private bool TryGetTaggedTarget(out GameObject target, params string[] targetTags)
+    {
+        RaycastHit[] hits = _input.RaycastAllFromScreen(_input.MousePosition, 100f, Physics.DefaultRaycastLayers);
+        foreach (RaycastHit hit in hits)
+        {
+            Transform current = hit.transform;
+            while (current != null)
+            {
+                if (targetTags.Contains(current.tag))
+                {
+                    target = current.gameObject;
+                    return true;
+                }
+                current = current.parent;
+            }
+        }
+
+        // 物理射线未命中时，回退到 UI 射线：单位/建筑头顶的 World Space 图标或血条
+        // 会挡在模型前面。这些 UI 是单位物体的子级，从命中的 UI 向上遍历父节点
+        // 即可定位到带对应 tag 的单位，使“点到图标”也等价于“点到单位”。
+        if (TryGetTaggedTargetFromUI(out target, targetTags))
+            return true;
+
+        target = null;
+        return false;
+    }
+
+    /// <summary>
+    /// 对当前指针位置做 UI 射线，命中的 UI 若属于某个带目标 tag 的单位/建筑（其 World Space
+    /// Canvas 是该物体的子级），则返回该单位/建筑 GameObject。
+    /// </summary>
+    private bool TryGetTaggedTargetFromUI(out GameObject target, params string[] targetTags)
+    {
+        target = null;
+
+        var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+        if (eventSystem == null) return false;
+
+        var pointerData = new UnityEngine.EventSystems.PointerEventData(eventSystem)
+        {
+            position = _input.MousePosition
+        };
+        var results = new List<UnityEngine.EventSystems.RaycastResult>();
+        eventSystem.RaycastAll(pointerData, results);
+
+        foreach (var result in results)
+        {
+            Transform current = result.gameObject != null ? result.gameObject.transform : null;
+            while (current != null)
+            {
+                if (targetTags.Contains(current.tag))
+                {
+                    target = current.gameObject;
+                    return true;
+                }
+                current = current.parent;
+            }
+        }
+
+        return false;
     }
 
     // ---------- ??????? ----------
@@ -327,16 +370,14 @@ public class PlayerInputHandler : ITickable
 
             if (isRangedUnit)
             {
-                unitCtrl.attackedUnit = target;
-                unitCtrl.attackTarget = targetTag;
-                unitCtrl.isAttack = true;
-                unitCtrl.isRangedAttack = true;
+                unitCtrl.TryStartRangedAttack(target);
             }
             else
             {
                 unitCtrl.attackedUnit = target;
                 unitCtrl.attackTarget = targetTag;
-                unitMovement.MoveTo(destinationHex, Enums.MovementPurpose.MoveToAttack);
+                Vector3 targetHex = _mapData.WorldToHexCoordinate(target.transform.position);
+                unitMovement.MoveTo(targetHex, Enums.MovementPurpose.MoveToAttack);
             }
         }
         else
@@ -375,17 +416,30 @@ public class PlayerInputHandler : ITickable
 
     private void ShowMovementPath(Vector3 startWorld, Vector3 endWorld)
     {
-        if (_selectedUnit == null) return;
+        if (_selectedUnit == null)
+        {
+            HideMovementPath();
+            return;
+        }
 
         HexCellData startCell = _mapData.GetCellByWorldPosition(startWorld);
         HexCellData endCell = _mapData.GetCellByWorldPosition(endWorld);
-        if (startCell == null || endCell == null) return;
+        if (startCell == null || endCell == null)
+        {
+            HideMovementPath();
+            return;
+        }
 
         float totalCost;
         List<Vector3> path;
         List<Vector3> allPoints = new List<Vector3>(_mapData.GetAllHexCoordinates());
         _movementSystem.CalculateMinMovementCostBetweenTwoHexes(allPoints, startCell.HexCoordinate, endCell.HexCoordinate, Enums.MovementPurpose.MoveToDestination, out totalCost, out path);
-        if (path == null || path.Count == 0) return;
+        var movement = _selectedUnit.GetComponent<IUnitMovement>();
+        if (path == null || path.Count == 0 || movement == null || totalCost > movement.RemainingMovement)
+        {
+            HideMovementPath();
+            return;
+        }
 
         var hexDict = _mapData.GetHexToCell();
         List<Vector3> vertices = new List<Vector3>();
@@ -419,9 +473,14 @@ public class PlayerInputHandler : ITickable
 
     private void HideMovementPreview()
     {
-        if (_movementPathRenderer != null) _movementPathRenderer.enabled = false;
+        HideMovementPath();
         HideMovementIndicator();
         _lastHoverCell = null;
+    }
+
+    private void HideMovementPath()
+    {
+        if (_movementPathRenderer != null) _movementPathRenderer.enabled = false;
     }
 
     // ---------- ??????????????? ----------
@@ -450,18 +509,22 @@ public class PlayerInputHandler : ITickable
     // ---------- ??????? ----------
     private void HandleCardDragging()
     {
-        if (_input.GetMouseButtonDown(0) && IsMouseOverTargetUI()) _isDraggingCard = true;
+        if (_input.GetMouseButtonDown(0) && IsMouseOverCard()) _isDraggingCard = true;
         if (_input.GetMouseButtonUp(0))
-        {
-            _isDraggingCard = false;
-            if (_lastDraggingHighlightCell != null)
-            {
-                _lastDraggingHighlightCell.GridMesh?.SetActive(false);
-                _lastDraggingHighlightCell = null;
-            }
-        }
+            CancelCardDragging();
         if (_isDraggingCard) HighlightGridOnMouseHover();
     }
+
+    public void ClearCardDragHighlight()
+    {
+        _isDraggingCard = false;
+        if (_lastDraggingHighlightCell == null) return;
+
+        _lastDraggingHighlightCell.GridMesh?.SetActive(_lastDraggingGridWasActive);
+        _lastDraggingHighlightCell = null;
+    }
+
+    private void CancelCardDragging() => ClearCardDragHighlight();
 
     private void HighlightGridOnMouseHover()
     {
@@ -471,25 +534,97 @@ public class PlayerInputHandler : ITickable
             if (cell != null && cell != _lastDraggingHighlightCell)
             {
                 if (_lastDraggingHighlightCell != null && _lastDraggingHighlightCell.GridMesh != null)
-                    _lastDraggingHighlightCell.GridMesh.SetActive(false);
+                    _lastDraggingHighlightCell.GridMesh.SetActive(_lastDraggingGridWasActive);
 
-                if (cell.GridMesh != null) cell.GridMesh.SetActive(true);
-                _lastDraggingHighlightCell = cell;
+                if (cell.IsExplored)
+                {
+                    _lastDraggingGridWasActive = cell.GridMesh != null && cell.GridMesh.activeSelf;
+                    if (cell.GridMesh != null) cell.GridMesh.SetActive(true);
+                    _lastDraggingHighlightCell = cell;
+                }
+                else
+                {
+                    _lastDraggingHighlightCell = null;
+                }
             }
         }
         else
         {
             if (_lastDraggingHighlightCell != null && _lastDraggingHighlightCell.GridMesh != null)
-                _lastDraggingHighlightCell.GridMesh.SetActive(false);
+                _lastDraggingHighlightCell.GridMesh.SetActive(_lastDraggingGridWasActive);
             _lastDraggingHighlightCell = null;
         }
     }
 
-    /// <summary>����Ƿ������� UI �ϣ��������ε�ͼ/��λ������ƶ�Ԥ���������밴ť�ȳ�ͻ����</summary>
+    /// <summary>����Ƿ������� UI �ϣ��������ε�ͼ/��λ������ƶ�Ԥ���������밴ť�ȳ�ͻ����</summary>
     private bool IsPointerOverAnyUI() => _input.IsPointerOverUI(null);
 
-    /// <summary>���������ڵ����� Canvas �ϣ��翨���������� <see cref="IsPointerOverAnyUI"/> ���֡�</summary>
-    private bool IsMouseOverTargetUI() => _input.IsPointerOverUI(_targetUICanvas);
+    /// <summary>
+    /// 指针是否落在“会阻挡地图/单位交互”的 UI 上（如卡牌、HUD 按钮、信息面板）。
+    /// 单位/建筑头顶的 World Space 图标/血条虽然也是 UI，但它们属于单位本身，
+    /// 点击时应等价于点击该单位，故不计入阻挡，避免“点到图标就没反应”。
+    /// </summary>
+    private bool IsPointerOverBlockingUI()
+    {
+        if (!IsPointerOverAnyUI()) return false;
+
+        // 若指针下所有命中的 UI 都属于单位/建筑的运行时 World Space Canvas，则不阻挡。
+        var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+        if (eventSystem == null) return true;
+
+        var pointerData = new UnityEngine.EventSystems.PointerEventData(eventSystem)
+        {
+            position = _input.MousePosition
+        };
+        var results = new List<UnityEngine.EventSystems.RaycastResult>();
+        eventSystem.RaycastAll(pointerData, results);
+        if (results.Count == 0) return true;
+
+        foreach (var result in results)
+        {
+            if (result.gameObject == null) continue;
+            if (!IsWithinRuntimeUnitCanvas(result.gameObject.transform))
+                return true; // 命中了非单位 UI（HUD/卡牌等），视为阻挡
+        }
+
+        return false; // 命中的 UI 全部属于单位/建筑自身 Canvas，不阻挡
+    }
+
+    /// <summary>判断某 UI 变换是否处于某个运行时单位/建筑 Canvas 之下。</summary>
+    private bool IsWithinRuntimeUnitCanvas(Transform uiTransform)
+    {
+        var runtimeCanvases = _uiConfig?.RuntimeCanvases;
+        if (runtimeCanvases == null || runtimeCanvases.Count == 0) return false;
+
+        while (uiTransform != null)
+        {
+            for (int i = 0; i < runtimeCanvases.Count; i++)
+            {
+                var canvas = runtimeCanvases[i];
+                if (canvas != null && canvas.transform == uiTransform)
+                    return true;
+            }
+            uiTransform = uiTransform.parent;
+        }
+        return false;
+    }
+
+    /// <summary>���������ڵ����� Canvas �ϣ��翨���������� <see cref="IsPointerOverAnyUI"/> ���֡�</summary>
+    private bool IsMouseOverCard()
+    {
+        if (!_input.IsPointerOverUI(_targetUICanvas)) return false;
+
+        var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+        if (eventSystem == null) return false;
+
+        var pointerData = new UnityEngine.EventSystems.PointerEventData(eventSystem)
+        {
+            position = _input.MousePosition
+        };
+        var results = new List<UnityEngine.EventSystems.RaycastResult>();
+        eventSystem.RaycastAll(pointerData, results);
+        return results.Any(result => result.gameObject.GetComponentInParent<CardController>() != null);
+    }
 
     // ---------- ?????????????????? ----------
     private void ShowReachableHexes(List<Vector3> hexes)
@@ -556,6 +691,13 @@ public class PlayerInputHandler : ITickable
             var prefab = _uiConfig.GetEnemyUnitIndicatorPrefab();
             foreach (var enemy in enemies)
             {
+                if (enemy == null) continue;
+
+                // 迷雾过滤：只给玩家当前视野内(IsVisible)的敌方单位生成红圈，
+                // 否则会标出并泄露迷雾外（记忆区/未探索）的敌人位置。
+                HexCellData cell = _mapData.GetCellByWorldPosition(enemy.transform.position);
+                if (cell == null || !cell.IsVisible) continue;
+
                 var indicator = Object.Instantiate(prefab, indicatorParent);
                 indicator.transform.position = enemy.transform.position + Vector3.up * 0.2f;
             }
@@ -569,6 +711,16 @@ public class PlayerInputHandler : ITickable
     public void ForceDeselectUnit()
     {
         DeselectUnit();
+    }
+
+    public void Dispose()
+    {
+        _unitRepository.OnPlayerUnitRemoved -= OnUnitRemoved;
+        _unitRepository.OnEnemyUnitRemoved -= OnUnitRemoved;
+
+        if (_pathMaterial != null) Object.Destroy(_pathMaterial);
+        if (_movementIndicator != null) Object.Destroy(_movementIndicator);
+        if (_movementPathObject != null) Object.Destroy(_movementPathObject);
     }
 
     // ---------- ??????????????????????????? ----------

@@ -36,6 +36,17 @@ Shader "Custom/LakeorSea" {
             uniform float _FoamStrength;
             uniform float _FoamDensity;
 
+            // 全局迷雾属性（由 MapRenderer.SetupFogGlobalShaderProperties 设置，
+            // 与地形迷雾共用同一张贴图与色调，保证水面未探索区与地形迷雾无缝衔接）
+            uniform sampler2D _FogTex;
+            uniform float4 _FogColor;
+            uniform float _FogTexScale;
+            uniform float _FogEmission;
+            uniform float _FogTexAmount;
+            uniform float4 _FogMapOrigin;  // 地图世界 XZ 包围盒起点 (x=minX, y=minZ)
+            uniform float4 _FogMapSize;    // 地图世界 XZ 尺寸 (x=sizeX, y=sizeZ)
+            uniform float _FogMemoryDim;   // 记忆区亮度系数（与地形一致）
+
             // ------------------------------
             // 通用波浪函数（复用开阔水逻辑，避免动画断层）
             // ------------------------------
@@ -70,11 +81,14 @@ Shader "Custom/LakeorSea" {
             struct appdata {
                 float4 vertex : POSITION; // 顶点位置
                 float2 uv : TEXCOORD0;    // UV 坐标（y轴=岸边距离因子：0=水侧，1=陆地侧）
+                float4 color : COLOR;     // 顶点色 .r = 探索状态(0=未探索,1=已探索)
             };
 
             struct v2f {
                 float2 uv : TEXCOORD0;       // 传递 UV 到片段着色器
                 float4 worldPos : TEXCOORD1; // 传递世界坐标（用于计算波浪）
+                float  explored : TEXCOORD2; // 探索状态（顶点色 .r）
+                float  visible : TEXCOORD3;  // 当前视野（顶点色 .g），记忆区压暗用
                 float4 pos : SV_POSITION;    // 裁剪空间坐标（用于渲染）
             };
 
@@ -89,6 +103,9 @@ Shader "Custom/LakeorSea" {
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 // 将顶点位置从模型空间转为世界空间（用于波浪计算）
                 o.worldPos = mul(unity_ObjectToWorld, v.vertex);
+                // 探索状态
+                o.explored = v.color.r;
+                o.visible = v.color.g;
                 return o;
             }
 
@@ -130,7 +147,16 @@ Shader "Custom/LakeorSea" {
                 // 保持 alpha 通道值（支持透明调节）
                 finalColor.a = _BaseColor.a;
 
-                return finalColor;
+                // 5. 三态迷雾：
+                //    未探索(explored=0) → 显示与地形一致的迷雾（不透明覆盖）。
+                //    记忆区(explored=1, visible=0) → 水面正常渲染但压暗到 _FogMemoryDim。
+                //    可见(explored=1, visible=1) → 正常水面。
+                float2 fogUV = (i.worldPos.xz - _FogMapOrigin.xy) / _FogMapSize.xy;
+                float3 fogTex = tex2Dlod(_FogTex, float4(fogUV, 0, 0)).rgb;
+                float3 fogRGB = _FogColor.rgb * lerp(float3(1,1,1), fogTex, _FogTexAmount) * _FogEmission;
+                fixed4 fogColor = fixed4(fogRGB, 1.0); // alpha=1：不透明遮住水面，融入迷雾层
+                finalColor.rgb *= lerp(_FogMemoryDim, 1.0, i.visible); // 记忆区压暗
+                return lerp(fogColor, finalColor, i.explored);
             }
             ENDCG
         }

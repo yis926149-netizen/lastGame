@@ -19,4 +19,16 @@ public class UITool : MonoBehaviour
             btn.onClick.AddListener(action);
         }
     }
+
+    public static bool TrySetSliderFillColor(Slider slider, Color color)
+    {
+        if (slider == null || slider.fillRect == null ||
+            !slider.fillRect.TryGetComponent<Image>(out var fillImage))
+        {
+            return false;
+        }
+
+        fillImage.color = color;
+        return true;
+    }
 }

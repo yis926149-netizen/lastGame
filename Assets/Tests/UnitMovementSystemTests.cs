@@ -10,6 +10,7 @@ public class UnitMovementSystemTests
     private IMapDataService _mockMapData;
     private MapVisualEventSO _mockMapEvent;
     private UnitMovementSystem _system;
+    private GameObject _unitObject;
 
     [SetUp]
     public void SetUp()
@@ -17,7 +18,7 @@ public class UnitMovementSystemTests
         _container = new DiContainer();
 
         _mockMapData = Substitute.For<IMapDataService>();
-        _mockMapEvent = Substitute.For<MapVisualEventSO>(); // ScriptableObject ¿ÉÓÃ CreateInstance
+        _mockMapEvent = ScriptableObject.CreateInstance<MapVisualEventSO>();
 
         _container.Bind<IMapDataService>().FromInstance(_mockMapData);
         _container.Bind<MapVisualEventSO>().FromInstance(_mockMapEvent);
@@ -27,9 +28,19 @@ public class UnitMovementSystemTests
         SetupMockMap();
     }
 
+    [TearDown]
+    public void TearDown()
+    {
+        Object.DestroyImmediate(_mockMapEvent);
+        if (_unitObject != null)
+        {
+            Object.DestroyImmediate(_unitObject);
+        }
+    }
+
     private void SetupMockMap()
     {
-        // ´´½¨¼òµ¥µÄµØÍ¼¸ñ×Ó
+        // ï¿½ï¿½ï¿½ï¿½ï¿½òµ¥µÄµï¿½Í¼ï¿½ï¿½ï¿½ï¿½
         var cells = new Dictionary<Vector3, HexCellData>();
         for (int x = 0; x < 5; x++)
         {
@@ -70,16 +81,98 @@ public class UnitMovementSystemTests
         var unit = Substitute.For<IUnitMovement>();
         unit.RemainingMovement.Returns(5f);
         unit.CurrentHexCoordinate.Returns(new Vector3(2, -2, 0));
-        unit.gameObject.Returns(new GameObject()); // ÐèÒª GameObject£¬µ«²»»áÊµ¼ÊÊ¹ÓÃ
+        _unitObject = new GameObject();
+        unit.gameObject.Returns(_unitObject);
 
-        var targetHex = new Vector3(2, -3, 1); // NE ·½Ïò
+        var targetHex = new Vector3(2, -3, 1); // NE ï¿½ï¿½ï¿½ï¿½
 
         bool result = _system.RequestMove(unit, targetHex, Enums.MovementPurpose.MoveToDestination);
 
         Assert.IsTrue(result);
-        // ÑéÖ¤µ¥Î»ËùÔÚ¸ñ×Ó±»Çå¿Õ£¨µ« IUnitMovement ²»¸ºÔð£¬Ó¦ÓÉµ÷ÓÃÕß´¦Àí£©
-        // ÑéÖ¤ÒÆ¶¯ÁÐ±íÖÐÓÐ¸Ãµ¥Î»
-        // ´Ë´¦Í¨¹ý·´Éä¼ì²éÄÚ²¿ÁÐ±í½Ï¸´ÔÓ£¬¿É¸ÄÎªÑéÖ¤ UnitMovementSystem µÄÐÐÎª£ºµ÷ÓÃ Tick ºóµ¥Î»Î»ÖÃÓ¦±ä»¯
+        // ï¿½ï¿½Ö¤ï¿½ï¿½Î»ï¿½ï¿½ï¿½Ú¸ï¿½ï¿½Ó±ï¿½ï¿½ï¿½Õ£ï¿½ï¿½ï¿½ IUnitMovement ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½Éµï¿½ï¿½ï¿½ï¿½ß´ï¿½ï¿½ï¿½ï¿½ï¿½
+        // ï¿½ï¿½Ö¤ï¿½Æ¶ï¿½ï¿½Ð±ï¿½ï¿½ï¿½ï¿½Ð¸Ãµï¿½Î»
+        // ï¿½Ë´ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú²ï¿½ï¿½Ð±ï¿½ï¿½Ï¸ï¿½ï¿½Ó£ï¿½ï¿½É¸ï¿½Îªï¿½ï¿½Ö¤ UnitMovementSystem ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Tick ï¿½ï¿½Î»Î»ï¿½ï¿½Ó¦ï¿½ä»¯
+    }
+
+    [Test]
+    public void CancelMove_RemovesPendingMovementWithoutFinishingCallback()
+    {
+        var unit = Substitute.For<IUnitMovement>();
+        unit.RemainingMovement.Returns(5f);
+        unit.CurrentHexCoordinate.Returns(new Vector3(2, -2, 0));
+        _unitObject = new GameObject();
+        unit.gameObject.Returns(_unitObject);
+
+        bool requested = _system.RequestMove(
+            unit,
+            new Vector3(2, -3, 1),
+            Enums.MovementPurpose.MoveToDestination);
+
+        _system.CancelMove(unit);
+        _system.Tick();
+
+        Assert.IsTrue(requested);
+        unit.DidNotReceive().OnMoveFinished();
+    }
+
+    [Test]
+    public void CancelMove_RestoresStartOccupancyAndMovementPoints()
+    {
+        var unit = Substitute.For<IUnitMovement>();
+        unit.RemainingMovement.Returns(5f);
+        Vector3 start = new Vector3(2, -2, 0);
+        unit.CurrentHexCoordinate.Returns(start);
+        _unitObject = new GameObject();
+        unit.gameObject.Returns(_unitObject);
+        HexCellData startCell = _mockMapData.GetCell(start);
+        startCell.SetHaveUnit(true, _unitObject);
+
+        Assert.IsTrue(_system.RequestMove(unit, new Vector3(2, -3, 1), Enums.MovementPurpose.MoveToDestination));
+        _system.CancelMove(unit);
+
+        Assert.IsTrue(startCell.IsHaveUnit());
+        Assert.AreSame(_unitObject, startCell.GetUnit());
+        unit.Received().RemainingMovement = 5f;
+    }
+
+    [Test]
+    public void RequestMove_OccupiedDestination_ReturnsFalse()
+    {
+        var unit = Substitute.For<IUnitMovement>();
+        unit.RemainingMovement.Returns(5f);
+        unit.CurrentHexCoordinate.Returns(new Vector3(2, -2, 0));
+        _unitObject = new GameObject();
+        unit.gameObject.Returns(_unitObject);
+        GameObject occupant = new GameObject("Occupant");
+        Vector3 target = new Vector3(2, -3, 1);
+        _mockMapData.GetCell(target).SetHaveUnit(true, occupant);
+
+        try
+        {
+            Assert.IsFalse(_system.RequestMove(unit, target, Enums.MovementPurpose.MoveToDestination));
+        }
+        finally
+        {
+            Object.DestroyImmediate(occupant);
+        }
+    }
+
+    [Test]
+    public void Pathfinding_MaxValueCell_IsImpassableForNormalMovement()
+    {
+        Vector3 start = new Vector3(2, -2, 0);
+        Vector3 target = new Vector3(2, -3, 1);
+        _mockMapData.GetCell(target).movementCost = float.MaxValue;
+
+        bool success = _system.CalculateMinMovementCostBetweenTwoHexes(
+            new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
+            start,
+            target,
+            Enums.MovementPurpose.MoveToDestination,
+            out _,
+            out _);
+
+        Assert.IsFalse(success);
     }
 
     [Test]
@@ -87,7 +180,7 @@ public class UnitMovementSystemTests
     {
         var allPoints = new List<Vector3>(_mockMapData.GetAllHexCoordinates());
         var start = new Vector3(0, 0, 0);
-        var end = new Vector3(4, -4, 0); // ¶Ô½ÇÏß¾àÀë4²½
+        var end = new Vector3(4, -4, 0); // ï¿½Ô½ï¿½ï¿½ß¾ï¿½ï¿½ï¿½4ï¿½ï¿½
 
         bool success = _system.CalculateMinMovementCostBetweenTwoHexes(
             allPoints, start, end, Enums.MovementPurpose.MoveToDestination,
@@ -96,7 +189,7 @@ public class UnitMovementSystemTests
         Assert.IsTrue(success);
         Assert.AreEqual(4f, cost, 0.01f);
         Assert.IsNotNull(path);
-        Assert.AreEqual(4, path.Count); // Ã¿Ò»²½Ò»¸ö¸ñ×Ó
+        Assert.AreEqual(4, path.Count); // Ã¿Ò»ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     }
 
     [Test]
@@ -104,14 +197,14 @@ public class UnitMovementSystemTests
     {
         var allPoints = new List<Vector3>(_mockMapData.GetAllHexCoordinates());
         var start = new Vector3(2, -2, 0);
-        float movement = 2.5f; // ÄÜ×ß2²½£¨Ã¿²½1·Ñ£©
+        float movement = 2.5f; // ï¿½ï¿½ï¿½ï¿½2ï¿½ï¿½ï¿½ï¿½Ã¿ï¿½ï¿½1ï¿½Ñ£ï¿½
 
         var reachable = _system.GetAllReachableHexesFromStartHex(allPoints, start, movement);
 
-        // Ó¦°üÀ¨Æðµã±¾ÉíºÍ¾àÀë¡Ü2µÄ¸ñ×Ó
+        // Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ã±¾ï¿½ï¿½ï¿½Í¾ï¿½ï¿½ï¿½ï¿½2ï¿½Ä¸ï¿½ï¿½ï¿½
         Assert.Contains(start, reachable);
-        // ¼ì²é¾àÀëÎª2µÄ¸ñ×Ó£¬ÀýÈç (2, -3, 1)
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª2ï¿½Ä¸ï¿½ï¿½Ó£ï¿½ï¿½ï¿½ï¿½ï¿½ (2, -3, 1)
         Assert.Contains(new Vector3(2, -3, 1), reachable);
-        Assert.IsFalse(reachable.Contains(new Vector3(2, -4, 2))); // ¾àÀë3
+        Assert.IsFalse(reachable.Contains(new Vector3(2, -5, 3))); // ï¿½ï¿½ï¿½ï¿½3
     }
 }

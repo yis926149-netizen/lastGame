@@ -9,10 +9,11 @@ public class GameStateMachine : IGameStateMachine, IInitializable
     private int _currentPhaseIndex;
     private int _currentTurn;
 
-    [Inject] private ICardService _cardService;      // ¸ÄÎª½Ó¿Ú×¢Èë£¬¸üÁé»î
+    [Inject] private ICardService _cardService;      // ï¿½ï¿½Îªï¿½Ó¿ï¿½×¢ï¿½ë£¬ï¿½ï¿½ï¿½ï¿½ï¿½
     [Inject] private CardPresenter _cardPresenter;
     [Inject] private IUnitRepository _unitRepository;
     [Inject] private ITechCultureService _techCultureService;
+    [Inject] private LazyInject<PlayerInputHandler> _playerInputHandler;
 
     [Inject]
     public GameStateMachine(
@@ -27,6 +28,8 @@ public class GameStateMachine : IGameStateMachine, IInitializable
 
     public int CurrentTurn => _currentTurn;
     public IPhase CurrentPhase => _phases[_currentPhaseIndex];
+
+    public event System.Action PhaseChanged;
 
     public void Initialize()
     {
@@ -43,6 +46,7 @@ public class GameStateMachine : IGameStateMachine, IInitializable
     private void EnterCurrentPhase()
     {
         _phases[_currentPhaseIndex].Enter();
+        PhaseChanged?.Invoke();
     }
 
     public void EndTurn()
@@ -52,6 +56,7 @@ public class GameStateMachine : IGameStateMachine, IInitializable
         var phase = _phases[_currentPhaseIndex];
         if (!phase.CanExit()) return;
 
+        _playerInputHandler.Value.ForceDeselectUnit();
         phase.Exit();
         MoveToNextPhase();
     }
@@ -76,7 +81,8 @@ public class GameStateMachine : IGameStateMachine, IInitializable
     private async Task ProcessAIPhase(AIPhase aiPhase)
     {
         await aiPhase.RunAITurn();
-        if (_currentPhaseIndex == 1)
+        int aiIndex = _phases.IndexOf(aiPhase);
+        if (aiIndex >= 0 && _currentPhaseIndex == aiIndex)
         {
             _phases[_currentPhaseIndex].Exit();
 
@@ -84,6 +90,7 @@ public class GameStateMachine : IGameStateMachine, IInitializable
             if (settlementIndex >= 0)
             {
                 _currentPhaseIndex = settlementIndex;
+                // SettlementPhase is synchronous, so this completes settlement before the next turn.
                 _phases[_currentPhaseIndex].Enter();
                 _phases[_currentPhaseIndex].Exit();
             }
@@ -104,14 +111,14 @@ public class GameStateMachine : IGameStateMachine, IInitializable
     {
         ResetUnitMovement();
 
-        _cardService.ResetDealOpportunity();           // ÖØÖÃ¡°Ã¿»ØºÏÒ»´Î¡±±êÖ¾
-        _cardPresenter.TryDealFromNextIfPossible();    // »ØºÏ¿ªÊ¼Ê±×Ô¶¯Ìî²¹ÉÏÒ»»ØºÏÁôÏÂµÄ¿Õ²Û
+        _cardService.ResetDealOpportunity();           // ï¿½ï¿½ï¿½Ã¡ï¿½Ã¿ï¿½Øºï¿½Ò»ï¿½Î¡ï¿½ï¿½ï¿½Ö¾
+        _cardPresenter.TryDealFromNextIfPossible();    // ï¿½ØºÏ¿ï¿½Ê¼Ê±ï¿½Ô¶ï¿½ï¿½î²¹ï¿½ï¿½Ò»ï¿½Øºï¿½ï¿½ï¿½ï¿½ÂµÄ¿Õ²ï¿½
 
-        // ³é¿¨»ú»áÖØÖÃ + ³¢ÊÔ·¢Ò»ÕÅÐÂ¿¨
+        // ï¿½é¿¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ + ï¿½ï¿½ï¿½Ô·ï¿½Ò»ï¿½ï¿½ï¿½Â¿ï¿½
         _cardService.ResetDrawOpportunity();
         _cardPresenter.OnTurnEnded();
 
-        // ´¥·¢¿Æ¼¼/ÎÄ»¯½ø¶ÈÌõ¶¯»­
+        // ï¿½ï¿½ï¿½ï¿½ï¿½Æ¼ï¿½/ï¿½Ä»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         _techCultureService.TriggerProgressAnimation();
     }
 

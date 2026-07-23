@@ -10,8 +10,6 @@ using Zenject;
 public class Tech_CultureTreeController : MonoBehaviour, ITechCultureService
 {
     //注入
-    [Inject] private IUnitDataProvider unitDataProvider;
-    [Inject] private IBuildingDataProvider buildingDataProvider;
     [Inject] private ITechTreeIconsProvider techTreeIconsProvider;
     [Inject] private IUnitRepository _unitRepository;
     [Inject] private PlayerModelManager _playerModelManager;
@@ -101,14 +99,13 @@ public class Tech_CultureTreeController : MonoBehaviour, ITechCultureService
         //切换科技、文化选项
         SwitchOptions(ref Tech);
         SwitchOptions(ref Culture);
-
-        //文化等级效果
-        CultureLevelEffect(Culture);
     }
 
     //一次性添加科技值
     public void AddTechPoints(float techPoints)
     {
+        if (!CanAccumulate(Tech, _techData?.TechCost, GetTechMaxLevel())) return;
+
         //数据更新
         Tech.PreviousAccumulatedPoints = Tech.AccumulatedPoints;
         Tech.AccumulatedPoints = Mathf.Min(1, Tech.AccumulatedPoints + techPoints / _techData.TechCost[Tech.Level]);
@@ -123,6 +120,8 @@ public class Tech_CultureTreeController : MonoBehaviour, ITechCultureService
     //一次性添加文化值
     public void AddCulturePoints(float CulturePoints)
     {
+        if (!CanAccumulate(Culture, _cultureData?.CultureCost, GetCultureMaxLevel())) return;
+
         //数据更新
         Culture.PreviousAccumulatedPoints = Culture.AccumulatedPoints;
         Culture.AccumulatedPoints = Mathf.Min(1, Culture.AccumulatedPoints + CulturePoints / _cultureData.CultureCost[Culture.Level]);
@@ -137,14 +136,14 @@ public class Tech_CultureTreeController : MonoBehaviour, ITechCultureService
     //添加每回合的科技值产能
     public void AddTechPointsPerTurn(float TechPointsPerTurn)
     {
-        Tech.Points += TechPointsPerTurn;
+        Tech.Points = Mathf.Max(0, Tech.Points + TechPointsPerTurn);
         OnTechPointsChanged?.Invoke(); // 每回合产量变化时触发
     }
 
     //添加每回合的文化值产能
     public void AddCulturePointsPerTurn(float CulturePointsPerTurn)
     {
-        Culture.Points += CulturePointsPerTurn;
+        Culture.Points = Mathf.Max(0, Culture.Points + CulturePointsPerTurn);
         OnCulturePointsChanged?.Invoke();
     }
 
@@ -152,16 +151,42 @@ public class Tech_CultureTreeController : MonoBehaviour, ITechCultureService
     public void AddPointsPerTurn()
     {
         //科技点数
-        Tech.PreviousAccumulatedPoints = Tech.AccumulatedPoints;
-        Tech.AccumulatedPoints = Mathf.Min(1, Tech.AccumulatedPoints + Tech.Points / _techData.TechCost[Tech.Level]);
+        if (CanAccumulate(Tech, _techData?.TechCost, GetTechMaxLevel()))
+        {
+            Tech.PreviousAccumulatedPoints = Tech.AccumulatedPoints;
+            Tech.AccumulatedPoints = Mathf.Min(1, Tech.AccumulatedPoints + Tech.Points / _techData.TechCost[Tech.Level]);
+        }
 
         //文化点数
-        Culture.PreviousAccumulatedPoints = Culture.AccumulatedPoints;
-        Culture.AccumulatedPoints = Mathf.Min(1, Culture.AccumulatedPoints + Culture.Points / _cultureData.CultureCost[Culture.Level]);
+        if (CanAccumulate(Culture, _cultureData?.CultureCost, GetCultureMaxLevel()))
+        {
+            Culture.PreviousAccumulatedPoints = Culture.AccumulatedPoints;
+            Culture.AccumulatedPoints = Mathf.Min(1, Culture.AccumulatedPoints + Culture.Points / _cultureData.CultureCost[Culture.Level]);
+        }
 
         //触发事件（累积值变化时 UI 进度条由 PlayAni 处理，但若需要刷新每回合产量显示也可触发）
         OnTechPointsChanged?.Invoke();
         OnCulturePointsChanged?.Invoke();
+    }
+
+    private int GetTechMaxLevel()
+    {
+        return Mathf.Min(
+            (_techData?.TechCost?.Count ?? 0) - 1,
+            (techTreeIconsProvider?.GetAllTechIcon()?.Count ?? 0) - 1);
+    }
+
+    private int GetCultureMaxLevel()
+    {
+        return Mathf.Min(
+            (_cultureData?.CultureCost?.Count ?? 0) - 1,
+            (techTreeIconsProvider?.GetAllCultureIcon()?.Count ?? 0) - 1);
+    }
+
+    private static bool CanAccumulate(Tech_Culture item, List<int> costs, int maxLevel)
+    {
+        return item != null && costs != null && item.Level >= 0 && item.Level < maxLevel &&
+               item.Level < costs.Count && costs[item.Level] > 0;
     }
 
     // 更新进度条动画的插值（n秒内完成，根据帧率自动计算步数）
@@ -213,14 +238,18 @@ public class Tech_CultureTreeController : MonoBehaviour, ITechCultureService
 
         tech_culture.SwitchOptionsTurn = _gameStateMachine?.CurrentTurn ?? tech_culture.SwitchOptionsTurn;
 
+        int previousLevel = tech_culture.Level;
         tech_culture.Level++;
 
         // === 安全限制等级 ===
-        int maxLevel = (tech_culture == Tech)
-            ? (techTreeIconsProvider?.GetAllTechIcon()?.Count ?? 1) - 1
-            : (techTreeIconsProvider?.GetAllCultureIcon()?.Count ?? 1) - 1;
+        int maxLevel = tech_culture == Tech ? GetTechMaxLevel() : GetCultureMaxLevel();
 
-        if (tech_culture.Level > maxLevel) tech_culture.Level = maxLevel;
+        tech_culture.Level = Mathf.Clamp(tech_culture.Level, 0, Mathf.Max(0, maxLevel));
+
+        if (tech_culture == Culture && tech_culture.Level > previousLevel)
+        {
+            CultureLevelEffect(tech_culture);
+        }
 
         // === 安全读取图标/名称/描述 ===
         if (tech_culture == Tech)
@@ -323,83 +352,52 @@ public class Tech_CultureTreeController : MonoBehaviour, ITechCultureService
         {
             //5、提升绿皮、巫妖的数值
             case 5:
-                //修改初始数值unitDataProvider.GetUnitData(UnitIndex)
-                unitDataProvider.GetUnitData(3).BasicAttackValue = 30;
-                unitDataProvider.GetUnitData(3).Defense = 10;
-
-                unitDataProvider.GetUnitData(4).BasicAttackValue = 30;
-                unitDataProvider.GetUnitData(4).Defense = 10;
-
                 //修改已有卡牌的数值
                 l = _unitRepository.AllPlayerUnits.Values.ToList();
                 foreach (CharacterData c in l)
                 {
                     if (c.UnitID == 3)
                     {
-                        c.currentAttackValue = 30;
-                        c.Defense = 10;
+                        ApplyUpgradedUnitStats(c);
                     }
                     else if (c.UnitID == 4)
                     {
-                        c.currentAttackValue = 30;
-                        c.Defense = 10;
+                        ApplyUpgradedUnitStats(c);
                     }
                 }
 
                 break;
             //6、提升RPG英杰、大眼、宝箱怪的数值
             case 6:
-                //修改初始数值
-                unitDataProvider.GetUnitData(9).BasicAttackValue = 30;
-                unitDataProvider.GetUnitData(9).Defense = 10;
-
-                unitDataProvider.GetUnitData(10).BasicAttackValue = 30;
-                unitDataProvider.GetUnitData(10).Defense = 10;
-
-                unitDataProvider.GetUnitData(11).BasicAttackValue = 30;
-                unitDataProvider.GetUnitData(11).Defense = 10;
-
                 //修改已有卡牌的数值
                 foreach (CharacterData c in _unitRepository.AllPlayerUnits.Values)
                 {
                     if (c.UnitID == 9)
                     {
-                        c.currentAttackValue = 30;
-                        c.Defense = 10;
+                        ApplyUpgradedUnitStats(c);
                     }
                     else if (c.UnitID == 10)
                     {
-                        c.currentAttackValue = 30;
-                        c.Defense = 10;
+                        ApplyUpgradedUnitStats(c);
                     }
                     else if (c.UnitID == 11)
                     {
-                        c.currentAttackValue = 30;
-                        c.Defense = 10;
+                        ApplyUpgradedUnitStats(c);
                     }
                 }
                 break;
             //7、提升近战Ⅲ、远程Ⅲ的数值
             case 7:
-                //修改初始数值
-                unitDataProvider.GetUnitData(5).BasicAttackValue = 30;
-                unitDataProvider.GetUnitData(6).Defense = 10;
-
-                unitDataProvider.GetUnitData(5).BasicAttackValue = 30;
-                unitDataProvider.GetUnitData(6).Defense = 10;
-
                 //修改已有卡牌的数值
                 foreach (CharacterData c in _unitRepository.AllPlayerUnits.Values)
                 {
                     if (c.UnitID == 5)
                     {
-                        c.currentAttackValue = 30;
-                        c.Defense = 10;
+                        ApplyUpgradedUnitStats(c);
                     }
                     else if (c.UnitID == 6)
                     {
-                        c.currentAttackValue = 30;
-                        c.Defense = 10;
+                        ApplyUpgradedUnitStats(c);
                     }
                 }
 
@@ -408,27 +406,84 @@ public class Tech_CultureTreeController : MonoBehaviour, ITechCultureService
             case 8:
                 foreach (GameObject g in _playerModelManager.Index_AltarBuilding.Values)
                 {
-                    g.GetComponent<BuildingData>().AltarValue = 0.7f;
+                    BuildingData data = GetBuildingData(g);
+                    if (data != null)
+                    {
+                        data.AltarValue = 0.7f;
+                    }
                 }
                 break;
             //9、提升进攻、防御建筑的数值
             case 9:
-                //修改初始数值
-                buildingDataProvider.SetBuildingBaseHP(40);
-
-                //修改已有卡牌的数值
-                foreach (GameObject g in _playerModelManager.Index_AttackBuilding.Values)
+                foreach (GameObject g in _playerModelManager.Index_AttackBuilding.Values
+                    .Concat(_playerModelManager.Index_DefenseBuilding.Values))
                 {
-                    g.GetComponent<BuildingData>().hp = 40;
-                    g.GetComponent<BuildingData>().currentHp = 40;
-                }
-
-                foreach (GameObject g in _playerModelManager.Index_AltarBuilding.Values)
-                {
-                    g.GetComponent<BuildingData>().hp = 40;
-                    g.GetComponent<BuildingData>().currentHp = 40;
+                    BuildingData data = GetBuildingData(g);
+                    if (data != null)
+                    {
+                        ApplyUpgradedBuildingStats(data);
+                    }
                 }
                 break;
         }
+    }
+
+    public void ApplyPlayerCultureBonus(CharacterData characterData)
+    {
+        if (characterData == null)
+        {
+            return;
+        }
+
+        bool upgraded =
+            (Culture.Level >= 5 && (characterData.UnitID == 3 || characterData.UnitID == 4)) ||
+            (Culture.Level >= 6 && (characterData.UnitID == 9 || characterData.UnitID == 10 || characterData.UnitID == 11)) ||
+            (Culture.Level >= 7 && (characterData.UnitID == 5 || characterData.UnitID == 6));
+
+        if (!upgraded)
+        {
+            return;
+        }
+
+        ApplyUpgradedUnitStats(characterData);
+    }
+
+    public void ApplyPlayerCultureBonus(BuildingData buildingData)
+    {
+        if (buildingData == null)
+        {
+            return;
+        }
+
+        if (Culture.Level >= 8 && buildingData.type == Enums.BulidingType.Altar)
+        {
+            buildingData.AltarValue = 0.7f;
+        }
+
+        if (Culture.Level >= 9 &&
+            (buildingData.type == Enums.BulidingType.AttackStatue ||
+             buildingData.type == Enums.BulidingType.DefenseStatue))
+        {
+            ApplyUpgradedBuildingStats(buildingData);
+        }
+    }
+
+    private static void ApplyUpgradedUnitStats(CharacterData characterData)
+    {
+        characterData.unitData.BasicAttackValue = 30;
+        characterData.unitData.Defense = 10;
+        characterData.currentAttackValue = 30;
+        characterData.Defense = 10;
+    }
+
+    private static void ApplyUpgradedBuildingStats(BuildingData buildingData)
+    {
+        buildingData.hp = 40;
+        buildingData.currentHp = 40;
+    }
+
+    private static BuildingData GetBuildingData(GameObject building)
+    {
+        return building != null ? building.GetComponent<BuildingController>()?.buildingData : null;
     }
 }

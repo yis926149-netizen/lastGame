@@ -23,6 +23,7 @@ public class PlayerModelManager : MonoBehaviour
     //城市数量
     [HideInInspector]
     public int CityCount = 0;
+    private int _nextCityIndex;
 
     //科文建筑列表
     [HideInInspector]
@@ -53,6 +54,28 @@ public class PlayerModelManager : MonoBehaviour
     [HideInInspector]
     public Dictionary<Vector3, HexCellData> SphereOfInfluence_HexC_HexCellData = new Dictionary<Vector3, HexCellData>();
 
+    public int AllocateCityIndex()
+    {
+        return _nextCityIndex++;
+    }
+
+    public void RebuildSphereOfInfluence()
+    {
+        SphereOfInfluence_HexC_HexCellData.Clear();
+        foreach (var cityEntry in SingleCity_SphereOfInfluence_HexC_HexCellData)
+        {
+            var cityKey = new KeyValuePair<int, int>(0, cityEntry.Key);
+            foreach (var cellEntry in cityEntry.Value)
+            {
+                HexCellData cell = cellEntry.Value;
+                if (cell == null) continue;
+
+                SphereOfInfluence_HexC_HexCellData[cellEntry.Key] = cell;
+                cell.Player_City_Index = cityKey;
+            }
+        }
+    }
+
 
     /// <summary>
     /// 添加势力范围
@@ -60,27 +83,7 @@ public class PlayerModelManager : MonoBehaviour
     /// <param name="HexC">市中心或建筑的六边形坐标</param>
     public void ExpandTheSphereOfInfluence(Vector3 HexC, Dictionary<Vector3, HexCellData> d, KeyValuePair<int, int> player_city_index)
     {
-        //市中心和建筑
-        HexCellData hexCell = _mapDataService.GetCell(HexC);
-        if (!d.ContainsKey(hexCell.HexCoordinate))
-        {
-            d.Add(hexCell.HexCoordinate, hexCell);
-        }
-
-        //市中心和建筑的一环
-        List<HexCellData> neighbers = new List<HexCellData>();
-        for(int i = 0; i < 6; i++)
-        {
-            HexCellData neighber = _mapDataService.GetNeighbor(hexCell, (Enums.HexDirection)i);
-            if (neighber != null && !d.ContainsKey(neighber.HexCoordinate))
-            {
-                //若一环内有其他势力则不圈地
-                if(neighber.Player_City_Index.Key != -1 && neighber.Player_City_Index.Key != player_city_index.Key) { continue; }
-
-                d.Add(neighber.HexCoordinate, neighber);
-                neighber.Player_City_Index = player_city_index;
-            }
-        }
+        SphereOfInfluenceRules.Expand(_mapDataService, HexC, d, player_city_index);
     }
 
     /* 旧方法，现改为事件。保留以备后续可能需要
@@ -137,4 +140,32 @@ public class PlayerModelManager : MonoBehaviour
         MapController.CreatMesh(vertices.ToArray(), uv.ToArray(), drawOrder.ToArray(), Line, sphereOfInfluenceMat);
     }
     */
+}
+
+public static class SphereOfInfluenceRules
+{
+    public static void Expand(
+        IMapDataService mapDataService,
+        Vector3 centerCoordinate,
+        Dictionary<Vector3, HexCellData> sphere,
+        KeyValuePair<int, int> owner)
+    {
+        if (mapDataService == null || sphere == null) return;
+
+        HexCellData center = mapDataService.GetCell(centerCoordinate);
+        if (center == null) return;
+
+        sphere[center.HexCoordinate] = center;
+        center.Player_City_Index = owner;
+
+        for (int i = 0; i < 6; i++)
+        {
+            HexCellData neighbor = mapDataService.GetNeighbor(center, (Enums.HexDirection)i);
+            if (neighbor == null || sphere.ContainsKey(neighbor.HexCoordinate)) continue;
+            if (neighbor.Player_City_Index.Key != -1 && neighbor.Player_City_Index.Key != owner.Key) continue;
+
+            sphere[neighbor.HexCoordinate] = neighbor;
+            neighbor.Player_City_Index = owner;
+        }
+    }
 }

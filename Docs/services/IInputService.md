@@ -3,7 +3,6 @@
 
 ### IInputService.md
 
-```markdown
 # IInputService
 
 ## 职责描述
@@ -46,3 +45,4 @@ public class PlayerInputHandler
         }
     }
 }
+```

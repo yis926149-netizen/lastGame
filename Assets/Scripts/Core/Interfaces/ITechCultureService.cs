@@ -9,8 +9,10 @@ public interface ITechCultureService
     event Action OnTechPointsChanged;
     event Action OnCulturePointsChanged;
 
-    /// <summary> ´¥·¢¿Æ¼¼/ÎÄ»¯½ø¶ÈÌõµÄ²¥·Å¶¯»­ </summary>
+    /// <summary> ï¿½ï¿½ï¿½ï¿½ï¿½Æ¼ï¿½/ï¿½Ä»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä²ï¿½ï¿½Å¶ï¿½ï¿½ï¿½ </summary>
     void TriggerProgressAnimation();
 
     void AddPointsPerTurn();
+    void AddTechPointsPerTurn(float points);
+    void AddCulturePointsPerTurn(float points);
 }

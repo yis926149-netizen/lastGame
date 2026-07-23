@@ -25,8 +25,10 @@ Shader "Custom/RealMaterialMaskBlend"
         LOD 200
 
         CGPROGRAM
-        #pragma surface surf Standard fullforwardshadows
+        #pragma surface surf Standard fullforwardshadows vertex:vert addshadow finalcolor:fogFinal
         #pragma target 3.0
+
+        #include "FogBlend.cginc"
 
         // 材质 A 纹理与属性
         sampler2D _MainTexA;
@@ -50,10 +52,24 @@ Shader "Custom/RealMaterialMaskBlend"
             float2 uv_MainTexA;
             float2 uv_MainTexB;
             float2 uv_MaskTex;
+            float2 fogCoord;   // 迷雾整图归一化 UV（不能叫 uv_FogTex，见 TerrainBase_Fog 注释）
+            float  vertexColor_R;
+            float  vertexColor_G;  // 顶点色 .g = 当前视野(0/1)，记忆区压暗用
         };
+
+        void vert(inout appdata_full v, out Input o)
+        {
+            UNITY_INITIALIZE_OUTPUT(Input, o);
+            o.vertexColor_R = v.color.r;
+            o.vertexColor_G = v.color.g;
+            FogBlend_vert(v.vertex, o.fogCoord);
+        }
 
         void surf (Input IN, inout SurfaceOutputStandard o)
         {
+            // 未探索地块不投射阴影（仅在 shadow caster pass 中 clip）
+            FogBlend_shadowClip(IN.vertexColor_R);
+
             // 1. 计算混合权重（保留对比度增强逻辑）
             half mask = tex2D(_MaskTex, IN.uv_MaskTex).r;
             mask = pow(mask, _BlendContrast);
@@ -82,6 +98,17 @@ Shader "Custom/RealMaterialMaskBlend"
             // 5. 弱化环境反射（土地不需要强环境反射，此处直接移除复杂逻辑）
             o.Emission = 0; // 无自发光
             o.Alpha = lerp(albedoB.a, albedoA.a, blendWeight);
+
+            // 6. 迷雾混合
+            o.Albedo = FogBlend_surf(IN.fogCoord, IN.vertexColor_R, o.Albedo, o.Emission);
+            o.Smoothness = FogBlend_alpha(IN.vertexColor_R, o.Smoothness);
+            o.Metallic = FogBlend_alpha(IN.vertexColor_R, o.Metallic);
+        }
+
+        // 未探索片元最终颜色 = 纯迷雾自发光，消除面片交界的光照接缝
+        void fogFinal(Input IN, SurfaceOutputStandard o, inout fixed4 color)
+        {
+            FogBlend_final(IN.vertexColor_R, IN.vertexColor_G, o.Emission, color, IN.fogCoord);
         }
         ENDCG
     }

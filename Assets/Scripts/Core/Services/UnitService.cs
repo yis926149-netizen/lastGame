@@ -7,7 +7,7 @@ using Zenject;
 
 public class UnitService : IUnitService
 {
-    [Inject] private IUnitRepository _unitRepository;  // ×¢Èë²Ö¿â
+    [Inject] private IUnitRepository _unitRepository;  // ×¢ï¿½ï¿½Ö¿ï¿½
     [Inject] private EnemyModelManager _enemyModelManager;
 
     public List<CharacterData> GetAllPlayerUnits()
@@ -35,7 +35,7 @@ public class UnitService : IUnitService
         _unitRepository.RemoveEnemyUnit(unit);
     }
 
-    // ÒÔÏÂ·½·¨ÓëµÐ·½ÊÆÁ¦·¶Î§¡¢³ÇÊÐ¼ÆÊýÏà¹Ø£¬ÈÔÊ¹ÓÃ EnemyModelManager
+    // ï¿½ï¿½ï¿½Â·ï¿½ï¿½ï¿½ï¿½ï¿½Ð·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î§ï¿½ï¿½ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½ï¿½ï¿½ï¿½Ø£ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ EnemyModelManager
     public int GetAICityCount(int aiIndex) =>
         _enemyModelManager.CityCount.ContainsKey(aiIndex) ? _enemyModelManager.CityCount[aiIndex] : 0;
 
@@ -60,5 +60,76 @@ public class UnitService : IUnitService
         var dict = _enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData[aiIndex];
         if (!dict.ContainsKey(hexCoord))
             dict[hexCoord] = cell;
+    }
+}
+
+public class UnitRemovalService
+{
+    private readonly IMapDataService _mapDataService;
+    private readonly IUnitRepository _unitRepository;
+    private readonly UnitMovementSystem _movementSystem;
+    private readonly HashSet<GameObject> _removedUnits = new HashSet<GameObject>();
+
+    public UnitRemovalService(
+        IMapDataService mapDataService,
+        IUnitRepository unitRepository,
+        UnitMovementSystem movementSystem)
+    {
+        _mapDataService = mapDataService;
+        _unitRepository = unitRepository;
+        _movementSystem = movementSystem;
+    }
+
+    public bool RemoveUnit(GameObject unit)
+    {
+        if (!DeactivateUnit(unit)) return false;
+
+        DestroyDeactivatedUnit(unit);
+        return true;
+    }
+
+    public bool DeactivateUnit(GameObject unit)
+    {
+        if (unit == null || !_removedUnits.Add(unit)) return false;
+
+        UnitMovementController controller = unit.GetComponent<UnitMovementController>();
+        if (controller != null)
+        {
+            _movementSystem.CancelMove(controller);
+        }
+
+        HexCellData occupiedCell = _mapDataService.GetCellByWorldPosition(unit.transform.position);
+        if (occupiedCell == null || occupiedCell.GetUnit() != unit)
+        {
+            occupiedCell = _mapDataService.GetAllCells()?.FirstOrDefault(cell => cell.GetUnit() == unit);
+        }
+
+        if (occupiedCell != null && occupiedCell.GetUnit() == unit)
+        {
+            occupiedCell.SetHaveUnit(false, null);
+        }
+
+        if (controller != null)
+        {
+            controller.PrepareForRemoval();
+        }
+
+        if (_unitRepository.TryGetPlayerUnit(unit, out _))
+        {
+            _unitRepository.RemovePlayerUnit(unit);
+        }
+        if (_unitRepository.TryGetEnemyUnit(unit, out _))
+        {
+            _unitRepository.RemoveEnemyUnit(unit);
+        }
+
+        return true;
+    }
+
+    public void DestroyDeactivatedUnit(GameObject unit)
+    {
+        if (unit == null) return;
+        unit.SetActive(false);
+        Object.Destroy(unit);
     }
 }

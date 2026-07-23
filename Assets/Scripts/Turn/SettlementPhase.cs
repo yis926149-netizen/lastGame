@@ -24,16 +24,21 @@ public class SettlementPhase : MonoBehaviour, IPhase
 
         //每回合自动回血：农田地貌
         List<GameObject> keysToRemove = new List<GameObject>();
-        foreach (CharacterData c in _unitRepository.AllPlayerUnits.Values)
+        foreach (var unit in _unitRepository.AllPlayerUnits)
         {
+            CharacterData c = unit.Value;
             //农田地貌
             //位置判断
-            if (c.model == null)
+            if (c == null || c.model == null)
             {
-                keysToRemove.Add(c.model);
+                keysToRemove.Add(unit.Key);
                 continue;
             }
             HexCellData h = _mapDataService.GetCellByWorldPosition(c.model.transform.position);
+            if (h == null)
+            {
+                continue;
+            }
             if (h.landFormType != Enums.LandFormType.FromLand)
             {
                 c.LandFormType_FromLand = 0;
@@ -43,10 +48,7 @@ public class SettlementPhase : MonoBehaviour, IPhase
             { 
                 c.LandFormType_FromLand = 0.1f; 
             }
-            //数据更新
-            c.currentHp += c.LandFormType_FromLand * c.unitData.hp;
-            //UI更新
-            c.healthBar.value += c.LandFormType_FromLand;
+            c.Heal(c.LandFormType_FromLand * c.unitData.hp);
         }
 
         if(keysToRemove.Count > 0)
@@ -60,16 +62,20 @@ public class SettlementPhase : MonoBehaviour, IPhase
         //每回合自动回血：回血阵  
         foreach (CharacterData c in _unitRepository.AllPlayerUnits.Values)
         {
+            if (c == null || c.model == null) continue;
+
             HexCellData h = _mapDataService.GetCellByWorldPosition(c.model.transform.position);
+            if (h == null) continue;
+
             //回血阵建筑         
-            if (h.BulidingTypeOnHex_Building.Key == Enums.BulidingType.Altar)
+            GameObject altar = h.BulidingTypeOnHex_Building.Value;
+            if (h.BulidingTypeOnHex_Building.Key == Enums.BulidingType.Altar &&
+                altar != null &&
+                altar.TryGetComponent<BuildingController>(out var controller) &&
+                controller.buildingData != null)
             {
-                //数据更新
-                //float f = h.BulidingTypeOnHex_Building.Value.GetComponent<BuildingData>().AltarValue;
-                float f = h.BulidingTypeOnHex_Building.Value.GetComponent<BuildingController>().buildingData.AltarValue;
-                c.currentHp += f * c.unitData.hp;
-                //UI更新
-                c.healthBar.value += f;
+                float f = controller.buildingData.AltarValue;
+                c.Heal(f * c.unitData.hp);
             }
         }
 

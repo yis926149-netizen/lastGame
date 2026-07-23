@@ -1,34 +1,46 @@
 using UnityEngine;
 using Zenject;
 
-public class UIManagerPresenter : IInitializable
+public class UIManagerPresenter : IInitializable, System.IDisposable
 {
     [Inject] private IUIManagerView _view;
     [Inject] private ITechCultureService _techCultureService;
-    [Inject] private IGameStateMachine _gameStateMachine;   // ¿ÉÓÃÓÚ¼àÌý»ØºÏ±ä»¯
+    [Inject] private IGameStateMachine _gameStateMachine;   // ï¿½ï¿½ï¿½ï¿½ï¿½Ú¼ï¿½ï¿½ï¿½ï¿½ØºÏ±ä»¯
+    [Inject] private IUnitRepository _unitRepository;
 
-    // µ±Ç°Ñ¡ÖÐµÄµ¥Î»£¨¹©ÆäËûÀà·ÃÎÊ£©
+    // ï¿½ï¿½Ç°Ñ¡ï¿½ÐµÄµï¿½Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê£ï¿½
     public GameObject CurrentSelectedUnit { get; private set; }
-    // ±êÖ¾Î»£¬ÓÃÓÚ¿ØÖÆÐÅÏ¢Ãæ°åÊÇ·ñÐèÒªË¢ÐÂ
+    // ï¿½ï¿½Ö¾Î»ï¿½ï¿½ï¿½ï¿½ï¿½Ú¿ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½ÒªË¢ï¿½ï¿½
     public bool IsPanelInfoSwitched { get; private set; }
 
     public void Initialize()
     {
-        // ³õÊ¼»¯ UI ÊýÖµ
+        // ï¿½ï¿½Ê¼ï¿½ï¿½ UI ï¿½ï¿½Öµ
         UpdateTechCultureUI();
 
-        // ¶©ÔÄ¿Æ¼¼ÎÄ»¯Öµ±ä»¯ÊÂ¼þ
+        // ï¿½ï¿½ï¿½Ä¿Æ¼ï¿½ï¿½Ä»ï¿½Öµï¿½ä»¯ï¿½Â¼ï¿½
         if (_techCultureService != null)
         {
             _techCultureService.OnTechPointsChanged += UpdateTechPoints;
             _techCultureService.OnCulturePointsChanged += UpdateCulturePoints;
         }
 
-        // ¿ÉÒÔ¶©ÔÄ»ØºÏ½×¶Î±ä»¯£¨Èç¹ûÐèÒªÏÔÊ¾µ±Ç°½×¶Î£©
-        // ÀýÈç _gameStateMachine.OnPhaseChanged += OnPhaseChanged;
+        _unitRepository.OnPlayerUnitRemoved += OnUnitRemoved;
+        _unitRepository.OnEnemyUnitRemoved += OnUnitRemoved;
+
+        // ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½Ä»ØºÏ½×¶Î±ä»¯ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½Ê¾ï¿½ï¿½Ç°ï¿½×¶Î£ï¿½
+        // ï¿½ï¿½ï¿½ï¿½ _gameStateMachine.OnPhaseChanged += OnPhaseChanged;
     }
 
-    // ÓÉÍâ²¿£¨Èç PlayerInputHandler£©µ÷ÓÃ£¬µ±Ñ¡ÖÐµ¥Î»Ê±
+    private void OnUnitRemoved(GameObject unit)
+    {
+        if (CurrentSelectedUnit == unit)
+        {
+            DeselectUnit();
+        }
+    }
+
+    // ï¿½ï¿½ï¿½â²¿ï¿½ï¿½ï¿½ï¿½ PlayerInputHandlerï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½Ñ¡ï¿½Ðµï¿½Î»Ê±
     public void SelectUnit(GameObject unit)
     {
         if (CurrentSelectedUnit == unit) return;
@@ -44,7 +56,7 @@ public class UIManagerPresenter : IInitializable
         }
     }
 
-    // È¡ÏûÑ¡ÖÐµ¥Î»
+    // È¡ï¿½ï¿½Ñ¡ï¿½Ðµï¿½Î»
     public void DeselectUnit()
     {
         CurrentSelectedUnit = null;
@@ -52,7 +64,7 @@ public class UIManagerPresenter : IInitializable
         _view.HideUnitInfoPanel();
     }
 
-    // ¸üÐÂÕû¸ö¿Æ¼¼ÎÄ»¯ UI
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ¼ï¿½ï¿½Ä»ï¿½ UI
     private void UpdateTechCultureUI()
     {
         if (_techCultureService != null)
@@ -72,13 +84,26 @@ public class UIManagerPresenter : IInitializable
         _view.SetCulturePoints((int)_techCultureService.CulturePoints);
     }
 
-    // ¿ÉÑ¡£º»ØºÏ½áÊøÊ±µÄ UI ·´À¡
+    // ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ØºÏ½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ UI ï¿½ï¿½ï¿½ï¿½
     public void OnTurnEnded()
     {
-        // ÀýÈç²¥·Å¶¯»­µÈ
+        // ï¿½ï¿½ï¿½ç²¥ï¿½Å¶ï¿½ï¿½ï¿½ï¿½ï¿½
     }
 
-    // ÈôÐèÒªÊÍ·ÅÊÂ¼þ¶©ÔÄ£¬¿ÉÊµÏÖ IDisposable£¨´Ë´¦ÔÝ²»ÊµÏÖ£©
+    public void Dispose()
+    {
+        if (_techCultureService != null)
+        {
+            _techCultureService.OnTechPointsChanged -= UpdateTechPoints;
+            _techCultureService.OnCulturePointsChanged -= UpdateCulturePoints;
+        }
+
+        if (_unitRepository != null)
+        {
+            _unitRepository.OnPlayerUnitRemoved -= OnUnitRemoved;
+            _unitRepository.OnEnemyUnitRemoved -= OnUnitRemoved;
+        }
+    }
 
     public void RefreshCurrentUnitInfo()
     {
@@ -86,7 +111,7 @@ public class UIManagerPresenter : IInitializable
         {
             var data = CurrentSelectedUnit.GetComponent<UnitMovementController>()?.characterData;
             if (data != null)
-                _view.RefreshUnitInfoPanel(data);   // ½öË¢ÐÂÊýÖµ²¿·Ö
+                _view.RefreshUnitInfoPanel(data);   // ï¿½ï¿½Ë¢ï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½
         }
     }
 }

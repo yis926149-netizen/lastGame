@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using Zenject;
@@ -11,156 +12,145 @@ public class GameInstaller : MonoInstaller
     [SerializeField] private TechTreeIconsSO _techTreeIconsSO;
     [SerializeField] private MapGenerationConfigSO _mapGenerationConfigSO;
     [SerializeField] private MapVisualEventSO _mapVisualEventSO;
-    [SerializeField] private EventSystem _eventSystem; // ÍÏÈë³¡¾°ÖĞµÄ EventSystem
-    [SerializeField] private Camera _mainCamera;       // Ö÷ÉãÏñ»ú
-    [SerializeField] private UIManager _uiManager; // ÍÏÈë³¡¾°ÖĞµÄ UIManager
-    [SerializeField] private Canvas _targetUICanvas; // ÍÏÈëÓÃÓÚÕÚµ²¼ì²âµÄ Canvas
-    [SerializeField] private AudioManager audioManagerPrefabOrInstance;
+    [SerializeField] private EventSystem _eventSystem; // ï¿½ï¿½ï¿½ë³¡ï¿½ï¿½ï¿½Ğµï¿½ EventSystem
+    [SerializeField] private Camera _mainCamera;       // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    [SerializeField] private UIManager _uiManager; // ï¿½ï¿½ï¿½ë³¡ï¿½ï¿½ï¿½Ğµï¿½ UIManager
+    [SerializeField] private Canvas _targetUICanvas; // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Úµï¿½ï¿½ï¿½ï¿½ï¿½ Canvas
     public override void InstallBindings()
     {
-        // µ¥Î»
-        if (_unitDatabaseSO == null)
-        {
-            Debug.LogError("GameInstallerÖĞÎ´¸³ÖµUnitDatabaseSO£¡ÇëÔÚInspectorÃæ°åÍÏÈë¶ÔÓ¦µÄSOÎÄ¼ş");
-            return;
-        }
+        ValidateRequiredReferences();
+        EnableMapVisualComponents();
+
+        // ï¿½ï¿½Î»
 
         Container.Bind<UnitDatabaseSO>().FromInstance(_unitDatabaseSO).AsSingle();
 
         Container.Bind<IUnitDataProvider>().To<UnitDataProvider>().AsSingle();
 
-        // ½¨Öş
-        if (_buildingDatabaseSO == null)
-        {
-            Debug.LogError("GameInstallerÖĞÎ´¸³ÖµBuildingDatabaseSO£¡ÇëÔÚInspectorÃæ°åÍÏÈë¶ÔÓ¦µÄSOÎÄ¼ş");
-            return;
-        }
+        // ï¿½ï¿½ï¿½ï¿½
 
         Container.Bind<BuildingDatabaseSO>().FromInstance(_buildingDatabaseSO).AsSingle();
 
         Container.Bind<IBuildingDataProvider>().To<BuildingDataProvider>().AsSingle();
 
         // UI
-        if (_uiConfigSO == null)
-        {
-            Debug.LogError("GameInstallerÖĞÎ´¸³ÖµUIConfigSO£¡ÇëÔÚInspectorÃæ°åÍÏÈë¶ÔÓ¦µÄSOÎÄ¼ş");
-            return;
-        }
 
         Container.Bind<UIConfigSO>().FromInstance(_uiConfigSO).AsSingle();
 
         Container.Bind<IUIConfigProvider>().To<UIConfigProvider>().AsSingle();
         Container.Bind<ICardUnlockRuleProvider>().To<CardUnlockRuleProvider>().AsSingle();
 
-        // µØ¿é×ÊÔ´¡¢µØÃ²
-        if (_environmentModelsSO == null)
-        {
-            Debug.LogError("GameInstallerÖĞÎ´¸³ÖµEnvironmentModelsSO£¡ÇëÔÚInspectorÃæ°åÍÏÈë¶ÔÓ¦µÄSOÎÄ¼ş");
-            return;
-        }
+        // ï¿½Ø¿ï¿½ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ï¿½Ã²
 
         Container.Bind<EnvironmentModelsSO>().FromInstance(_environmentModelsSO).AsSingle();
 
         Container.Bind<IEnvironmentModelsProvider>().To<EnvironmentModelsProvider>().AsSingle();
 
-        //¿Æ¼¼Ê÷
-        if (_techTreeIconsSO == null)
-        {
-            Debug.LogError("GameInstallerÖĞÎ´¸³ÖµTechTreeIconsSO£¡ÇëÔÚInspectorÃæ°åÍÏÈë¶ÔÓ¦µÄSOÎÄ¼ş");
-            return;
-        }
+        //ï¿½Æ¼ï¿½ï¿½ï¿½
 
         Container.Bind<TechTreeIconsSO>().FromInstance(_techTreeIconsSO).AsSingle();
 
         Container.Bind<ITechTreeIconsProvider>().To<TechTreeIconsProvider>().AsSingle();
 
-        //µØÍ¼µØ¿é·şÎñÀà
+        //ï¿½ï¿½Í¼ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         Container.Bind<IMapDataService>()
                  .To<HexMapService>()
                  .AsSingle();
 
-        // µØÍ¼ÅäÖÃ
-        if (_mapGenerationConfigSO == null)
-        {
-            Debug.LogError("GameInstallerÖĞÎ´¸³ÖµMapGenerationConfigSO£¡ÇëÔÚInspectorÃæ°åÍÏÈë¶ÔÓ¦µÄSOÎÄ¼ş");
-            return;
-        }
+        // ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½
         Container.Bind<MapGenerationConfigSO>()
                  .FromInstance(_mapGenerationConfigSO)
                  .AsSingle();
 
-        // °ó¶¨µØÍ¼Éú³ÉÆ÷
+        // ï¿½ó¶¨µï¿½Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         Container.Bind<MapGenerator>()
                  .FromComponentInHierarchy()
                  .AsSingle();
 
-        // °ó¶¨µØÍ¼äÖÈ¾Æ÷
+        // ï¿½ó¶¨µï¿½Í¼ï¿½ï¿½È¾ï¿½ï¿½
         Container.Bind<MapRenderer>()
                  .FromComponentInHierarchy()
                  .AsSingle();
 
-        // °ó¶¨Íø¸ñÉú³É·şÎñ
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É·ï¿½ï¿½ï¿½
         Container.Bind<IMeshGenerator>().To<MeshGeneratorService>().AsSingle();
 
-        //µØÍ¼ÊÂ¼ş
+        // ä¸‰æ€è®°å¿†è¿·é›¾ - è§†é‡è®¡ç®—æœåŠ¡
+        Container.Bind<FieldOfViewService>().AsSingle();
+
+        // AI é€»è¾‘è¿·é›¾æœåŠ¡ï¼ˆä»…é€»è¾‘ï¼Œä¸æ¸²æŸ“ï¼‰
+        Container.Bind<AIFogService>().AsSingle();
+
+        //ï¿½ï¿½Í¼ï¿½Â¼ï¿½
         Container.BindInstance(_mapVisualEventSO).AsSingle();
 
-        //ÊÆÁ¦·¶Î§Ïà¹Ø
+        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î§ï¿½ï¿½ï¿½
         Container.Bind<PlayerModelManager>().FromComponentInHierarchy().AsSingle();
         Container.Bind<EnemyModelManager>().FromComponentInHierarchy().AsSingle();
+        Container.Bind<SphereOfInfluenceRenderer>()
+                 .FromNewComponentOnNewGameObject()
+                 .AsSingle()
+                 .NonLazy();
 
-        // »ØºÏ×´Ì¬»úµÄ½×¶ÎÓëAI
+        // ï¿½Øºï¿½×´Ì¬ï¿½ï¿½ï¿½Ä½×¶ï¿½ï¿½ï¿½AI
         Container.Bind<PlayerPhase>().FromComponentInHierarchy().AsSingle();
         Container.Bind<SettlementPhase>().FromComponentInHierarchy().AsSingle();
-        Container.Bind<IAIManager>().FromComponentInHierarchy().AsSingle();
-        Container.Bind<AIPhase>().AsSingle();
+        // AI ç®¡ç†å™¨ï¼šåŒæ—¶ç»‘å®šå…·ä½“ç±» AIManager ä¸æ¥å£ IAIManager åˆ°åŒä¸€åœºæ™¯ç»„ä»¶ã€‚
+        // GameFlowManager ä¾èµ–æ¥å£ï¼›AIPhase ä¾èµ–å…·ä½“ç±»ï¼ˆéœ€ MonoBehaviour.StartCoroutine ä½œåç¨‹å®¿ä¸»ï¼‰ã€‚
+        Container.BindInterfacesAndSelfTo<AIManager>().FromComponentInHierarchy().AsSingle();
 
-        // °ó¶¨ÓÎÏ·×´Ì¬»ú£¨ÊµÏÖIInitiable£©£¬ÒÔ±ã´´½¨ºÍ³õÊ¼»¯
+        // AI æ‹†åˆ†åçš„åä½œæœåŠ¡ï¼ˆTier 1ï¼‰ã€‚AIPlayerState ä½œä¸ºå…±äº«çŠ¶æ€å•ä¾‹ï¼Œä¾›å„ AI æœåŠ¡å…±ç”¨ã€‚
+        Container.Bind<AIPlayerState>().AsSingle();
+        Container.Bind<AIRandomProvider>().AsSingle();
+        Container.Bind<AITechCultureProgress>().AsSingle();
+        Container.Bind<AIEntityFactory>().AsSingle();
+        Container.Bind<AICardBrain>().AsSingle();
+        Container.Bind<AITacticalBrain>().AsSingle();
+
+        Container.Bind<AIPhase>().AsSingle();
+        Container.BindInterfacesAndSelfTo<GameFlowManager>()
+                 .FromComponentInHierarchy()
+                 .AsSingle();
+
+        // ï¿½ï¿½ï¿½ï¿½Ï·×´Ì¬ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½IInitiableï¿½ï¿½ï¿½ï¿½ï¿½Ô±ã´´ï¿½ï¿½ï¿½Í³ï¿½Ê¼ï¿½ï¿½
         Container.BindInterfacesAndSelfTo<GameStateMachine>().AsSingle().NonLazy();
         Container.Bind<IUnitService>().To<UnitService>().AsSingle();
+        Container.Bind<UnitRemovalService>().AsSingle();
 
-        // concrete class ×¢ÈëºÍ ITickable ×¢²á
+        // concrete class ×¢ï¿½ï¿½ï¿½ ITickable ×¢ï¿½ï¿½
         Container.BindInterfacesAndSelfTo<UnitMovementSystem>().AsSingle();
 
-        // ÊäÈë·şÎñ
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         Container.Bind<IInputService>()
                  .To<InputService>()
                  .AsSingle()
                  .WithArguments(_eventSystem, _mainCamera);
 
-        // ÉãÏñ»ú¿ØÖÆÆ÷
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         Container.BindInterfacesAndSelfTo<CameraController>()
          .FromComponentInHierarchy()
          .AsSingle();
 
-        // Íæ¼ÒÊäÈë´¦ÀíÆ÷£¨ITickable ½«Ã¿Ö¡±»µ÷ÓÃ£©
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ë´¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ITickable ï¿½ï¿½Ã¿Ö¡ï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½
         Container.BindInterfacesAndSelfTo<PlayerInputHandler>().AsSingle();
 
-        // °ó¶¨ UIManager
-        if (_uiManager == null)
-        {
-            Debug.LogError("GameInstallerÖĞÎ´¸³ÖµUIManager£¡");
-        }
+        // ï¿½ï¿½ UIManager
         Container.Bind<UIManager>().FromInstance(_uiManager).AsSingle();
 
-        // °ó¶¨´ø ID µÄ Canvas (PlayerInputHandler ¹¹Ôìº¯ÊıÀïÒªÇóµÄ)
-        if (_targetUICanvas == null)
-        {
-            Debug.LogError("GameInstallerÖĞÎ´¸³ÖµTargetUICanvas£¡");
-        }
+        // ï¿½ó¶¨´ï¿½ ID ï¿½ï¿½ Canvas (PlayerInputHandler ï¿½ï¿½ï¿½ìº¯ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½)
         Container.Bind<Canvas>()
                  .WithId("TargetUICanvas")
                  .FromInstance(_targetUICanvas)
                  .AsSingle();
 
-        //¿¨ÅÆ
+        //ï¿½ï¿½ï¿½ï¿½
         Container.BindInterfacesAndSelfTo<CardService>().AsSingle();
         Container.BindInterfacesAndSelfTo<CardPresenter>().AsSingle().NonLazy();
 
-        // ¿Æ¼¼ÎÄ»¯·şÎñ£¨°ó¶¨µ½³¡¾°ÖĞµÄ Tech_CultureTreeController£©
+        // ï¿½Æ¼ï¿½ï¿½Ä»ï¿½ï¿½ï¿½ï¿½ñ£¨°ó¶¨µï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ğµï¿½ Tech_CultureTreeControllerï¿½ï¿½
         Container.BindInterfacesAndSelfTo<Tech_CultureTreeController>().FromComponentInHierarchy().AsSingle();
 
-        // UIManager ÊÓÍ¼ ¡ª¡ª Ö±½Ó½âÎöÒÑÓĞµÄ UIManager ÊµÀı
+        // UIManager ï¿½ï¿½Í¼ ï¿½ï¿½ï¿½ï¿½ Ö±ï¿½Ó½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ğµï¿½ UIManager Êµï¿½ï¿½
         Container.Bind<IUIManagerView>().To<UIManager>().FromResolve();
         
         // UIManager Presenter
@@ -168,40 +158,87 @@ public class GameInstaller : MonoInstaller
 
         Container.Bind<IUnitRepository>().To<UnitRepository>().AsSingle();
 
-        // °ó¶¨ EndGame
-        if (FindObjectOfType<EndGame>() != null)
+        // ï¿½ï¿½ EndGame
+        Container.Bind<EndGame>().FromComponentInHierarchy().AsSingle();
+
+        // ï¿½ï¿½ TechData ï¿½ï¿½ CultureData
+        Container.Bind<TechData>().FromComponentInHierarchy().AsSingle();
+
+        Container.Bind<CultureData>().FromComponentInHierarchy().AsSingle();
+
+        Container.BindInitializableExecutionOrder<GameFlowManager>(-30);
+        Container.BindInitializableExecutionOrder<CardPresenter>(-20);
+        Container.BindInitializableExecutionOrder<UIManagerPresenter>(-10);
+        Container.BindInitializableExecutionOrder<GameStateMachine>(0);
+    }
+
+    private void ValidateRequiredReferences()
+    {
+        var missing = new List<string>();
+
+        AddMissing(missing, _unitDatabaseSO, nameof(_unitDatabaseSO));
+        AddMissing(missing, _buildingDatabaseSO, nameof(_buildingDatabaseSO));
+        AddMissing(missing, _uiConfigSO, nameof(_uiConfigSO));
+        AddMissing(missing, _environmentModelsSO, nameof(_environmentModelsSO));
+        AddMissing(missing, _techTreeIconsSO, nameof(_techTreeIconsSO));
+        AddMissing(missing, _mapGenerationConfigSO, nameof(_mapGenerationConfigSO));
+        AddMissing(missing, _mapVisualEventSO, nameof(_mapVisualEventSO));
+        AddMissing(missing, _eventSystem, nameof(_eventSystem));
+        AddMissing(missing, _mainCamera, nameof(_mainCamera));
+        AddMissing(missing, _uiManager, nameof(_uiManager));
+        AddMissing(missing, _targetUICanvas, nameof(_targetUICanvas));
+
+        AddMissingInScene<MapGenerator>(missing);
+        AddMissingInScene<MapRenderer>(missing);
+        AddMissingInScene<PlayerModelManager>(missing);
+        AddMissingInScene<EnemyModelManager>(missing);
+        AddMissingInScene<PlayerPhase>(missing);
+        AddMissingInScene<SettlementPhase>(missing);
+        AddMissingInScene<AIManager>(missing);
+        AddMissingInScene<GameFlowManager>(missing);
+        AddMissingInScene<CameraController>(missing);
+        AddMissingInScene<Tech_CultureTreeController>(missing);
+        AddMissingInScene<EndGame>(missing);
+        AddMissingInScene<TechData>(missing);
+        AddMissingInScene<CultureData>(missing);
+
+        if (missing.Count > 0)
         {
-            Container.Bind<EndGame>().FromComponentInHierarchy().AsSingle();
+            throw new ZenjectException(
+                "GameInstaller configuration is incomplete. Missing required references: " +
+                string.Join(", ", missing));
         }
-        else
+    }
+
+    private static void AddMissing(List<string> missing, Object value, string name)
+    {
+        if (value == null)
         {
-            Debug.LogWarning("³¡¾°ÖĞÃ»ÓĞÕÒµ½ EndGame ×é¼ş");
+            missing.Add(name);
+        }
+    }
+
+    private void EnableMapVisualComponents()
+    {
+        foreach (GameObject root in gameObject.scene.GetRootGameObjects())
+        {
+            foreach (FogManager fogManager in root.GetComponentsInChildren<FogManager>(true))
+            {
+                fogManager.enabled = true;
+            }
+        }
+    }
+
+    private void AddMissingInScene<T>(List<string> missing) where T : Object
+    {
+        foreach (GameObject root in gameObject.scene.GetRootGameObjects())
+        {
+            if (root.GetComponentInChildren<T>(true) != null)
+            {
+                return;
+            }
         }
 
-        // °ó¶¨ TechData ºÍ CultureData
-        if (FindObjectOfType<TechData>() != null)
-        {
-            Container.Bind<TechData>().FromComponentInHierarchy().AsSingle();
-        }
-        else
-        {
-            Debug.LogWarning("³¡¾°ÖĞÃ»ÓĞÕÒµ½ TechData ×é¼ş");
-        }
-
-        if (FindObjectOfType<CultureData>() != null)
-        {
-            Container.Bind<CultureData>().FromComponentInHierarchy().AsSingle();
-        }
-        else
-        {
-            Debug.LogWarning("³¡¾°ÖĞÃ»ÓĞÕÒµ½ CultureData ×é¼ş");
-        }
-
-
-        Container.Bind<AudioManager>()
-         .FromComponentOn(audioManagerPrefabOrInstance.gameObject)
-         .AsSingle()
-         .NonLazy();
-
+        missing.Add(typeof(T).Name);
     }
 }

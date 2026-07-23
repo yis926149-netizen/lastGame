@@ -195,12 +195,7 @@ public class openController : StartSceneUIController
         //开启动画
         OpenAni();
 
-        //额外按钮事件
-        //游戏选项按钮_切换界面事件_
-        firstButG[2].transform.GetComponent<UIControl>().AddButtonClickEvent(firstButG[2].transform.GetComponent<UIControl>().ToGameOptionsInterface);
-
-        //进入游戏
-        secButG[4].transform.GetComponent<UIControl>().AddButtonClickEvent(secButG[4].transform.GetComponent<UIControl>().ToGameScene);
+        ConfigureImplementedCommands();
 
         Debug.Log("次级按钮的数量是：" + secButG.Count);
         //所有次级按钮事件
@@ -216,31 +211,54 @@ public class openController : StartSceneUIController
 
     }
 
+    private void ConfigureImplementedCommands()
+    {
+        if (firstButG.Count <= 7 || secButG.Count <= 4)
+        {
+            Debug.LogError($"[openController] 菜单配置不足：需要至少 8 个一级按钮和 5 个次级按钮，实际为 {firstButG.Count}/{secButG.Count}。", this);
+            return;
+        }
+
+        firstButG[2].GetComponent<UIControl>().AddButtonClickEvent(firstButG[2].GetComponent<UIControl>().ToGameOptionsInterface);
+        secButG[4].GetComponent<UIControl>().AddButtonClickEvent(secButG[4].GetComponent<UIControl>().ToGameScene);
+        firstButG[7].GetComponent<UIControl>().AddButtonClickEvent(firstButG[7].GetComponent<UIControl>().QuitGame);
+    }
+
 
 
     //开场动画
     private void OpenAni()
     {
-        //开场动画播放期间禁用整块菜单交互，动画结束（OpenOptionAni 收尾）后再恢复
-        //用 blocksRaycasts 而非 interactable：interactable=false 会让子按钮进入 Disabled 视觉态（默认灰化变暗），
-        //blocksRaycasts=false 只是让射线穿过、按钮收不到点击，按钮外观保持正常
+        fbgIndex = 0;
         if (!TryGetComponent(out _canvasGroup))
         {
             _canvasGroup = gameObject.AddComponent<CanvasGroup>();
         }
         _canvasGroup.blocksRaycasts = false;
 
-        //左侧栏到动画开始的位置
+        CancelInvoke(nameof(ForceEnableInteraction));
+        Invoke(nameof(ForceEnableInteraction), 3f);
+
         lSideBar.transform.localPosition += new Vector3(0, 650, 0);
-        //首级按钮到动画开始的位置,并失活
         foreach (GameObject fbg in firstButG)
         {
             fbg.transform.localPosition += new Vector3(-220, 0, 0);
             fbg.SetActive(false);
         }
-        //首级按钮的左边缘动画
         lSideBar.transform.DOMove(lSideBar.transform.position - new Vector3(0, 650, 0), 0.5f).OnComplete(OpenOptionAni);
 
+    }
+
+    private void ForceEnableInteraction()
+    {
+        if (_canvasGroup != null && _canvasGroup.blocksRaycasts)
+        {
+            return;
+        }
+        if (_canvasGroup != null)
+        {
+            _canvasGroup.blocksRaycasts = true;
+        }
     }
 
     //首级按钮的开场动画
@@ -249,7 +267,7 @@ public class openController : StartSceneUIController
     {
         if (fbgIndex >= firstButG.Count)
         {
-            //开场动画全部结束，恢复菜单交互
+            CancelInvoke(nameof(ForceEnableInteraction));
             if (_canvasGroup != null)
             {
                 _canvasGroup.blocksRaycasts = true;

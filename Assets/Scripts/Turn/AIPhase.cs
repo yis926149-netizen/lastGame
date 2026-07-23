@@ -1,45 +1,107 @@
+using System;
 using Zenject;
 using System.Collections;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 
 public class AIPhase : IPhase
 {
-    private readonly IAIManager _aiManager;   // ĞèÒª³éÏó IAIManager
+    // ä¾èµ–å…·ä½“ç±» AIManagerï¼šæ—¢è°ƒç”¨ ExecuteAITurnï¼Œä¹Ÿå€Ÿå…¶ MonoBehaviour.StartCoroutine ä½œåç¨‹å®¿ä¸»ã€‚
+    private readonly AIManager _aiManager;
 
     [Inject]
-    public AIPhase(IAIManager aiManager)
+    public AIPhase(AIManager aiManager)
     {
         _aiManager = aiManager;
     }
 
     public void Enter()
     {
-        // ½øÈë AI ½×¶Î£¬Êµ¼ÊÖ´ĞĞÓÉ GameStateMachine µÄ ProcessAIPhase Çı¶¯
+        // ï¿½ï¿½ï¿½ï¿½ AI ï¿½×¶Î£ï¿½Êµï¿½ï¿½Ö´ï¿½ï¿½ï¿½ï¿½ GameStateMachine ï¿½ï¿½ ProcessAIPhase ï¿½ï¿½ï¿½ï¿½
     }
 
-    // ½« IAIManager.ExecuteAITurn (IEnumerator) °ü×°Îª Task£¬
-    // ÔÚ _aiManager ÉÏÆô¶¯Ğ­³Ì²¢ÔÚÍê³ÉÊ±ÉèÖÃ TaskCompletionSource
+    // ï¿½ï¿½ IAIManager.ExecuteAITurn (IEnumerator) ï¿½ï¿½×°Îª Taskï¿½ï¿½
+    // ï¿½ï¿½ _aiManager ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ğ­ï¿½Ì²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ TaskCompletionSource
     public Task RunAITurn()
     {
         var tcs = new TaskCompletionSource<bool>();
 
         IEnumerator Runner()
         {
-            yield return _aiManager.ExecuteAITurn();
-            tcs.SetResult(true);
+            var enumerators = new Stack<IEnumerator>();
+            bool failed = false;
+            try
+            {
+                IEnumerator turn = _aiManager.ExecuteAITurn();
+                if (turn != null)
+                {
+                    enumerators.Push(turn);
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+                tcs.TrySetResult(false);
+                failed = true;
+            }
+            if (failed) yield break;
+
+            while (enumerators.Count > 0)
+            {
+                IEnumerator currentEnumerator = enumerators.Peek();
+                bool hasNext = false;
+                object yielded = null;
+                try
+                {
+                    hasNext = currentEnumerator.MoveNext();
+                    if (hasNext)
+                    {
+                        yielded = currentEnumerator.Current;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogException(exception);
+                    tcs.TrySetResult(false);
+                    failed = true;
+                }
+                if (failed) yield break;
+
+                if (!hasNext)
+                {
+                    enumerators.Pop();
+                }
+                else if (yielded is IEnumerator nestedEnumerator)
+                {
+                    enumerators.Push(nestedEnumerator);
+                }
+                else
+                {
+                    yield return yielded;
+                }
+            }
+
+            tcs.TrySetResult(true);
         }
 
-        // _aiManager ÊÇ MonoBehaviour£¬¿ÉÒÔÆô¶¯Ğ­³Ì
-        _aiManager.StartCoroutine(Runner());
+        try
+        {
+            _aiManager.StartCoroutine(Runner());
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception);
+            tcs.TrySetResult(false);
+        }
 
         return tcs.Task;
     }
 
-    public bool CanExit() => true;         // ÓÉÍâ²¿¾ö¶¨ºÎÊ±ÍË³ö
+    public bool CanExit() => true;         // ï¿½ï¿½ï¿½â²¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½Ë³ï¿½
 
     public void Exit()
     {
-        // AI ½×¶Î½áÊøÊ±µÄÇåÀí£¨ÈçÓĞĞèÒª£©
+        // AI ï¿½×¶Î½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½
     }
 }

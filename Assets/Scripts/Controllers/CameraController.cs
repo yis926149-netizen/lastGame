@@ -12,7 +12,7 @@ public class CameraController : MonoBehaviour, ITickable
 
     private Camera _mainCamera;
 
-    [Header("ÉãÏñ»úÒÆ¶¯ÉèÖÃ")]
+    [Header("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ¶ï¿½ï¿½ï¿½ï¿½ï¿½")]
     public float moveSpeed = 5f;
     public float smoothMoveTime = 0.1f;
     private float _minX = -50f;
@@ -20,13 +20,13 @@ public class CameraController : MonoBehaviour, ITickable
     private float _minZ = -50f;
     private float _maxZ = 50f;
 
-    [Header("ÉãÏñ»úËõ·ÅÉèÖÃ")]
+    [Header("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½")]
     public float minZoomDistance = 20f;
     public float maxZoomDistance = 50f;
     public float zoomSpeed = 0.1f;
     public float smoothZoomTime = 0.1f;
 
-    [Header("ÉãÏñ»úÐý×ªÉèÖÃ")]
+    [Header("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½")]
     public float rotateSpeed = 30f;                   
     public float smoothRotateTime = 0.1f;            
     public float returnRotateSpeed = 60f;           
@@ -36,10 +36,10 @@ public class CameraController : MonoBehaviour, ITickable
     private Vector3 _targetCameraPosition;
     private Quaternion _targetCameraRotation;
 
-    public float returnDuration = 0.2f;   // ¡û »Ø¹é¶¯»­Ê±³¤£¨Ãë£©£¬¸ÄÕâ¸öÊý×Ö¾ÍÄÜµ÷¿ìÂý
-    private float _returnStartTime;       // ¡û ¼ÇÂ¼¿ªÊ¼»Ø¹éµÄÊ±¼ä
+    public float returnDuration = 0.2f;   // ï¿½ï¿½ ï¿½Ø¹é¶¯ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ë£©ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½Üµï¿½ï¿½ï¿½ï¿½ï¿½
+    private float _returnStartTime;       // ï¿½ï¿½ ï¿½ï¿½Â¼ï¿½ï¿½Ê¼ï¿½Ø¹ï¿½ï¿½Ê±ï¿½ï¿½
 
-    // Ðý×ª×´Ì¬¼ÇÂ¼
+    // ï¿½ï¿½×ª×´Ì¬ï¿½ï¿½Â¼
     private Vector3 _rotationStartPosition;
     private Quaternion _rotationStartRotation;
     private bool _isReturningToStart = false;
@@ -74,7 +74,7 @@ public class CameraController : MonoBehaviour, ITickable
         _mainCamera = Camera.main;
         if (_mainCamera == null)
         {
-            Debug.LogError("CameraController: ³¡¾°ÖÐÃ»ÓÐÖ÷Ïà»ú£¡");
+            Debug.LogError("CameraController: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
             return;
         }
 
@@ -91,7 +91,7 @@ public class CameraController : MonoBehaviour, ITickable
         _targetCameraRotation = _mainCamera.transform.rotation;
     }
 
-    // ==================== Ò»¼ü»Ö¸´Ä¬ÈÏÖµ ====================
+    // ==================== Ò»ï¿½ï¿½ï¿½Ö¸ï¿½Ä¬ï¿½ï¿½Öµ ====================
     private void Reset()
     {
         moveSpeed = 5f;
@@ -151,7 +151,7 @@ public class CameraController : MonoBehaviour, ITickable
         _maxZ = topLeft.z - 20f;
 
         _boundsInitialized = true;
-        //Debug.Log("CameraController ±ß½ç³õÊ¼»¯³É¹¦");
+        //Debug.Log("CameraController ï¿½ß½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½É¹ï¿½");
     }
 
     private void HandleKeyboardInput()
@@ -182,20 +182,23 @@ public class CameraController : MonoBehaviour, ITickable
         float scrollDelta = _input.MouseScrollDelta;
         if (scrollDelta == 0) return;
 
-        Vector3 zoomMove = scrollDelta * _mainCamera.transform.forward * zoomSpeed * Time.deltaTime;
+        Vector3 zoomMove = scrollDelta * _mainCamera.transform.forward * (zoomSpeed / 60f);
         Vector3 newTarget = _targetCameraPosition + zoomMove;
 
         float newHeight = newTarget.y;
         if (newHeight >= minZoomDistance && newHeight <= maxZoomDistance)
+        {
+            ClampTargetToBounds(ref newTarget);
             _targetCameraPosition = newTarget;
+        }
     }
 
-    // ====================== Ðý×ªÂß¼­£¨´øÏêÏ¸ÈÕÖ¾£© ======================
+    // ====================== ï¿½ï¿½×ªï¿½ß¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¸ï¿½ï¿½Ö¾ï¿½ï¿½ ======================
     private void HandleRotationInput()
     {
         if (_mainCamera == null) return;
 
-        //Debug.Log($"[Camera Rotation Debug] HandleRotationInput ±»µ÷ÓÃ | Ctrl: {_input.GetKey(KeyCode.LeftControl) || _input.GetKey(KeyCode.RightControl)} | _isRotating: {_isRotating}");
+        //Debug.Log($"[Camera Rotation Debug] HandleRotationInput ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ | Ctrl: {_input.GetKey(KeyCode.LeftControl) || _input.GetKey(KeyCode.RightControl)} | _isRotating: {_isRotating}");
 
         var canvasList = _uiConfig.RuntimeCanvases;
         bool isCtrlPressed = _input.GetKey(KeyCode.LeftControl) || _input.GetKey(KeyCode.RightControl);
@@ -214,13 +217,13 @@ public class CameraController : MonoBehaviour, ITickable
         if (_input.GetKey(KeyCode.A))
         {
             rotateAmount = rotateSpeed * Time.deltaTime;
-            //Debug.Log($"[Camera Rotation Debug] ¡ï Ctrl + A °´ÏÂ£¡rotateAmount = {rotateAmount:F3}");
+            //Debug.Log($"[Camera Rotation Debug] ï¿½ï¿½ Ctrl + A ï¿½ï¿½ï¿½Â£ï¿½rotateAmount = {rotateAmount:F3}");
             HideAllCanvases();
         }
         else if (_input.GetKey(KeyCode.D))
         {
             rotateAmount = -rotateSpeed * Time.deltaTime;
-            //Debug.Log($"[Camera Rotation Debug] ¡ï Ctrl + D °´ÏÂ£¡rotateAmount = {rotateAmount:F3}");
+            //Debug.Log($"[Camera Rotation Debug] ï¿½ï¿½ Ctrl + D ï¿½ï¿½ï¿½Â£ï¿½rotateAmount = {rotateAmount:F3}");
             HideAllCanvases();
         }
         else
@@ -241,7 +244,7 @@ public class CameraController : MonoBehaviour, ITickable
                 _rotationStartPosition = _targetCameraPosition;
                 _rotationStartRotation = _targetCameraRotation;
                 _isRotating = true;
-                //Debug.Log($"[Camera Rotation Debug] Ê×´ÎÐý×ª³õÊ¼»¯Íê³É | Ðý×ªÖÐÐÄ = {_currentRotationCenter}");
+                //Debug.Log($"[Camera Rotation Debug] ï¿½×´ï¿½ï¿½ï¿½×ªï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ | ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½ = {_currentRotationCenter}");
             }
 
             Vector3 offsetFromCenter = _targetCameraPosition - _currentRotationCenter;
@@ -252,7 +255,7 @@ public class CameraController : MonoBehaviour, ITickable
             _targetCameraPosition = _currentRotationCenter + offsetFromCenter;
             _targetCameraRotation = Quaternion.LookRotation(_currentRotationCenter - _targetCameraPosition);
 
-            //Debug.Log($"[Camera Rotation Debug] Ðý×ªÒÑÓ¦ÓÃ | rotateAmount={rotateAmount:F3} | Î»ÖÃ±ä»¯ | YÐý×ª: {oldRotY:F1}¡ã ¡ú {_targetCameraRotation.eulerAngles.y:F1}¡ã");
+            //Debug.Log($"[Camera Rotation Debug] ï¿½ï¿½×ªï¿½ï¿½Ó¦ï¿½ï¿½ | rotateAmount={rotateAmount:F3} | Î»ï¿½Ã±ä»¯ | Yï¿½ï¿½×ª: {oldRotY:F1}ï¿½ï¿½ ï¿½ï¿½ {_targetCameraRotation.eulerAngles.y:F1}ï¿½ï¿½");
         }
     }
 
@@ -283,24 +286,27 @@ public class CameraController : MonoBehaviour, ITickable
         _targetReturnAngle = _returnTotalAngle;
         _currentReturnAngle = 0;
 
-        _returnStartTime = Time.time;   // ¼ÇÂ¼¿ªÊ¼»Ø¹éµÄÊ±¼ä
+        _returnStartTime = Time.time;   // ï¿½ï¿½Â¼ï¿½ï¿½Ê¼ï¿½Ø¹ï¿½ï¿½Ê±ï¿½ï¿½
     }
 
     private void HandleReturnToStart()
     {
         if (_mainCamera == null) return;
 
-        // »Ö¸´»­²¼
+        // ï¿½Ö¸ï¿½ï¿½ï¿½ï¿½ï¿½
         var canvasList = _uiConfig.RuntimeCanvases;
         foreach (Canvas c in canvasList)
         {
-            if (c != null && _mapData.GetCellByWorldPosition(c.transform.parent.position).IsExplored)
+            if (c == null || c.transform.parent == null) continue;
+
+            HexCellData cell = _mapData.GetCellByWorldPosition(c.transform.parent.position);
+            if (cell != null && cell.IsExplored)
                 c.gameObject.SetActive(true);
         }
 
-        // ==================== ¹Ì¶¨0.3ÃëÄÚÍê³É»Ø¹é ====================
+        // ==================== ï¿½Ì¶ï¿½0.3ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É»Ø¹ï¿½ ====================
         float elapsed = Time.time - _returnStartTime;
-        float t = Mathf.Clamp01(elapsed / returnDuration);           // t ´Ó 0 ¡ú 1£¬ÕýºÃ 0.3 Ãë
+        float t = Mathf.Clamp01(elapsed / returnDuration);           // t ï¿½ï¿½ 0 ï¿½ï¿½ 1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 0.3 ï¿½ï¿½
         float targetAngle = Mathf.LerpAngle(0f, _targetReturnAngle, t);
 
         float rotateAngle = targetAngle - _currentReturnAngle;
@@ -352,5 +358,14 @@ public class CameraController : MonoBehaviour, ITickable
     public void SetTargetPosition(Vector3 worldPosition)
     {
         _targetCameraPosition = worldPosition;
+        ClampTargetToBounds(ref _targetCameraPosition);
+    }
+
+    private void ClampTargetToBounds(ref Vector3 position)
+    {
+        if (!_boundsInitialized) return;
+
+        position.x = Mathf.Clamp(position.x, _minX, _maxX);
+        position.z = Mathf.Clamp(position.z, _minZ, _maxZ);
     }
 }

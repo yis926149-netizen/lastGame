@@ -11,58 +11,61 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
     [Inject] private PlayerModelManager _playerModelManager;
     [Inject] private EnemyModelManager _enemyModelManager;
 
-    // �洢���ɵ�������󣬷�������
+    // �洢���ɵ�������󣬷�������
     private GameObject _playerSphere;
     private List<GameObject> _enemySpheres = new List<GameObject>();
 
     private void Start()
     {
-        // ��ʼ����
+        _mapVisualEvent.OnMapVisualChanged.AddListener(RefreshAllSpheres);
         RefreshAllSpheres();
     }
 
-    private void Awake()
-    {
-        if (_mapVisualEvent != null)
-            _mapVisualEvent.OnMapVisualChanged.AddListener(RefreshAllSpheres);
-    }
-
-    private void OnDisable()
+    private void OnDestroy()
     {
         if (_mapVisualEvent != null)
             _mapVisualEvent.OnMapVisualChanged.RemoveListener(RefreshAllSpheres);
+        DestroySphere(ref _playerSphere);
+        foreach (var sphere in _enemySpheres)
+            DestroySphere(sphere);
+        _enemySpheres.Clear();
     }
 
     private void RefreshAllSpheres()
     {
-        // ���پɵ�
-        if (_playerSphere != null) Destroy(_playerSphere);
+        // ���پɵ�
+        DestroySphere(ref _playerSphere);
         foreach (var go in _enemySpheres)
-            if (go != null) Destroy(go);
+            DestroySphere(go);
         _enemySpheres.Clear();
 
-        // �������������Χ
+        // 玩家自己的势力始终完整可见：描边集合与归属集合相同
         if (_playerModelManager.SphereOfInfluence_HexC_HexCellData.Count > 0)
         {
             var cells = _playerModelManager.SphereOfInfluence_HexC_HexCellData.Values.ToList();
-            _playerSphere = CreateSphereMesh(cells, Color.blue, "PlayerSphereOfInfluence");
+            _playerSphere = CreateSphereMesh(cells, cells, Color.blue, "PlayerSphereOfInfluence");
         }
 
-        // ����ÿ���з���������Χ
+        // 绘制每个敌方的势力范围
         foreach (var kv in _enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData)
         {
-            var cells = kv.Value.Values.ToList();
+            // 归属集合：该敌方的完整势力范围（用于判定"边是否为真实势力边界"）
+            var fullSphere = kv.Value.Values.Where(c => c != null).ToList();
+            // 三态记忆迷雾：敌方势力范围只在当前视野内可见（记忆区/未探索均不显示）——仅这部分参与描边
+            var cells = fullSphere.Where(c => c.IsVisible).ToList();
             if (cells.Count == 0) continue;
             Color color = GetEnemyColor(kv.Key);
-            GameObject go = CreateSphereMesh(cells, color, $"EnemySphereOfInfluence_{kv.Key}");
+            // 描边集合=可见子集，归属集合=完整势力范围：
+            // 被迷雾切断的一侧邻居仍属该势力→算内部边不描，形成开口图形而非"假边界"闭合圈
+            GameObject go = CreateSphereMesh(cells, fullSphere, color, $"EnemySphereOfInfluence_{kv.Key}");
             _enemySpheres.Add(go);
         }
     }
 
-    private GameObject CreateSphereMesh(List<HexCellData> hexCells, Color color, string objectName)
+    private GameObject CreateSphereMesh(List<HexCellData> hexCells, ICollection<HexCellData> membershipCells, Color color, string objectName)
     {
         int edgeCount;
-        var verticeList = _meshGenerator.GetOneSphereOfInfluenceVertices(hexCells, out edgeCount, _mapDataService);
+        var verticeList = _meshGenerator.GetOneSphereOfInfluenceVertices(hexCells, membershipCells, out edgeCount, _mapDataService);
         List<Vector3> vertices = new List<Vector3>();
         foreach (var list in verticeList) vertices.AddRange(list);
 
@@ -82,13 +85,32 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
         mat.SetColor("_Color", color);
 
         GameObject obj = new GameObject(objectName);
-        MapController.CreatMesh(vertices.ToArray(), uv.ToArray(), drawOrder.ToArray(), obj, mat);
+        MapController.CreatMesh(vertices.ToArray(), uv.ToArray(), drawOrder.ToArray(), obj, mat, addCollider: false);
         return obj;
+    }
+
+    private static void DestroySphere(ref GameObject sphere)
+    {
+        DestroySphere(sphere);
+        sphere = null;
+    }
+
+    private static void DestroySphere(GameObject sphere)
+    {
+        if (sphere == null) return;
+
+        var renderer = sphere.GetComponent<MeshRenderer>();
+        var filter = sphere.GetComponent<MeshFilter>();
+        if (renderer != null && renderer.sharedMaterial != null)
+            Destroy(renderer.sharedMaterial);
+        if (filter != null && filter.sharedMesh != null)
+            Destroy(filter.sharedMesh);
+        Destroy(sphere);
     }
 
     private Color GetEnemyColor(int enemyIndex)
     {
-        // �ɸ�����Ҫ���Ʋ�ͬ���˵���ɫ������ͳһ��ɫ
+        // �ɸ�����Ҫ���Ʋ�ͬ���˵���ɫ������ͳһ��ɫ
         return Color.gray;
     }
 }

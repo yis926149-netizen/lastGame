@@ -1,5 +1,4 @@
 using NUnit.Framework;
-using NSubstitute;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -14,7 +13,8 @@ public class UnitRepositoryTests
     {
         _repo = new UnitRepository();
         _unitObj = new GameObject();
-        _data = Substitute.For<CharacterData>(0, _unitObj, null, null);
+        var unitData = new UnitData(0, "Test Unit", 5f, 100, 1, 10, 3f, 2f);
+        _data = new CharacterData(0, _unitObj, null, unitData);
     }
 
     [TearDown]
@@ -58,5 +58,25 @@ public class UnitRepositoryTests
         bool result = _repo.TryGetEnemyUnit(_unitObj, out var foundData);
         Assert.IsTrue(result);
         Assert.AreEqual(_data, foundData);
+    }
+
+    [Test]
+    public void AddEnemyUnit_RemovesExistingPlayerRegistration()
+    {
+        _repo.AddPlayerUnit(_unitObj, _data);
+        _repo.AddEnemyUnit(1, _unitObj, _data);
+
+        Assert.IsFalse(_repo.AllPlayerUnits.ContainsKey(_unitObj));
+        Assert.IsTrue(_repo.GetEnemyUnitGroup(1).ContainsKey(_unitObj));
+    }
+
+    [Test]
+    public void AddEnemyUnit_MovesRegistrationBetweenGroups()
+    {
+        _repo.AddEnemyUnit(1, _unitObj, _data);
+        _repo.AddEnemyUnit(2, _unitObj, _data);
+
+        Assert.IsFalse(_repo.GetEnemyUnitGroup(1).ContainsKey(_unitObj));
+        Assert.IsTrue(_repo.GetEnemyUnitGroup(2).ContainsKey(_unitObj));
     }
 }

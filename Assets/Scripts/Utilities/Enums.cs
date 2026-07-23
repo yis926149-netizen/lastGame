@@ -54,6 +54,18 @@ public class Enums
         None
     }
 
+    public enum TransitionEdgeType
+    {
+        Slope,
+        Step
+    }
+
+    public enum TransitionGenerationMode
+    {
+        Legacy,
+        GenericFan
+    }
+
     //资源类型
     public enum ResourceType
     {

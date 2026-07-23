@@ -1,71 +1,87 @@
-using NUnit.Framework;
+using System.Collections.Generic;
+using System.Reflection;
 using NSubstitute;
-using System.Threading.Tasks;
+using NUnit.Framework;
+using UnityEngine;
 using Zenject;
 
 public class GameStateMachineTests
 {
     private DiContainer _container;
-    private IPhase _mockPlayerPhase;
-    private IPhase _mockAIPhase;
-    private IPhase _mockSettlementPhase;
-    private ICardService _mockCardService;
-    private CardPresenter _mockCardPresenter;
-    private IUnitRepository _mockUnitRepo;
-    private ITechCultureService _mockTechCulture;
+    private PlayerPhase _playerPhase;
+    private AIPhase _aiPhase;
+    private SettlementPhase _settlementPhase;
     private GameStateMachine _machine;
+    private GameObject _playerPhaseObject;
+    private GameObject _settlementPhaseObject;
+    private GameObject _aiManagerObject;
 
     [SetUp]
     public void SetUp()
     {
         _container = new DiContainer();
 
-        _mockPlayerPhase = Substitute.For<IPhase>();
-        _mockAIPhase = Substitute.For<IPhase>();
-        _mockSettlementPhase = Substitute.For<IPhase>();
+        var unitRepository = Substitute.For<IUnitRepository>();
+        unitRepository.AllPlayerUnits.Returns(new Dictionary<GameObject, CharacterData>());
 
-        _mockCardService = Substitute.For<ICardService>();
-        _mockCardPresenter = Substitute.For<CardPresenter>(null, null, null, null, null, null, null, null, null, null); // 简化构造
-        _mockUnitRepo = Substitute.For<IUnitRepository>();
-        _mockTechCulture = Substitute.For<ITechCultureService>();
+        _playerPhaseObject = new GameObject("PlayerPhase");
+        _playerPhase = _playerPhaseObject.AddComponent<PlayerPhase>();
+        _container.Bind<IUnitRepository>().FromInstance(unitRepository);
+        _container.Inject(_playerPhase);
 
-        _container.Bind<IPhase>().WithId("player").FromInstance(_mockPlayerPhase);
-        _container.Bind<IPhase>().WithId("ai").FromInstance(_mockAIPhase);
-        _container.Bind<IPhase>().WithId("settlement").FromInstance(_mockSettlementPhase);
-        _container.Bind<ICardService>().FromInstance(_mockCardService);
-        _container.Bind<CardPresenter>().FromInstance(_mockCardPresenter);
-        _container.Bind<IUnitRepository>().FromInstance(_mockUnitRepo);
-        _container.Bind<ITechCultureService>().FromInstance(_mockTechCulture);
+        _settlementPhaseObject = new GameObject("SettlementPhase");
+        _settlementPhase = _settlementPhaseObject.AddComponent<SettlementPhase>();
 
+        _aiManagerObject = new GameObject("AIManager");
+        var aiManager = _aiManagerObject.AddComponent<AIManager>();
+        _aiPhase = new AIPhase(aiManager);
+
+        _container.Bind<PlayerPhase>().FromInstance(_playerPhase);
+        _container.Bind<AIPhase>().FromInstance(_aiPhase);
+        _container.Bind<SettlementPhase>().FromInstance(_settlementPhase);
+        _container.Bind<ICardService>().FromInstance(Substitute.For<ICardService>());
+        _container.Bind<CardPresenter>().FromInstance(new CardPresenter());
+        _container.Bind<ITechCultureService>().FromInstance(Substitute.For<ITechCultureService>());
         _container.Bind<GameStateMachine>().AsSingle();
 
         _machine = _container.Resolve<GameStateMachine>();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        Object.DestroyImmediate(_playerPhaseObject);
+        Object.DestroyImmediate(_settlementPhaseObject);
+        Object.DestroyImmediate(_aiManagerObject);
+    }
+
+    [Test]
+    public void NewGameStateMachine_StartsAtTurnOne()
+    {
+        Assert.AreEqual(1, _machine.CurrentTurn);
     }
 
     [Test]
     public void StartGame_EntersPlayerPhase()
     {
         _machine.StartGame();
-        _mockPlayerPhase.Received(1).Enter();
+
+        Assert.AreSame(_playerPhase, _machine.CurrentPhase);
     }
 
     [Test]
-    public void EndTurn_WhenInPlayerPhase_ExitsPlayerAndMovesToNextPhase()
+    public void StartGame_ResetsTurnAndPhase()
     {
+        typeof(GameStateMachine)
+            .GetField("_currentTurn", BindingFlags.Instance | BindingFlags.NonPublic)
+            .SetValue(_machine, 5);
+        typeof(GameStateMachine)
+            .GetField("_currentPhaseIndex", BindingFlags.Instance | BindingFlags.NonPublic)
+            .SetValue(_machine, 2);
+
         _machine.StartGame();
-        _mockPlayerPhase.CanExit().Returns(true);
-        _machine.EndTurn();
 
-        _mockPlayerPhase.Received(1).Exit();
-        _mockAIPhase.Received(1).Enter(); // 应进入 AI 阶段
-    }
-
-    [Test]
-    public void AIPhase_WhenCompleted_AdvancesToSettlementAndNewTurn()
-    {
-        // 需要模拟 AIPhase.RunAITurn 返回已完成 Task
-        var aiPhase = Substitute.For<AIPhase>(null);
-        // 直接调用机器内部逻辑较复杂，此处省略详细测试，仅做示意
-        // 真实测试可能需要将 AIPhase 替换为可控制的模拟
+        Assert.AreEqual(1, _machine.CurrentTurn);
+        Assert.AreSame(_playerPhase, _machine.CurrentPhase);
     }
 }

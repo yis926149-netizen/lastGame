@@ -5,6 +5,7 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "MainGame",
+        "ConsoleLogCopier.Editor",
         "TNRD.NSubstitute",
         "Zenject"
     ],

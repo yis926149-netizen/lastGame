@@ -12,24 +12,19 @@ public class TerrainGenerator : MonoBehaviour
     //生成地图地块高度的柏林噪声数据
     public struct TerrainHeights
     {
-        //频率：控制地形区块大小（值越小，区块越大越连贯）-0.03~0.08（网格越大，值越小）
         public float frequency;
-        //八度：分层叠加细节（值越多，细节越丰富但不碎片化）-  2~4（3 个高度无需过多细节）
         public int octaves;
-        //持续性：控制高频细节的贡献度（值越小，地形越平滑）- 0.4~0.6
         public float persistence;
-        //阈值1 - （0，T1）
-        public float T1;
-        //阈值2 - （T1,T2）
-        public float T2;
+        public int minHeight;
+        public int maxHeight;
 
-        public TerrainHeights(float frequency, int octaves, float persistence, float T1, float T2)
+        public TerrainHeights(float frequency, int octaves, float persistence, int minHeight, int maxHeight)
         {
             this.frequency = frequency;
             this.octaves = octaves;
             this.persistence = persistence;
-            this.T1 = T1;
-            this.T2 = T2;
+            this.minHeight = minHeight;
+            this.maxHeight = maxHeight;
         }
     }
 
@@ -248,15 +243,18 @@ public class TerrainGenerator : MonoBehaviour
     /// <param name="frequency">频率：控制地形区块大小（值越小，区块越大越连贯）- 0.03~0.08（网格越大，值越小） </param>
     /// <param name="octaves">八度：分层叠加细节（值越多，细节越丰富但不碎片化）-  2~4（3 个高度无需过多细节）</param>
     /// <param name="persistence">持续性：控制高频细节的贡献度（值越小，地形越平滑）- 0.4~0.6 </param>
-    /// <param name="T1">阈值1 - （0，T1）</param>
-    /// <param name="T2">阈值2 - （T1,T2）</param>
-    /// <returns></returns>
-    public static int[,] GenerateTerrainHeight(int xNumber, int zNumber, float frequency = 0.05f, int octaves = 3, float persistence = 0.5f, float T1 = 0.25f, float T2 = 0.75f)
+    /// <param name="minHeight">最低高度</param>
+    /// <param name="maxHeight">最高高度</param>
+    public static int[,] GenerateTerrainHeight(int xNumber, int zNumber, System.Random random, float frequency = 0.05f, int octaves = 3, float persistence = 0.5f, int minHeight = 0, int maxHeight = 2)
     {
         int[,] terrainMap = new int[xNumber, zNumber];
+        float offsetX = random.Next(-100000, 100001);
+        float offsetZ = random.Next(-100000, 100001);
 
-        // 1. 生成柏林噪声图
         float[,] noiseMap = new float[xNumber, zNumber];
+        int totalCells = xNumber * zNumber;
+        float[] flat = new float[totalCells];
+        int idx = 0;
         for (int x = 0; x < xNumber; x++)
         {
             for (int z = 0; z < zNumber; z++)
@@ -266,65 +264,98 @@ public class TerrainGenerator : MonoBehaviour
                 float freq = frequency;
                 float totalAmp = 0;
 
-                // 多八度叠加
                 for (int o = 0; o < octaves; o++)
                 {
-                    noiseValue += Mathf.PerlinNoise(x * freq, z * freq) * amp;
+                    noiseValue += Mathf.PerlinNoise((x + offsetX) * freq, (z + offsetZ) * freq) * amp;
                     totalAmp += amp;
                     amp *= persistence;
-                    freq *= 2; // 频率翻倍（标准FBM）
+                    freq *= 2;
                 }
-                // 归一化到[0,1]
-                noiseMap[x, z] = noiseValue / totalAmp;
+                float val = noiseValue / totalAmp;
+                noiseMap[x, z] = val;
+                flat[idx++] = val;
             }
         }
 
-        // 2. 阈值映射
+        // 直方图均衡：排序后等分，保证每种高度各占 1/layerCount
+        System.Array.Sort(flat);
+        int layerCount = maxHeight - minHeight + 1;
+        float[] thresholds = new float[layerCount];
+        for (int h = 1; h < layerCount; h++)
+        {
+            int cutoffIdx = h * totalCells / layerCount;
+            thresholds[h] = cutoffIdx < totalCells ? flat[cutoffIdx] : 1f;
+        }
+
         for (int x = 0; x < xNumber; x++)
         {
             for (int z = 0; z < zNumber; z++)
             {
                 float val = noiseMap[x, z];
-                if (val < T1) terrainMap[x, z] = 0;
-                else if (val < T2) terrainMap[x, z] = 1;
-                else terrainMap[x, z] = 2;
+                int height = maxHeight;
+                for (int h = 1; h < layerCount; h++)
+                {
+                    if (val < thresholds[h])
+                    {
+                        height = minHeight + h - 1;
+                        break;
+                    }
+                }
+                terrainMap[x, z] = height;
             }
         }
 
-        // 3. 连贯性优化
         return OptimizeTerrain(xNumber, zNumber, terrainMap);
     }
 
     /// <summary>
-    /// 连贯性优化函数
+    /// 连贯性优化函数（支持 N 层高度）
     /// </summary>
-    /// <param name="terrainMap">高度数组</param>
-    /// <returns></returns>
-    private static int[,] OptimizeTerrain(int xNumber, int zNumber, int[,] terrainMap)
+    public static int[,] OptimizeTerrain(int xNumber, int zNumber, int[,] terrainMap)
     {
+        var counts = new Dictionary<int, int>();
         int[,] tempMap = (int[,])terrainMap.Clone();
-        for (int x = 1; x < xNumber - 1; x++)
+        for (int x = 0; x < xNumber; x++)
         {
-            for (int z = 1; z < zNumber - 1; z++)
+            for (int z = 0; z < zNumber; z++)
             {
-                // 统计周围8个单元格
-                int count0 = 0, count1 = 0, count2 = 0;
-                for (int dx = -1; dx <= 1; dx++)
+                counts.Clear();
+                int offset = z % 2 == 0 ? -1 : 1;
+                int[,] neighbors =
                 {
-                    for (int dz = -1; dz <= 1; dz++)
+                    { x + 1, z }, { x - 1, z },
+                    { x, z + 1 }, { x, z - 1 },
+                    { x + offset, z + 1 }, { x + offset, z - 1 }
+                };
+                for (int i = 0; i < neighbors.GetLength(0); i++)
+                {
+                    int neighborX = neighbors[i, 0];
+                    int neighborZ = neighbors[i, 1];
+                    if (neighborX < 0 || neighborX >= xNumber || neighborZ < 0 || neighborZ >= zNumber) continue;
+
+                    int val = tempMap[neighborX, neighborZ];
+                    counts.TryGetValue(val, out int c);
+                    counts[val] = c + 1;
+                }
+
+                int bestHeight = terrainMap[x, z];
+                int bestCount = 0;
+                int winnerCount = 0;
+                foreach (var kv in counts)
+                {
+                    if (kv.Value > bestCount)
                     {
-                        if (dx == 0 && dz == 0) continue;
-                        int val = tempMap[x + dx, z + dz];
-                        if (val == 0) count0++;
-                        else if (val == 1) count1++;
-                        else count2++;
+                        bestCount = kv.Value;
+                        bestHeight = kv.Key;
+                        winnerCount = 1;
+                    }
+                    else if (kv.Value == bestCount)
+                    {
+                        winnerCount++;
                     }
                 }
-                // 修正孤立点
-                int maxCount = Mathf.Max(count0, count1, count2);
-                if (maxCount == count0) terrainMap[x, z] = 0;
-                else if (maxCount == count1) terrainMap[x, z] = 1;
-                else terrainMap[x, z] = 2;
+                if (winnerCount == 1)
+                    terrainMap[x, z] = bestHeight;
             }
         }
         return terrainMap;

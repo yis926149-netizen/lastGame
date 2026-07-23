@@ -3,7 +3,6 @@
 
 ### IGameStateMachine.md
 
-```markdown
 # IGameStateMachine
 
 ## 职责描述
@@ -43,3 +42,4 @@ public class EndTurnButton
         }
     }
 }
+```

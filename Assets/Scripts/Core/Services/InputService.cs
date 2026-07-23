@@ -1,7 +1,7 @@
 // Services/InputService.cs
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.UI; // ÐÂÔö
+using UnityEngine.UI; // ï¿½ï¿½ï¿½ï¿½
 
 public class InputService : IInputService
 {
@@ -29,11 +29,11 @@ public class InputService : IInputService
 
     public bool IsPointerOverUI()
     {
-        // -1 = Êó±êÔÚ Standalone/Editor ÏÂ¿É¿¿£»ÎÞ²Î°æ±¾ÔÚ²¿·Ö¹¹½¨Àï¶ÔÊó±ê²»ÎÈ¶¨
+        // -1 = ï¿½ï¿½ï¿½ï¿½ï¿½ Standalone/Editor ï¿½Â¿É¿ï¿½ï¿½ï¿½ï¿½Þ²Î°æ±¾ï¿½Ú²ï¿½ï¿½Ö¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ê²»ï¿½È¶ï¿½
         return _eventSystem != null && _eventSystem.IsPointerOverGameObject(-1);
     }
 
-    // ¼ì²â UI£ºtargetCanvas Îª null Ê±¼ì²âÈÎÒâ UI£»·ñÔòÖ»¼ì²â¸Ã Canvas ÏÂµÄ GraphicRaycaster
+    // ï¿½ï¿½ï¿½ UIï¿½ï¿½targetCanvas Îª null Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ UIï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö»ï¿½ï¿½ï¿½ï¿½ Canvas ï¿½Âµï¿½ GraphicRaycaster
     public bool IsPointerOverUI(Canvas targetCanvas = null)
     {
         if (targetCanvas == null)
@@ -54,5 +54,13 @@ public class InputService : IInputService
     {
         Ray ray = _mainCamera.ScreenPointToRay(screenPos);
         return Physics.Raycast(ray, out hit, maxDistance, layerMask);
+    }
+
+    public RaycastHit[] RaycastAllFromScreen(Vector2 screenPos, float maxDistance, LayerMask layerMask)
+    {
+        Ray ray = _mainCamera.ScreenPointToRay(screenPos);
+        RaycastHit[] hits = Physics.RaycastAll(ray, maxDistance, layerMask);
+        System.Array.Sort(hits, (left, right) => left.distance.CompareTo(right.distance));
+        return hits;
     }
 }

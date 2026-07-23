@@ -5,12 +5,13 @@
 ## 项目概览
 
 - **程序化地图**：生成六边形地块、地形、河流与资源，并通过战争迷雾控制可见区域。
+- **三态战争迷雾**：未探索、记忆区（探索过但当前无视野，压暗显示）、可见三态；迷雾集成进地形/水面/河流 Shader，未探索地块参与深度测试，斜视角下正确遮挡。
 - **回合制流程**：每回合依次执行玩家阶段、AI 阶段和结算阶段。
 - **单位与战斗**：支持单位选择、移动范围预览、路径提示、近战和远程攻击。
 - **城市与建筑**：可建立城市、扩张势力范围，并部署不同功能的建筑。
 - **卡牌系统**：通过拖拽卡牌向地图放置单位或建筑。
 - **科技与文化**：积累科技点和文化点，解锁新的单位、建筑及属性成长。
-- **AI 对手**：AI 会发展科技文化、使用卡牌、建立城市，并控制单位移动和战斗。
+- **AI 对手**：AI 会发展科技文化、使用卡牌、建立城市，并控制单位移动和战斗；AI 决策同样受**逻辑迷雾**约束，只能追击其视野内的目标。
 
 ## 开发环境
 
@@ -73,12 +74,14 @@ PlayerPhase → AIPhase → SettlementPhase → 下一回合
 ```text
 Assets/
 ├── Scenes/                         # 开始场景与主游戏场景
+├── Shader/                         # 地形/水/河流迷雾集成 Shader 与迷雾混合 include
 ├── Scripts/
+│   ├── AI/                         # AI 管理器与拆分后的协作服务（工厂/卡牌脑/战术脑/科文推进）
 │   ├── Controllers/                # 单位、建筑、镜头等表现与控制组件
 │   ├── Core/
 │   │   ├── Interfaces/             # 核心服务接口
 │   │   ├── Models/                 # 地块、单位、建筑、卡牌等领域数据
-│   │   └── Services/               # 地图、单位、输入、卡牌、状态机等实现
+│   │   └── Services/               # 地图、单位、输入、卡牌、视野、状态机等实现
 │   ├── Data/                       # 科技、文化、地形及卡牌数据
 │   ├── Infrastructure/Installers/  # Zenject 依赖绑定入口
 │   ├── Managers/                   # 地图生成、渲染、迷雾及阵营管理
@@ -120,6 +123,30 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 
 更详细的接口职责和使用方式见 [Docs/index.md](Docs/index.md) 与 [Docs/services/](Docs/services/)。
 
+## 战争迷雾系统
+
+迷雾采用**顶点色驱动 + Shader 集成**方案，取代早期独立的透明迷雾 Mesh，从根本上解决斜视角遮挡错误：
+
+- **数据模型**：每个地块有两个状态位——`IsExplored`（永久，单向 `false→true`）与 `IsVisible`（每次行动重算）。二者组合出三态：未探索、记忆区（探索过但当前无视野）、可见。顶点色 `.r` 编码 `IsExplored`、`.g` 编码 `IsVisible`。
+- **视野计算**：[FieldOfViewService](Assets/Scripts/Core/Services/FieldOfViewService.cs) 每次 `OnMapVisualChanged` 时重算全图 `IsVisible`——己方单位按 `UnitData.ViewPoints` 圈、己方领土按固定半径做六边形 BFS 点亮，首次看到即永久探索。
+- **渲染**：迷雾逻辑集中在 [FogBlend.cginc](Assets/Shader/FogBlend.cginc)，被地形（`TerrainBase_Fog`、`RealMaterialMaskBlend`、`ThreeMaterialBlend_Land`）、水面（`LakeorSea`）、河流（`River`）等 Shader 复用。未探索显示连续迷雾（整图唯一 UV 映射，无面片接缝），记忆区压暗，可见正常；未探索地块不接受光照、不投射阴影。地图不规则边缘与外围封皮之间由 [FogCover](Assets/Shader/FogCover.shader) 连接面片闭合。
+- **物体可见性**：[MapRenderer](Assets/Scripts/Managers/MapRenderer.cs) 的集中式同步按"归属 × 三态"控制地块附属物体——中立地物按探索状态显隐，己方永远可见，敌方单位按视野只关渲染（保留逻辑）。敌方势力范围、选中时的敌方红圈指示器也按视野过滤。
+
+## AI 模块
+
+AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由协调者 [AIManager](Assets/Scripts/AI/AIManager.cs) 编排、职责拆分为多个协作服务：
+
+| 类 | 职责 |
+| --- | --- |
+| `AIManager` | 协调者：开局初始化与每回合流程编排 |
+| `AIEntityFactory` | 敌方城市/单位/建筑的实例化与势力范围扩展 |
+| `AICardBrain` | AI 抽卡状态、每回合卡牌管线与出牌落点决策 |
+| `AITacticalBrain` | 回合内单位行动：目标获取、追击/攻击、前沿游走、移民建城 |
+| `AITechCultureProgress` | AI 科技文化的每回合推进与即时加点 |
+| `AIRandomProvider` | AI 各服务共享的随机源 |
+
+AI 同样受**逻辑迷雾**约束：[AIFogService](Assets/Scripts/Core/Services/AIFogService.cs) 为 AI 阵营现算可见集合（不渲染、仅决策用），`AITacticalBrain` 只锁定当前视野内的玩家目标，无目标时向未探索方向游走。玩家与 AI 共享的规则（抽卡生成、生成时的 UI 拼接）已收敛到 [CardGenerationRule](Assets/Scripts/Core/Services/CardGenerationRule.cs) 与 [SpawnUIWiring](Assets/Scripts/Core/Services/SpawnUIWiring.cs)。
+
 ## 测试
 
 测试程序集仅面向 Unity Editor，现有测试位于 [Assets/Tests/](Assets/Tests/)，覆盖：
@@ -152,6 +179,14 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 - [游戏状态机](Docs/services/IGameStateMachine.md)
 
 新增或调整核心服务时，请同步维护对应文档，避免 README 与实现产生偏差。
+
+仓库根目录另有若干实施方案文档，记录迷雾与 AI 相关子系统的设计决策：
+
+- [迷雾集成地形Shader实施方案.md](迷雾集成地形Shader实施方案.md)
+- [三态记忆迷雾实施方案.md](三态记忆迷雾实施方案.md)
+- [地图边缘迷雾连接面片实施方案.md](地图边缘迷雾连接面片实施方案.md)
+- [AI逻辑迷雾实施方案.md](AI逻辑迷雾实施方案.md)
+- [AI模块重构规划.md](AI模块重构规划.md)
 
 ## 当前说明
 

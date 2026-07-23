@@ -2,26 +2,27 @@ using UnityEngine;
 
 public interface IInputService
 {
-    // Êó±ê×´Ì¬
+    // ï¿½ï¿½ï¿½×´Ì¬
     Vector3 MousePosition { get; }
     bool GetMouseButtonDown(int button);
     bool GetMouseButtonUp(int button);
     bool GetMouseButton(int button);
 
-    // ¼üÅÌ
+    // ï¿½ï¿½ï¿½ï¿½
     bool GetKey(KeyCode key);
     bool GetKeyDown(KeyCode key);
     bool GetKeyUp(KeyCode key);
 
-    // ÖáÊäÈë£¨ÓÃÓÚÉãÏñ»úÒÆ¶¯£©
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ë£¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ¶ï¿½ï¿½ï¿½
     float GetAxis(string axisName);
 
-    // Êó±ê¹öÂÖ
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     float MouseScrollDelta { get; }
 
-    // UI ÕÚµ²¼ì²â£¨¿ÉÖ¸¶¨Ä¿±ê Canvas£¬null Ôò¼ì²âËùÓÐ UI£©
+    // UI ï¿½Úµï¿½ï¿½ï¿½â£¨ï¿½ï¿½Ö¸ï¿½ï¿½Ä¿ï¿½ï¿½ Canvasï¿½ï¿½null ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ UIï¿½ï¿½
     bool IsPointerOverUI(Canvas targetCanvas = null);
 
-    // ÉäÏß¼ì²â£¨ÊÀ½ç×ø±ê£©
+    // ï¿½ï¿½ï¿½ß¼ï¿½â£¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ê£©
     bool RaycastFromScreen(Vector2 screenPos, out RaycastHit hit, float maxDistance, LayerMask layerMask);
+    RaycastHit[] RaycastAllFromScreen(Vector2 screenPos, float maxDistance, LayerMask layerMask);
 }

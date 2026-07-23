@@ -40,7 +40,8 @@ public class MeshGeneratorService : IMeshGenerator
         //实心区域顶点坐标 
         //根据每个地块的中心点世界坐标生成 - 对应地块的其他6个坐标
         float x = hexCellData.CenterWorldCoordinate.x;
-        float y = hexCellData.CenterWorldCoordinate.y + hexCellData.Height;
+        // 唯一的地表 Height→世界Y 换算点：乘 elevationStep 把整数高度映射到世界坐标
+        float y = hexCellData.CenterWorldCoordinate.y + hexCellData.Height * _config.elevationStep;
         //float y = hexCellData.Height;
         float z = hexCellData.CenterWorldCoordinate.z;
         float o = _config.OuterRadius;
@@ -1565,6 +1566,7 @@ public class MeshGeneratorService : IMeshGenerator
     /// <returns>获取矩形阶梯的顶点</returns>
     public List<Vector3> GetRectStepVertices(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
     {
+        float heightDelta = Mathf.Abs(hexCellData.Height - _mapDataService.GetNeighbor(hexCellData, direction).Height);
         if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
         {
             //需要自己的1、7、8、2点 + NE邻居的4、13、14、5点
@@ -1588,30 +1590,33 @@ public class MeshGeneratorService : IMeshGenerator
             }
 
 
-            //添加全扰动
-            for (int j = 0; j < 4; j++)
+            if (heightDelta > 0f)
             {
-                List<Vector3> vector3s = new List<Vector3>();
-                if (j == 0)
+                //添加全扰动
+                for (int j = 0; j < 4; j++)
                 {
-                    vector3s = one;
-                }
-                else if (j == 1)
-                {
-                    vector3s = two;
-                }
-                else if (j == 2)
-                {
-                    vector3s = three;
-                }
-                else
-                {
-                    vector3s = four;
-                }
+                    List<Vector3> vector3s = new List<Vector3>();
+                    if (j == 0)
+                    {
+                        vector3s = one;
+                    }
+                    else if (j == 1)
+                    {
+                        vector3s = two;
+                    }
+                    else if (j == 2)
+                    {
+                        vector3s = three;
+                    }
+                    else
+                    {
+                        vector3s = four;
+                    }
 
-                for (int i = 1; i < vector3s.Count - 1; i++)
-                {
-                    vector3s[i] = HexMetrics.Perturb(vector3s[i]);
+                    for (int i = 1; i < vector3s.Count - 1; i++)
+                    {
+                        vector3s[i] = HexMetrics.Perturb(vector3s[i]);
+                    }
                 }
             }
 
@@ -1647,30 +1652,33 @@ public class MeshGeneratorService : IMeshGenerator
                 River_three.Add(v + new Vector3(0, hexCellData.RiverDepth, 0));
             }
 
-            //添加全扰动
-            for (int j = 0; j < 4; j++)
+            if (heightDelta > 0f)
             {
-                List<Vector3> vector3s = new List<Vector3>();
-                if (j == 0)
+                //添加全扰动
+                for (int j = 0; j < 4; j++)
                 {
-                    vector3s = one;
-                }
-                else if (j == 1)
-                {
-                    vector3s = two;
-                }
-                else if (j == 2)
-                {
-                    vector3s = three;
-                }
-                else
-                {
-                    vector3s = four;
-                }
+                    List<Vector3> vector3s = new List<Vector3>();
+                    if (j == 0)
+                    {
+                        vector3s = one;
+                    }
+                    else if (j == 1)
+                    {
+                        vector3s = two;
+                    }
+                    else if (j == 2)
+                    {
+                        vector3s = three;
+                    }
+                    else
+                    {
+                        vector3s = four;
+                    }
 
-                for (int i = 1; i < vector3s.Count - 1; i++)
-                {
-                    vector3s[i] = HexMetrics.Perturb(vector3s[i]);
+                    for (int i = 1; i < vector3s.Count - 1; i++)
+                    {
+                        vector3s[i] = HexMetrics.Perturb(vector3s[i]);
+                    }
                 }
             }
 
@@ -1706,30 +1714,33 @@ public class MeshGeneratorService : IMeshGenerator
                 River_three.Add(v + new Vector3(0, hexCellData.RiverDepth, 0));
             }
 
-            //添加全扰动
-            for (int j = 0; j < 4; j++)
+            if (heightDelta > 0f)
             {
-                List<Vector3> vector3s = new List<Vector3>();
-                if (j == 0)
+                //添加全扰动
+                for (int j = 0; j < 4; j++)
                 {
-                    vector3s = one;
-                }
-                else if (j == 1)
-                {
-                    vector3s = two;
-                }
-                else if (j == 2)
-                {
-                    vector3s = three;
-                }
-                else
-                {
-                    vector3s = four;
-                }
+                    List<Vector3> vector3s = new List<Vector3>();
+                    if (j == 0)
+                    {
+                        vector3s = one;
+                    }
+                    else if (j == 1)
+                    {
+                        vector3s = two;
+                    }
+                    else if (j == 2)
+                    {
+                        vector3s = three;
+                    }
+                    else
+                    {
+                        vector3s = four;
+                    }
 
-                for (int i = 1; i < vector3s.Count - 1; i++)
-                {
-                    vector3s[i] = HexMetrics.Perturb(vector3s[i]);
+                    for (int i = 1; i < vector3s.Count - 1; i++)
+                    {
+                        vector3s[i] = HexMetrics.Perturb(vector3s[i]);
+                    }
                 }
             }
 
@@ -3410,43 +3421,7 @@ T2_8、P2_4、T2_9✔
     /// <param name="interpCount">插值数量</param>
     private List<Vector3> SimpleInterpolate(Vector3 startPoint, Vector3 endPoint, int interpCount)
     {
-        //先在y方向上插值
-        float item_y = (endPoint.y - startPoint.y) / (interpCount + 1);
-        List<float> items_y = new List<float>();
-        for (int i = 0; i < interpCount + 2; i++)
-        {
-            items_y.Add(startPoint.y + i * item_y);
-        }
-
-        //然后在xz平面上去“单位”向量
-        Vector2 item_xz = (new Vector2(endPoint.x, endPoint.z) - new Vector2(startPoint.x, startPoint.z)) / (2 * interpCount + 1);
-        List<Vector2> items_xz = new List<Vector2>();
-        for (int i = 0; i < 2 * interpCount + 2; i++)
-        {
-            items_xz.Add(new Vector2(startPoint.x, startPoint.z) + i * item_xz);
-        }
-
-        //将两者组合起来
-        List<Vector3> vector3s = new List<Vector3>();
-        for (int i = 0; i < items_xz.Count; i++)
-        {
-            vector3s.Add(new Vector3(items_xz[i].x, 0, items_xz[i].y));
-        }
-        int index = 0;
-        for (int i = 0; i < items_y.Count; i++)
-        {
-            if (i == 0 || i == items_y.Count - 1)
-            {
-                vector3s[index++] += new Vector3(0, items_y[i], 0);
-            }
-            else
-            {
-                vector3s[index++] += new Vector3(0, items_y[i], 0);
-                vector3s[index++] += new Vector3(0, items_y[i], 0);
-            }
-        }
-
-        return vector3s;
+        return RectangleTransitionMesh.CreateStepPoints(startPoint, endPoint, interpCount);
     }
 
     /// <summary>
@@ -3990,19 +3965,15 @@ T2_8、P2_4、T2_9✔
     /// </summary>
     public Vector3[] GetlakeOrSeaVertices(ref HexCellData hexCellData)
     {
-        //Debug.Log("height：" + height);
-        //实心区域湖或海坐标 - 就是地块的平面点 - 即前实心区域前25个点
         hexCellData.lakeOrSeaVertices = hexCellData.SolidAreaVertices.GetRange(0, 25);
-        //保证海平面高度一致
+        // 视觉水面世界Y = (判定水位 + 视觉偏移) * elevationStep。
+        // 偏移由 waterSurfaceOffset 配置（默认2：水面顶到判定水位之上第2层的名义高度）。
+        // 注意：视觉水面与判定水位(seaLevel)是有意解耦的——判定水位决定通行/材质/海岸，
+        // 视觉水面只影响画出来的海面平面，两者可不同层（见 waterSurfaceOffset 说明）。
+        float waterSurfaceY = hexCellData.CenterWorldCoordinate.y + (hexCellData.waterLevel + _config.waterSurfaceOffset) * _config.elevationStep;
         for (int i = 0; i < hexCellData.lakeOrSeaVertices.Count; i++)
         {
-            //Debug.Log("lakeOrSeaVertices[i].y - Before：" + lakeOrSeaVertices[i].y);
-
-            //lakeOrSeaVertices[i] += new Vector3(0, lakeOrSeaWaterLevel - 0.3f, 0);
-            hexCellData.lakeOrSeaVertices[i] = new Vector3(hexCellData.lakeOrSeaVertices[i].x, 4.7f, hexCellData.lakeOrSeaVertices[i].z);
-
-            //lakeOrSeaVertices[i] = new Vector3(lakeOrSeaVertices[i].x, -(height) + lakeOrSeaWaterLevel*2.5f, lakeOrSeaVertices[i].z);
-            //Debug.Log("lakeOrSeaVertices[i].y - After：" + lakeOrSeaVertices[i].y);
+            hexCellData.lakeOrSeaVertices[i] = new Vector3(hexCellData.lakeOrSeaVertices[i].x, waterSurfaceY, hexCellData.lakeOrSeaVertices[i].z);
         }
         return hexCellData.lakeOrSeaVertices.ToArray();
     }
@@ -4366,14 +4337,23 @@ T2_8、P2_4、T2_9✔
         Vector3 v4 = GetDirectionVector3(ref hexCellData, p4, direction);
         //float maxDistance = 100f; // 最大检测距离（避免无限延伸）
 
+        // 陆地侧顶点：保留 XZ（伸到相邻陆地海岸边的水平位置），但把 Y 压平到水面高度，
+        // 使海岸边缘不再斜着爬到陆地海岸线，而是与实心水面同高（水陆之间的竖直落差不再由此填充）。
+        float wy = p1.y; // 水面高度（lakeOrSeaVertices 各点 Y 相同）
+        HexCellData neighbor = _mapDataService.GetNeighbor(hexCellData, direction);
+        Vector3 nA = neighbor.SolidAreaVertices[neighborNumA];
+        Vector3 nB = neighbor.SolidAreaVertices[neighborNumB];
+        Vector3 nC = neighbor.SolidAreaVertices[neighborNumC];
+        Vector3 nD = neighbor.SolidAreaVertices[neighborNumD];
+
         //返回的点排序是：自己1、对方1'、对方2'、对方3'、对方4'、自己4、自己3、自己2
         return new List<Vector3>()
         {
             p1,
-            _mapDataService.GetNeighbor(hexCellData,direction).SolidAreaVertices[neighborNumB],
-            _mapDataService.GetNeighbor(hexCellData,direction).SolidAreaVertices[neighborNumD],
-            _mapDataService.GetNeighbor(hexCellData,direction).SolidAreaVertices[neighborNumC],
-            _mapDataService.GetNeighbor(hexCellData,direction).SolidAreaVertices[neighborNumA],
+            new Vector3(nB.x, wy, nB.z),
+            new Vector3(nD.x, wy, nD.z),
+            new Vector3(nC.x, wy, nC.z),
+            new Vector3(nA.x, wy, nA.z),
             p2,
             p4,
             p3,
@@ -4555,17 +4535,24 @@ T2_8、P2_4、T2_9✔
                 break;
         }
 
-        if (_mapDataService.GetNeighbor(hexCellData, directionA) == null || _mapDataService.GetNeighbor(hexCellData, directionB) == null) { return new List<Vector3>() { }; }
+        HexCellData neighborA = _mapDataService.GetNeighbor(hexCellData, directionA);
+        HexCellData neighborB = _mapDataService.GetNeighbor(hexCellData, directionB);
+        if (neighborA == null || neighborB == null) { return new List<Vector3>() { }; }
 
-        List<Vector3> vector3sA = _mapDataService.GetNeighbor(hexCellData, directionA).isCoast ? _mapDataService.GetNeighbor(hexCellData, directionA).lakeOrSeaVertices : _mapDataService.GetNeighbor(hexCellData, directionA).SolidAreaVertices;
-        List<Vector3> vector3sB = _mapDataService.GetNeighbor(hexCellData, directionB).isCoast ? _mapDataService.GetNeighbor(hexCellData, directionB).lakeOrSeaVertices : _mapDataService.GetNeighbor(hexCellData, directionB).SolidAreaVertices;
+        List<Vector3> vector3sA = neighborA.isCoast ? neighborA.lakeOrSeaVertices : neighborA.SolidAreaVertices;
+        List<Vector3> vector3sB = neighborB.isCoast ? neighborB.lakeOrSeaVertices : neighborB.SolidAreaVertices;
+
+        // 与矩形海岸一致：另两个角保留 XZ，Y 压平到本格水面高度，使整条海岸边缘与实心水面同高
+        float wy = hexCellData.lakeOrSeaVertices[numA].y;
+        Vector3 cA = vector3sA[neighborNumA];
+        Vector3 cB = vector3sB[neighborNumB];
 
         //返回的点排序是：自己1、对方1'、对方2'
         return new List<Vector3>()
         {
             hexCellData.lakeOrSeaVertices[numA],
-            vector3sA[neighborNumA],
-            vector3sB[neighborNumB],
+            new Vector3(cA.x, wy, cA.z),
+            new Vector3(cB.x, wy, cB.z),
         };
     }
 
@@ -4798,21 +4785,38 @@ T2_8、P2_4、T2_9✔
     /// </summary>
     public List<List<Vector3>> GetOneSphereOfInfluenceVertices(List<HexCellData> hexCells, out int edgeCount, IMapDataService _mapDataService)
     {
+        //旧签名：归属集合即描边集合本身（行为与原来完全一致）。
+        return GetOneSphereOfInfluenceVertices(hexCells, hexCells, out edgeCount, _mapDataService);
+    }
+
+    public List<List<Vector3>> GetOneSphereOfInfluenceVertices(List<HexCellData> hexCells, ICollection<HexCellData> membershipCells, out int edgeCount, IMapDataService _mapDataService)
+    {
+        //membershipCells：判定"边是否为势力边界"的完整归属集合。
+        //邻居只要属于 membershipCells 就算内部边不描——因此被迷雾切断的一侧（邻居属该势力但当前不可见、
+        //不在描边集合 hexCells 里）不会画出"假边界"，形成开口图形。
+        if (membershipCells == null) { membershipCells = hexCells; }
+
         edgeCount = 0;
         //一、先判断哪些地块是边缘地块 —— 边缘地块中哪些点是边缘点
         List<HexCellData> edgeHexCells = new List<HexCellData>();
         //字典中向量的顺序与edgeHexCells中的顺序相同
         List<Dictionary<int, Vector3>> edgeHexPoints = new List<Dictionary<int, Vector3>>();
         List<Dictionary<int, Vector3>> edgeHexWidthPoints = new List<Dictionary<int, Vector3>>();
+        //每个边缘地块的"边界边"（角点对），顺序与 edgeHexCells 一致。
+        //注意：不能靠"两端角点是否都被收集"来推断某条边是不是边界——角点可能是因它另一条边才被收集的，
+        //那样会把内部共享边（相邻同势力地块之间的边）误判为边界并画出多余的线。必须按边本身记录。
+        List<List<(int a, int b)>> edgeHexBoundaryPairs = new List<List<(int a, int b)>>();
 
         for (int i = 0; i < hexCells.Count; i++)
         {
-            bool isEdgeAtNE = !hexCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.NE));
-            bool isEdgeAtE = !hexCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.E));
-            bool isEdgeAtSE = !hexCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.SE));
-            bool isEdgeAtSW = !hexCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.SW));
-            bool isEdgeAtW = !hexCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.W));
-            bool isEdgeAtNW = !hexCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.NW));
+            //是否为边界：邻居不在"归属集合"里才算边界边（真实势力边缘），
+            //邻居属该势力但当前不可见时不算边界——不沿迷雾线描"假边界"。
+            bool isEdgeAtNE = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.NE));
+            bool isEdgeAtE = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.E));
+            bool isEdgeAtSE = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.SE));
+            bool isEdgeAtSW = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.SW));
+            bool isEdgeAtW = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.W));
+            bool isEdgeAtNW = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.NW));
             //若全部邻居都在势力范围内，该地块就不是边缘地块（只要有一个邻居不在，就是边缘地块）
             bool isEdge = (isEdgeAtNE || isEdgeAtE || isEdgeAtSE || isEdgeAtSW || isEdgeAtW || isEdgeAtNW);
 
@@ -4851,6 +4855,16 @@ T2_8、P2_4、T2_9✔
                 }
                 edgeHexPoints.Add(vector3s);
 
+                //记录该地块的边界边（角点对），三-1 直接据此画线
+                List<(int a, int b)> boundaryPairs = new List<(int a, int b)>();
+                if (isEdgeAtNE) { boundaryPairs.Add((1, 2)); }
+                if (isEdgeAtE)  { boundaryPairs.Add((2, 3)); }
+                if (isEdgeAtSE) { boundaryPairs.Add((3, 4)); }
+                if (isEdgeAtSW) { boundaryPairs.Add((4, 5)); }
+                if (isEdgeAtW)  { boundaryPairs.Add((5, 6)); }
+                if (isEdgeAtNW) { boundaryPairs.Add((6, 1)); }
+                edgeHexBoundaryPairs.Add(boundaryPairs);
+
             }
         }
 
@@ -4887,38 +4901,19 @@ T2_8、P2_4、T2_9✔
         //2、相邻地块组合
 
         //三-1、同地块间组合
-        //将相邻点组合：小点、大点 - 新小点、新大点（大小点间相差 1 ）
+        //按"边界边"逐条画线：一条边界边对应它的两个角点（a,b），
+        //只画真正的边界边，绝不画内部共享边（相邻同势力地块之间的边）。
         for (int i = 0; i < edgeHexPoints.Count; i++)
         {
             List<Vector3> v = new List<Vector3>();
 
-            List<int> index = edgeHexPoints[i].Keys.ToList();
-            index.Remove(0);
-            for (int j = 0; j < index.Count; j++)
+            foreach (var pair in edgeHexBoundaryPairs[i])
             {
-                //6点找1点
-                if (index[j] == 6)
-                {
-                    if (edgeHexPoints[i].ContainsKey(1))
-                    {
-                        v.Add(edgeHexPoints[i][6]);
-                        v.Add(edgeHexPoints[i][1]);
-                        v.Add(edgeHexWidthPoints[i][6]);
-                        v.Add(edgeHexWidthPoints[i][1]);
-                        edgeCount++;
-                    }
-                    continue;
-                }
-
-                //其他索引找 +1 点
-                if (edgeHexPoints[i].ContainsKey(index[j] + 1))
-                {
-                    v.Add(edgeHexPoints[i][index[j]]);
-                    v.Add(edgeHexPoints[i][index[j] + 1]);
-                    v.Add(edgeHexWidthPoints[i][index[j]]);
-                    v.Add(edgeHexWidthPoints[i][index[j] + 1]);
-                    edgeCount++;
-                }
+                v.Add(edgeHexPoints[i][pair.a]);
+                v.Add(edgeHexPoints[i][pair.b]);
+                v.Add(edgeHexWidthPoints[i][pair.a]);
+                v.Add(edgeHexWidthPoints[i][pair.b]);
+                edgeCount++;
             }
 
             OrderedPointList.Add(v);
@@ -5134,6 +5129,148 @@ T2_8、P2_4、T2_9✔
 
 
     /////////////////////////////////////////////////////////////////////- 迷雾 -/////////////////////////////////////////////////////////////////////
+
+    /// <summary>
+    /// 迷雾连接面片边界：输出封皮内边矩形（与 GetFogVertices 的 outerBoundary 相同）
+    /// 和地图真实不规则轮廓（边缘地块开放边的有序真实顶点，含扰动与高度）。
+    /// 连接面片 = 矩形（外）与真实轮廓（洞）之间的锯齿环带，用于闭合
+    /// “不规则地图边缘 ↔ 矩形封皮内边”之间的缝隙。
+    /// </summary>
+    public void GetFogConnectorBoundaries(out List<Vector3> rectBoundary, out List<Vector3> realOutline, IMapDataService _mapDataService)
+    {
+        realOutline = BuildMapRealOutline(_mapDataService);
+        //先用原始（未内缩）轮廓算矩形，保证连接面片外缘矩形与封皮(FogCover)内边矩形完全一致，不在封皮侧留缝。
+        rectBoundary = BuildRectBoundary(realOutline);
+        //再把洞轮廓向地图中心内缩一小段，让连接面片压到地形边缘之下形成重叠，
+        //消除“连接面片洞边 = 地形边”完全重合导致的 Z-fighting 细缝/闪烁。
+        InsetOutlineTowardCenter(realOutline, 1.0f);
+    }
+
+    // 将闭合轮廓在 XZ 平面上朝其几何中心内缩 inset 距离（Y 不变）。
+    private static void InsetOutlineTowardCenter(List<Vector3> outline, float inset)
+    {
+        if (outline == null || outline.Count < 3) return;
+
+        Vector3 center = Vector3.zero;
+        foreach (Vector3 v in outline) center += v;
+        center /= outline.Count;
+
+        for (int i = 0; i < outline.Count; i++)
+        {
+            Vector3 v = outline[i];
+            Vector3 dir = new Vector3(center.x - v.x, 0f, center.z - v.z);
+            float mag = dir.magnitude;
+            if (mag > 1e-4f)
+            {
+                dir /= mag;
+                v.x += dir.x * inset;
+                v.z += dir.z * inset;
+                outline[i] = v;
+            }
+        }
+    }
+
+    // 地图真实不规则轮廓：收集所有边缘地块的“开放边”（邻居为空的方向）作为线段，
+    // 再按共享端点把这些线段拼接成一条有序闭环。相比逐地块按边序号收集，
+    // 拼接法不依赖遍历方向，不会在多开放边/非连续开放边的地块处产生跨地块内部的错误连线，
+    // 从而彻底避免自交导致 LibTessDotNet 丢三角面（个别处漏面/缝隙）。
+    private List<Vector3> BuildMapRealOutline(IMapDataService _mapDataService)
+    {
+        List<HexCellData> outerBoundaryHex = new List<HexCellData>();
+        int xNum = _config.xNumber;
+        int zNum = _config.zNumber;
+        Dictionary<int, HexCellData> d = _mapDataService.GetOrderToCell();
+        for (int i = 1; i < zNum; i++)
+            outerBoundaryHex.Add(d[xNum * i]);
+        for (int i = d.Values.Count - (xNum - 1); i < d.Values.Count; i++)
+            outerBoundaryHex.Add(d[i]);
+        for (int i = zNum - 1; i > 0; i--)
+            outerBoundaryHex.Add(d[xNum * i - 1]);
+        for (int i = (xNum - 1) - 1; i >= 0; i--)
+            outerBoundaryHex.Add(d[i]);
+
+        List<Vector3> outline = new List<Vector3>();
+        foreach (HexCellData hex in outerBoundaryHex)
+        {
+            List<int> ints = new List<int>();
+            for (int j = 0; j < 6; j++)
+            {
+                if (_mapDataService.GetNeighbor(hex, (Enums.HexDirection)j) != null) continue;
+                ints.Add(j);
+            }
+            if (ints.Count == 0) continue;
+            ints.Sort();
+            int outlierIndex = -1;
+            for (int j = 0; j < ints.Count - 1; j++)
+            {
+                if (ints[j + 1] - ints[j] != 1)
+                {
+                    outlierIndex = j + 1;
+                    break;
+                }
+            }
+            if (outlierIndex != -1 && outlierIndex < ints.Count)
+            {
+                List<int> newInts = ints.GetRange(outlierIndex, ints.Count - outlierIndex);
+                newInts.AddRange(ints.GetRange(0, outlierIndex));
+                ints = newInts;
+            }
+
+            List<int> Points = new List<int>();
+            foreach (int index in ints)
+            {
+                switch (index)
+                {
+                    case 0: Points.AddRange(new[] { 1, 2 }); break;
+                    case 1: Points.AddRange(new[] { 2, 3 }); break;
+                    case 2: Points.AddRange(new[] { 3, 4 }); break;
+                    case 3: Points.AddRange(new[] { 4, 5 }); break;
+                    case 4: Points.AddRange(new[] { 5, 6 }); break;
+                    case 5: Points.AddRange(new[] { 6, 1 }); break;
+                }
+            }
+            List<int> uniquePoints = new List<int>();
+            foreach (int p in Points)
+                if (!uniquePoints.Contains(p)) uniquePoints.Add(p);
+
+            foreach (int p in uniquePoints)
+                outline.Add(hex.SolidAreaVertices[p]);
+        }
+
+        for (int i = outline.Count - 1; i >= 1; i--)
+        {
+            if ((outline[i] - outline[i - 1]).sqrMagnitude < 1e-6f)
+                outline.RemoveAt(i);
+        }
+        return outline;
+    }
+    // 真实轮廓的包围盒矩形（与 GetFogVertices 输出的 RectPoints 同一算法，保证与封皮内边重合）
+    private static List<Vector3> BuildRectBoundary(List<Vector3> outline)
+    {
+        float minX = float.MaxValue, maxX = float.MinValue;
+        float minZ = float.MaxValue, maxZ = float.MinValue;
+        float MaxY = float.MinValue;
+        const float additionalValue_X = 1f;
+        const float additionalValue_Z = 1f;
+
+        foreach (Vector3 v in outline)
+        {
+            if (v.x < minX) minX = v.x;
+            if (v.x > maxX) maxX = v.x;
+            if (v.z < minZ) minZ = v.z;
+            if (v.z > maxZ) maxZ = v.z;
+            if (v.y > MaxY) MaxY = v.y;
+        }
+
+        return new List<Vector3>
+        {
+            new Vector3(minX - additionalValue_X, MaxY, maxZ + additionalValue_Z), // 左上
+            new Vector3(maxX + additionalValue_X, MaxY, maxZ + additionalValue_Z), // 右上
+            new Vector3(maxX + additionalValue_X, MaxY, minZ - additionalValue_Z), // 右下
+            new Vector3(minX - additionalValue_X, MaxY, minZ - additionalValue_Z), // 左下
+        };
+    }
+
     public void GetFogVertices(out List<Vector3> outerBoundary, out List<List<Vector3>> holesVector3, IMapDataService _mapDataService)
     {
         outerBoundary = new List<Vector3>();

@@ -662,6 +662,12 @@ public class gameOptionController : StartSceneUIController
             }
             //为 UI控件 加上 UIControl
             GetOrAddUIControl(current);
+
+            // 设置系统尚未接入运行时配置。保持说明文本可见，但不可编辑，避免给出已生效的错误反馈。
+            foreach (Selectable selectable in current.GetComponentsInChildren<Selectable>(true))
+            {
+                selectable.interactable = false;
+            }
         }
     }
 

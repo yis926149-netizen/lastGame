@@ -26,7 +26,7 @@ Shader "Custom/River" {
 
         CGPROGRAM
         // 关键3：移除可能的阴影编译指令（仅保留alpha和基础光照）
-        #pragma surface surf Standard alpha noforwardadd nolightmap nodirlightmap
+        #pragma surface surf Standard alpha noforwardadd nolightmap nodirlightmap vertex:vert
         // noforwardadd：禁用附加光照（减少计算，避免阴影残留）
         // nolightmap/nodirlightmap：禁用光照贴图（透明物体无需光照贴图）
         #pragma target 3.0
@@ -41,7 +41,20 @@ Shader "Custom/River" {
 
         struct Input {
             float2 uv_MainTex;
+            float  explored;   // 顶点色 .r = 探索状态(0=未探索,1=已探索)
+            float  visible;    // 顶点色 .g = 当前视野(0/1)，记忆区压暗用
         };
+
+        // 全局迷雾参数（与地形一致，记忆区压暗）
+        float _FogMemoryDim;
+
+        // 顶点函数：把顶点色 .r/.g 传入 surf。未探索时河流整体透明，露出下方地形已画好的迷雾
+        //（河道凹槽本就是地形核心面片的一部分，未探索时显示迷雾），无需河流自己再对齐迷雾。
+        void vert(inout appdata_full v, out Input o) {
+            UNITY_INITIALIZE_OUTPUT(Input, o);
+            o.explored = v.color.r;
+            o.visible = v.color.g;
+        }
 
         void surf (Input IN, inout SurfaceOutputStandard o) {
             // UV动画（不变）
@@ -64,10 +77,12 @@ Shader "Custom/River" {
             // 当_Color.Alpha=0时，finalColor.a=0，实现完全透明
 
             // 表面属性赋值（不变）
-            o.Albedo = finalColor.rgb;
+            // 记忆区(explored=1, visible=0)压暗到 _FogMemoryDim，与地形观感一致
+            o.Albedo = finalColor.rgb * lerp(_FogMemoryDim, 1.0, IN.visible);
             o.Metallic = _Metallic;
             o.Smoothness = _Glossiness;
-            o.Alpha = finalColor.a;
+            // 未探索(explored=0)时 Alpha=0：河流完全透明，露出下方地形迷雾。
+            o.Alpha = finalColor.a * IN.explored;
         }
         ENDCG
     }

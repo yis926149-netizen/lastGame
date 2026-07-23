@@ -24,7 +24,8 @@ public class CardService : ICardService
     private ICardView[] _slots = new ICardView[MaxCardsCount];
     private bool _hasDrawnThisTurn = false;
     private bool _hasDealtThisTurn = false;     // ?? ????
-    private readonly System.Random _random = new System.Random();
+    private System.Random _random;
+    private System.Random Random => _random ??= SeedService.GetRandom("Card");
 
     [Inject] private IUIConfigProvider _uiConfig;
     [Inject] private ITechCultureService _techCulture;
@@ -42,27 +43,17 @@ public class CardService : ICardService
 
     public int GenerateNextCardID()
     {
-        // ¿ª¾Ö½×¶Î£¨ÒıÇæÀï CurrentTurn ´Ó 1 ¼Æ£¬Ê×´Î·¢ÅÆµÈ¼Û¡¸»ØºÏ0¡¹£©£ºµÚÒ»ÕÅ¹Ì¶¨ÒÆÃñ
-        if (_gameState != null &&
-            _gameState.CurrentTurn == 1 &&
-            !_hasGivenFirstTurnSettler)
-        {
-            _hasGivenFirstTurnSettler = true;
-            return 0;
-        }
-
-        // Ô­Âß¼­£º°´¿Æ¼¼/ÎÄ»¯´Ó½âËø³Ø¾ùÔÈËæ»ú£¨ÔİÇÒ¹Ø±Õ£¬ĞèÒªÊ±»Ö¸´£©
-        // int techLevel = _techCulture?.TechLevel ?? 0;
-        // int cultureLevel = _techCulture?.CultureLevel ?? 0;
-        // List<int> unlockedIDs = _cardUnlockRuleProvider.GetUnlockedCardIds(techLevel, cultureLevel);
-        //
-        // if (unlockedIDs.Count == 0) return 0;
-        //
-        // int randomIndex = _random.Next(unlockedIDs.Count);
-        // return unlockedIDs[randomIndex];
-
-        // ÔİÇÒ£ºÈ«¿¨ÅÆËæ»ú [0, 15)
-        return _random.Next(0, 15);
+        // å…±äº«æŠ½å¡è§„åˆ™ï¼ˆCardGenerationRuleï¼‰ï¼šç©å®¶é¦–å¼ ç§»æ°‘å¡ä¿åº•æ—¶æœº = å›åˆ 1ã€‚
+        bool giveFirstSettler = _gameState != null && _gameState.CurrentTurn == 1;
+        int techLevel = _techCulture?.TechLevel ?? 0;
+        int cultureLevel = _techCulture?.CultureLevel ?? 0;
+        return CardGenerationRule.GenerateNextCardId(
+            giveFirstSettler,
+            ref _hasGivenFirstTurnSettler,
+            techLevel,
+            cultureLevel,
+            _cardUnlockRuleProvider,
+            Random);
     }
 
     public void Reset()

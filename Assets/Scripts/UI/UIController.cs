@@ -24,6 +24,7 @@ public class UIController : MonoBehaviour
     [Inject] private PlayerInputHandler _playerInputHandler;
     [Inject] private UIManagerPresenter _uiPresenter;
     [Inject] private IUnitRepository _unitRepository;
+    [Inject] private UnitRemovalService _unitRemovalService;
     [Inject] private PlayerModelManager _playerModelManager;
     [Inject] private EndGame _endGame;
     [Inject] private AudioManager _audioManager;
@@ -43,14 +44,26 @@ public class UIController : MonoBehaviour
     [HideInInspector]
     public Button nextTurnButton = null;
 
+    // 本实例若为“下一回合”按钮，缓存其 Button 组件用于启用/禁用
+    private Button _nextTurnButtonComponent = null;
+
     // 远程攻击状态
     private bool _isRangedAttackMode = false;
     private GameObject _rangedAttacker = null;
 
     // 临时高亮列表（用于远程攻击范围）
     private List<HexCellData> _tempHighlightedCells = new List<HexCellData>();
+    private Dictionary<HexCellData, GridVisualState> _tempGridStates = new Dictionary<HexCellData, GridVisualState>();
     // 临时敌方指示器列表
     private List<GameObject> _tempEnemyIndicators = new List<GameObject>();
+    private bool _isInfoPanelVisible;
+
+    private struct GridVisualState
+    {
+        public bool WasActive;
+        public Color Color;
+        public bool HasColor;
+    }
 
     void Start()
     {
@@ -61,7 +74,13 @@ public class UIController : MonoBehaviour
         if (UIType == "nextTurnButton")// && nextTurnButton != null)
         {
             //Debug.Log("挂载了【下一回合按钮】");
-            UITool.AddButtonClickEvent(transform.GetComponent<Button>(), NextTurn);
+            _nextTurnButtonComponent = transform.GetComponent<Button>();
+            UITool.AddButtonClickEvent(_nextTurnButtonComponent, NextTurn);
+
+            // 订阅阶段变化：仅玩家阶段可用，AI/结算阶段禁用
+            if (_gameStateMachine != null)
+                _gameStateMachine.PhaseChanged += RefreshNextTurnButtonInteractable;
+            RefreshNextTurnButtonInteractable();
         }
 
         // 单位信息面板 - 技能按钮
@@ -118,6 +137,7 @@ public class UIController : MonoBehaviour
         {
             // 获取原始位置
             InfoPanelOriginalRectPosition = transform.GetComponent<RectTransform>().localPosition;
+            _isInfoPanelVisible = _uiPresenter.CurrentSelectedUnit != null;
         }
 
         // 结束界面按钮 - 重播影片
@@ -151,29 +171,34 @@ public class UIController : MonoBehaviour
         // 信息面板（仅保留弹出动画，数据填充由 Presenter 在选中时一次性完成）
         if (UIType == "UnitInfoPanel")
         {
-            if (_uiPresenter.CurrentSelectedUnit != null)
+            bool shouldBeVisible = _uiPresenter.CurrentSelectedUnit != null;
+            if (shouldBeVisible != _isInfoPanelVisible)
             {
-                transform.GetComponent<RectTransform>().DOAnchorPos(InfoPanelOriginalRectPosition + new Vector2(0, 315), 0.5f);
-            }
-            else
-            {
-                transform.GetComponent<RectTransform>().DOAnchorPos(InfoPanelOriginalRectPosition, 0.5f);
+                _isInfoPanelVisible = shouldBeVisible;
+                RectTransform panel = transform.GetComponent<RectTransform>();
+                panel.DOKill();
+                Vector2 target = InfoPanelOriginalRectPosition + (shouldBeVisible ? new Vector2(0, 315) : Vector2.zero);
+                panel.DOAnchorPos(target, 0.5f).SetLink(gameObject);
             }
         }
 
         // 远程攻击模式处理
-        if (_isRangedAttackMode && _rangedAttacker != null)
+        if (_isRangedAttackMode)
         {
+            var controller = _rangedAttacker != null ? _rangedAttacker.GetComponent<UnitMovementController>() : null;
+            if (_gameStateMachine.CurrentPhase is not PlayerPhase ||
+                _uiPresenter.CurrentSelectedUnit != _rangedAttacker ||
+                controller == null || !controller.CanBeSelected)
+            {
+                CancelRangedAttackMode();
+                return;
+            }
+
             // 检测右键点击选择目标
             if (_input.GetMouseButtonDown(1) && !_input.IsPointerOverUI())
             {
                 GameObject target = GetEnemyUnderMouse();
-                if (target != null)
-                {
-                    string targetTag = target.tag;
-                    PerformRangedAttack(_rangedAttacker, target, targetTag);
-                }
-                else
+                if (target == null)
                 {
                     CancelRangedAttackMode();
                     _playerInputHandler.ForceDeselectUnit();
@@ -190,9 +215,24 @@ public class UIController : MonoBehaviour
         _gameStateMachine?.EndTurn();
     }
 
+    // 仅在玩家阶段允许点击“下一回合”，AI/结算阶段禁用
+    private void RefreshNextTurnButtonInteractable()
+    {
+        if (_nextTurnButtonComponent == null) return;
+        _nextTurnButtonComponent.interactable = _gameStateMachine?.CurrentPhase is PlayerPhase;
+    }
+
+    private void OnDestroy()
+    {
+        if (UIType == "nextTurnButton" && _gameStateMachine != null)
+            _gameStateMachine.PhaseChanged -= RefreshNextTurnButtonInteractable;
+    }
+
     // ---------- 单位信息面板按钮 ----------
     public void UnitInfoPanelSkillButton()
     {
+        if (_gameStateMachine.CurrentPhase is not PlayerPhase) return;
+
         GameObject selectedUnit = _uiPresenter.CurrentSelectedUnit;
         if (selectedUnit == null) return;
 
@@ -250,7 +290,8 @@ public class UIController : MonoBehaviour
         HexCellData hB = _mapDataService.GetCellByWorldPosition(city.transform.position);
         buildingController.bulidingType = Enums.BulidingType.City;
         hB.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(Enums.BulidingType.City, city);
-        buildingController.Player_City_Index = new KeyValuePair<int, int>(0, _playerModelManager.CityCount);
+        int cityIndex = _playerModelManager.AllocateCityIndex();
+        buildingController.Player_City_Index = new KeyValuePair<int, int>(0, cityIndex);
 
         // UI画布
         Canvas canvas = city.GetComponentInChildren<Canvas>();
@@ -266,31 +307,25 @@ public class UIController : MonoBehaviour
         buildingController.uiHealthBar = healthBar.GetComponent<Slider>();
 
         if (city.CompareTag("PlayerBuilding"))
-            healthBar.transform.GetChild(2).GetComponent<Image>().color = Color.green;
+            UITool.TrySetSliderFillColor(buildingController.uiHealthBar, Color.green);
         else if (city.CompareTag("EnemyBuilding"))
-            healthBar.transform.GetChild(2).GetComponent<Image>().color = Color.red;
+            UITool.TrySetSliderFillColor(buildingController.uiHealthBar, Color.red);
 
-        // 销毁移民单位
-        Destroy(unit);
-        // 取消选中（如果当前选中的是这个单位）
-        if (_uiPresenter.CurrentSelectedUnit == unit)
-        {
-            _playerInputHandler.ForceDeselectUnit();
-        }
+        _unitRemovalService.RemoveUnit(unit);
 
         // 添加势力范围
-        _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData.Add(_playerModelManager.CityCount, new Dictionary<Vector3, HexCellData>());
+        _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData.Add(cityIndex, new Dictionary<Vector3, HexCellData>());
 
         _playerModelManager.ExpandTheSphereOfInfluence(
             _mapDataService.WorldToHexCoordinate(city.transform.position),
             _playerModelManager.SphereOfInfluence_HexC_HexCellData,
-            new KeyValuePair<int, int>(0, _playerModelManager.CityCount)
+            new KeyValuePair<int, int>(0, cityIndex)
         );
 
         _playerModelManager.ExpandTheSphereOfInfluence(
             _mapDataService.WorldToHexCoordinate(city.transform.position),
-            _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData[_playerModelManager.CityCount],
-            new KeyValuePair<int, int>(0, _playerModelManager.CityCount)
+            _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData[cityIndex],
+            new KeyValuePair<int, int>(0, cityIndex)
         );
 
         _mapVisualEvent.Raise();
@@ -324,11 +359,17 @@ public class UIController : MonoBehaviour
     // ---------- 进入远程攻击模式 ----------
     private void EnterRangedAttackMode(GameObject attacker)
     {
-        List<Vector3> reachableHexes = _movementSystem.GetAllReachableHexesFromStartHex(
-            new List<Vector3>(_mapDataService.GetAllHexCoordinates()),
-            _mapDataService.WorldToHexCoordinate(attacker.transform.position),
-            2
-        );
+        var controller = attacker != null ? attacker.GetComponent<UnitMovementController>() : null;
+        if (_gameStateMachine.CurrentPhase is not PlayerPhase || controller == null || !controller.CanBeSelected) return;
+
+        int attackRange = controller.characterData?.unitData?.BasicAttackRange ?? 0;
+        if (attackRange <= 1) return;
+
+        Vector3 startHex = _mapDataService.WorldToHexCoordinate(attacker.transform.position);
+        List<Vector3> reachableHexes = _mapDataService.GetAllCells()
+            .Where(cell => cell != null && HexDistance(startHex, cell.HexCoordinate) > 0f && HexDistance(startHex, cell.HexCoordinate) <= attackRange)
+            .Select(cell => cell.HexCoordinate)
+            .ToList();
 
         ShowReachableHexes(reachableHexes, mode: 1);
         ShowEnemyIndicators();
@@ -347,29 +388,24 @@ public class UIController : MonoBehaviour
         ClearEnemyIndicators();
     }
 
-    // ---------- 执行远程攻击 ----------
-    private void PerformRangedAttack(GameObject attacker, GameObject target, string targetTag)
+    private static float HexDistance(Vector3 a, Vector3 b)
     {
-        var controller = attacker.GetComponent<UnitMovementController>();
-        if (controller == null) return;
-
-        controller.attackedUnit = target;
-        controller.attackTarget = targetTag;
-        controller.isAttack = true;
-        controller.isRangedAttack = true;
-
-        CancelRangedAttackMode();
-        _playerInputHandler.ForceDeselectUnit();
+        return (Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y) + Mathf.Abs(a.z - b.z)) * 0.5f;
     }
 
     // ---------- 获取鼠标下的敌人 ----------
     private GameObject GetEnemyUnderMouse()
     {
-        if (_input.RaycastFromScreen(_input.MousePosition, out RaycastHit hit, 100f, LayerMask.GetMask("Units", "Buildings")))
+        RaycastHit[] hits = _input.RaycastAllFromScreen(_input.MousePosition, 100f, Physics.DefaultRaycastLayers);
+        foreach (RaycastHit hit in hits)
         {
-            GameObject obj = hit.transform.gameObject;
-            if (obj.CompareTag("EnemyUnit") || obj.CompareTag("EnemyBuilding"))
-                return obj;
+            Transform current = hit.transform;
+            while (current != null)
+            {
+                if (current.CompareTag("EnemyUnit") || current.CompareTag("EnemyBuilding"))
+                    return current.gameObject;
+                current = current.parent;
+            }
         }
         return null;
     }
@@ -384,10 +420,16 @@ public class UIController : MonoBehaviour
             var cell = _mapDataService.GetCell(coord);
             if (cell != null && cell.GridMesh != null)
             {
+                var renderer = cell.GridMesh.GetComponent<Renderer>();
+                _tempGridStates[cell] = new GridVisualState
+                {
+                    WasActive = cell.GridMesh.activeSelf,
+                    Color = renderer != null ? renderer.material.color : default,
+                    HasColor = renderer != null
+                };
                 cell.GridMesh.SetActive(true);
                 if (mode == 1)
                 {
-                    var renderer = cell.GridMesh.GetComponent<Renderer>();
                     if (renderer != null)
                         renderer.material.color = Color.cyan;
                 }
@@ -400,10 +442,23 @@ public class UIController : MonoBehaviour
     {
         foreach (var cell in _tempHighlightedCells)
         {
-            if (cell.GridMesh != null)
-                cell.GridMesh.SetActive(false);
+            if (cell.GridMesh == null || !_tempGridStates.TryGetValue(cell, out GridVisualState state)) continue;
+
+            if (state.HasColor)
+            {
+                var renderer = cell.GridMesh.GetComponent<Renderer>();
+                if (renderer != null) renderer.material.color = state.Color;
+            }
+            cell.GridMesh.SetActive(state.WasActive);
         }
         _tempHighlightedCells.Clear();
+        _tempGridStates.Clear();
+    }
+
+    private void OnDisable()
+    {
+        if (UIType == "UnitInfoPanel") transform.GetComponent<RectTransform>().DOKill();
+        CancelRangedAttackMode();
     }
 
     // ---------- 显示敌方单位指示器 ----------
@@ -425,6 +480,13 @@ public class UIController : MonoBehaviour
             foreach (var kv in group)
             {
                 GameObject enemy = kv.Key;
+                if (enemy == null) continue;
+
+                // 迷雾过滤：只给玩家当前视野内(IsVisible)的敌方单位生成红圈。
+                // 否则记忆区/未探索地块上的敌人也会被标出，等于泄露迷雾外的敌人位置。
+                HexCellData cell = _mapDataService.GetCellByWorldPosition(enemy.transform.position);
+                if (cell == null || !cell.IsVisible) continue;
+
                 var indicator = Instantiate(prefab, indicatorParent);
                 indicator.transform.position = enemy.transform.position + Vector3.up * 0.2f;
                 _tempEnemyIndicators.Add(indicator);
@@ -444,6 +506,8 @@ public class UIController : MonoBehaviour
     // ---------- 收割资源 ----------
     public void UnitInfoPanelReapButton()
     {
+        if (_gameStateMachine.CurrentPhase is not PlayerPhase) return;
+
         GameObject selectedUnit = _uiPresenter.CurrentSelectedUnit;
         if (selectedUnit == null) return;
 
@@ -495,8 +559,7 @@ public class UIController : MonoBehaviour
 
     private void ReapResource_Plants(CharacterData Reaper)
     {
-        Reaper.currentHp += 0.25f * Reaper.unitData.hp;
-        Reaper.healthBar.value += 0.25f;
+        Reaper.Heal(0.25f * Reaper.unitData.hp);
         ReapResource(environmentModelsProvider.GetReapPlantsEffect());
     }
 
@@ -539,14 +602,21 @@ public class UIController : MonoBehaviour
     // ---------- 结束界面按钮 ----------
     private void ReplayVideo()
     {
-        _endGame.EndAnimation.gameObject.SetActive(true);
-        _endGame.EndAnimation.SetAsLastSibling();
+        var animation = _endGame.CurrentEndAnimation;
+        if (animation == null) return;
+
+        animation.gameObject.SetActive(true);
+        animation.SetAsLastSibling();
         Invoke("TurnOffTheVideo", 6.5f);
     }
 
     private void TurnOffTheVideo()
     {
-        _endGame.EndAnimation.gameObject.SetActive(false);
+        var animation = _endGame.CurrentEndAnimation;
+        if (animation != null)
+        {
+            animation.gameObject.SetActive(false);
+        }
     }
 
     private void MainMenu()
@@ -558,7 +628,6 @@ public class UIController : MonoBehaviour
     private void ContinueGame()
     {
         _audioManager.PlayBGM("Theme_Mistery_But_Then_Happy_Loop");
-        _endGame.EndAnimation.gameObject.SetActive(false);
-        _endGame.EndUI.gameObject.SetActive(false);
+        _endGame.HideEndUI();
     }
 }

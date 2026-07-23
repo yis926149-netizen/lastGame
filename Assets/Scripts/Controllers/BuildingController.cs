@@ -18,6 +18,7 @@ public class BuildingController : MonoBehaviour
     [Inject] private AudioManager _audioManager;
     [Inject] private EnemyModelManager _enemyModelManager;
     [Inject] private PlayerModelManager _playerModelManager;
+    [Inject] private ITechCultureService _techCultureService;
 
     //对应的数据类
     [HideInInspector]
@@ -38,6 +39,7 @@ public class BuildingController : MonoBehaviour
 
     //城市易主
     public bool isCityChangeOwner = false;
+    private bool _isDestroyed;
 
     void Start()
     {
@@ -47,7 +49,7 @@ public class BuildingController : MonoBehaviour
 
     void Update()
     {
-        if (!isCityChangeOwner && uiHealthBar != null && uiHealthBar.value <= 0)
+        if (!_isDestroyed && !isCityChangeOwner && uiHealthBar != null && uiHealthBar.value <= 0)
         {            
             if(bulidingType == Enums.BulidingType.City)
             {
@@ -152,14 +154,15 @@ public class BuildingController : MonoBehaviour
     //市中心死亡
     public void CityDestroyed()
     {
-        //建筑死亡音效
-        _audioManager.PlaySFX("Launcher2");
-
         if (Attacker == null || !Attacker.TryGetComponent<UnitMovementController>(out var attackerController))
         {
             Debug.LogWarning("[BuildingController] CityDestroyed aborted: attacker is missing.");
+            isCityChangeOwner = false;
             return;
         }
+
+        //建筑死亡音效
+        _audioManager.PlaySFX("Launcher2");
 
         // 1) 从原属主势力范围中移除该城市
         List<HexCellData> hexCellDatas = RemoveCityFromCurrentOwner();
@@ -206,12 +209,9 @@ public class BuildingController : MonoBehaviour
                 cityHexes = citySphere.Values.Where(v => v != null).ToList();
                 _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData.Remove(cityIndex);
             }
-
-            foreach (var hex in cityHexes)
-            {
-                if (hex == null) continue;
-                _playerModelManager.SphereOfInfluence_HexC_HexCellData.Remove(hex.HexCoordinate);
-            }
+            ClearRemovedCityOwnership(cityHexes, Player_City_Index);
+            _playerModelManager.RebuildSphereOfInfluence();
+            cityHexes = cityHexes.Where(hex => hex.Player_City_Index.Key != 0).ToList();
 
             if (_playerModelManager.CityCount > 0)
             {
@@ -230,14 +230,9 @@ public class BuildingController : MonoBehaviour
                 _enemyModelManager.Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData.Remove(cityKey);
             }
 
-            if (_enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData.TryGetValue(aiIndex, out var totalSphere))
-            {
-                foreach (var hex in cityHexes)
-                {
-                    if (hex == null) continue;
-                    totalSphere.Remove(hex.HexCoordinate);
-                }
-            }
+            ClearRemovedCityOwnership(cityHexes, cityKey);
+            _enemyModelManager.RebuildSphereOfInfluence(aiIndex);
+            cityHexes = cityHexes.Where(hex => hex.Player_City_Index.Key != aiIndex).ToList();
 
             if (_enemyModelManager.CityCount.ContainsKey(aiIndex) && _enemyModelManager.CityCount[aiIndex] > 0)
             {
@@ -257,6 +252,19 @@ public class BuildingController : MonoBehaviour
 
         _mapVisualEvent.Raise();
         return cityHexes;
+    }
+
+    private static void ClearRemovedCityOwnership(
+        IEnumerable<HexCellData> cityHexes,
+        KeyValuePair<int, int> removedCity)
+    {
+        foreach (HexCellData hex in cityHexes)
+        {
+            if (hex != null && hex.Player_City_Index.Equals(removedCity))
+            {
+                hex.Player_City_Index = new KeyValuePair<int, int>(-1, -1);
+            }
+        }
     }
 
     private void DestroyNonCityBuildingsOnHexes(List<HexCellData> cityHexes)
@@ -292,12 +300,16 @@ public class BuildingController : MonoBehaviour
         RemoveEntriesByValue(_playerModelManager.Index_AttackBuilding, target);
         RemoveEntriesByValue(_playerModelManager.Index_DefenseBuilding, target);
         RemoveEntriesByValue(_playerModelManager.Index_AltarBuilding, target);
-        RemoveEntriesByValue(_playerModelManager.Index_TechnologyAndCulturalBuilding, target);
+        if (RemoveEntriesByValue(_playerModelManager.Index_TechnologyAndCulturalBuilding, target))
+        {
+            _techCultureService.AddTechPointsPerTurn(-10);
+            _techCultureService.AddCulturePointsPerTurn(-10);
+        }
     }
 
-    private void RemoveEntriesByValue(Dictionary<int, GameObject> dict, GameObject target)
+    private bool RemoveEntriesByValue(Dictionary<int, GameObject> dict, GameObject target)
     {
-        if (dict == null || target == null) return;
+        if (dict == null || target == null) return false;
 
         List<int> keysToRemove = new List<int>();
         foreach (var kv in dict)
@@ -312,11 +324,13 @@ public class BuildingController : MonoBehaviour
         {
             dict.Remove(key);
         }
+
+        return keysToRemove.Count > 0;
     }
 
     private void CaptureCityToPlayer(List<HexCellData> cityHexes)
     {
-        int newCityIndex = _playerModelManager.CityCount;
+        int newCityIndex = _playerModelManager.AllocateCityIndex();
         if (!_playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData.ContainsKey(newCityIndex))
         {
             _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData[newCityIndex] = new Dictionary<Vector3, HexCellData>();
@@ -348,7 +362,7 @@ public class BuildingController : MonoBehaviour
             _enemyModelManager.CityCount[aiIndex] = 0;
         }
 
-        int newCityIndex = _enemyModelManager.CityCount[aiIndex];
+        int newCityIndex = _enemyModelManager.AllocateCityIndex(aiIndex);
         var cityKey = new KeyValuePair<int, int>(aiIndex, newCityIndex);
         if (!_enemyModelManager.Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData.ContainsKey(cityKey))
         {
@@ -379,40 +393,29 @@ public class BuildingController : MonoBehaviour
             transform.SetParent(parent, true);
         }
 
-        // 兼容不同预制体层级，优先沿用原有路径，失败时静默忽略
-        Transform hpFill = transform.childCount > 0
-            ? transform.GetChild(0)?.GetChild(0)?.GetChild(2)
-            : null;
-        if (hpFill != null && hpFill.TryGetComponent<Image>(out var hpImage))
-        {
-            hpImage.color = healthColor;
-        }
+        UITool.TrySetSliderFillColor(uiHealthBar, healthColor);
     }
 
     //建筑死亡
     public void BuildingDestroyed()
     {
+        if (_isDestroyed) return;
+        _isDestroyed = true;
+
         //建筑死亡音效
         _audioManager.PlaySFX("Launcher2");
 
         //剔除 
        
         HexCellData h = _mapDataService.GetCellByWorldPosition(transform.position);
-        h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(Enums.BulidingType.NoBuilding, null);
-        h.movementCost = 1;
-
-        //科文建筑剔除
-        int indexToRemove = -1;
-        List<int> i = _playerModelManager.Index_TechnologyAndCulturalBuilding.Keys.ToList();
-        foreach (int index in i)
+        if (h != null && h.BulidingTypeOnHex_Building.Value == gameObject)
         {
-            if (_playerModelManager.Index_TechnologyAndCulturalBuilding[index] == transform)
-            {
-                indexToRemove = index; 
-                break;
-            }
+            h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(Enums.BulidingType.NoBuilding, null);
+            h.movementCost = 1;
         }
-        _playerModelManager.Index_TechnologyAndCulturalBuilding.Remove(indexToRemove);
+
+        RemoveFromPlayerBuildingIndexes(gameObject);
+        _mapVisualEvent.Raise();
 
         //删除该建筑
         Destroy(gameObject);      

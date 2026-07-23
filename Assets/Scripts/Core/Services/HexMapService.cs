@@ -11,10 +11,10 @@ public class HexMapService : IMapDataService
     private Dictionary<Vector3, Vector3> _centerWorldToHex;
     private GameObject _mapGameObject;
 
-    //µØÍ¼Éú³É
+    //ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½
     private Vector3[] _hexVertices;
 
-    //µØÍ¼ÔËÐÐÊ±Êý¾Ý
+    //ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
     private List<Vector3> _verticesList;
     private Mesh _mesh;
     private GameObject _gridGameObject;
@@ -28,10 +28,10 @@ public class HexMapService : IMapDataService
         Dictionary<Vector3, Vector3> centerWorldToHex,
         GameObject mapGameObject,
 
-        //µØÍ¼Éú³É
+        //ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½
         Vector3[] hexVertices,
 
-        //µØÍ¼ÔËÐÐÊ±Êý¾Ý
+        //ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
         List<Vector3> verticesList,
         Mesh mesh,
         GameObject gridGameObject
@@ -89,27 +89,55 @@ public class HexMapService : IMapDataService
 
     public Vector3 WorldToHexCoordinate(Vector3 worldPosition)
     {
-        if (_centerWorldCoordinates == null || _centerWorldCoordinates.Count == 0)
-            return Vector3.zero;
+        return TryWorldToHexCoordinate(worldPosition, out Vector3 hexCoordinate)
+            ? hexCoordinate
+            : Vector3.zero;
+    }
+
+    public bool TryWorldToHexCoordinate(Vector3 worldPosition, out Vector3 hexCoordinate)
+    {
+        hexCoordinate = default;
+        if (_centerWorldCoordinates == null || _centerWorldCoordinates.Count == 0 || _centerWorldToHex == null)
+            return false;
 
         float minDist = float.MaxValue;
         Vector3 closestCenter = _centerWorldCoordinates[0];
         foreach (var center in _centerWorldCoordinates)
         {
-            float dist = Vector3.Distance(center, worldPosition);
+            float dist = (new Vector2(center.x, center.z) - new Vector2(worldPosition.x, worldPosition.z)).sqrMagnitude;
             if (dist < minDist)
             {
                 minDist = dist;
                 closestCenter = center;
             }
         }
-        return _centerWorldToHex[closestCenter];
+
+        float cellRadius = GetCellRadius();
+        if (minDist > cellRadius * cellRadius || !_centerWorldToHex.TryGetValue(closestCenter, out hexCoordinate))
+            return false;
+
+        return true;
     }
 
     public HexCellData GetCellByWorldPosition(Vector3 worldPosition)
     {
-        var hex = WorldToHexCoordinate(worldPosition);
-        return GetCell(hex);
+        return TryWorldToHexCoordinate(worldPosition, out Vector3 hex) ? GetCell(hex) : null;
+    }
+
+    private float GetCellRadius()
+    {
+        if (_centerWorldCoordinates.Count == 1) return 0f;
+
+        Vector3 first = _centerWorldCoordinates[0];
+        float nearestSqrDistance = float.MaxValue;
+        for (int i = 1; i < _centerWorldCoordinates.Count; i++)
+        {
+            Vector3 center = _centerWorldCoordinates[i];
+            float sqrDistance = (new Vector2(first.x, first.z) - new Vector2(center.x, center.z)).sqrMagnitude;
+            if (sqrDistance > 0f && sqrDistance < nearestSqrDistance) nearestSqrDistance = sqrDistance;
+        }
+
+        return nearestSqrDistance < float.MaxValue ? Mathf.Sqrt(nearestSqrDistance / 3f) : 0f;
     }
 
     public List<Vector3> GetAllWorldCoordinates() => _centerWorldCoordinates;
@@ -139,7 +167,7 @@ public class HexMapService : IMapDataService
 
     public List<HexCellData> GetNeighbors(HexCellData cell)
     {
-        var neighbors = new List<HexCellData>(); // ´´½¨ÁÐ±íÓÃÓÚ´æ´¢½á¹û
+        var neighbors = new List<HexCellData>(); // ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½ï¿½Ú´æ´¢ï¿½ï¿½ï¿½
         var dirs = new Enums.HexDirection[]
         {
         Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE,
@@ -151,11 +179,11 @@ public class HexMapService : IMapDataService
             var n = GetNeighbor(cell, dir);
             if (n != null)
             {
-                neighbors.Add(n); // ½«·ûºÏÌõ¼þµÄÔªËØÌí¼Óµ½ÁÐ±íÖÐ
+                neighbors.Add(n); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ôªï¿½ï¿½ï¿½ï¿½ï¿½Óµï¿½ï¿½Ð±ï¿½ï¿½ï¿½
             }
         }
 
-        return neighbors; // ·µ»ØÁÐ±í
+        return neighbors; // ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½
     }
 
     public Vector3[] GetHexVertices() => _hexVertices;

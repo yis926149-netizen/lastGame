@@ -16,6 +16,9 @@ public class HexMetrics
     public const float noiseScale = 0.003f;
     // 平面扰动强度（教程中从5调整为4）
     public const float cellPerturbStrength = 5f;
+    // 竖直（高程）扰动强度，有界。由 MapGenerator 从 elevationStep * verticalPerturbRatio 注入，
+    // 保证每格 Y 抖动夹在 ±yPerturbStrength 内，水下不捅穿海面、陆地不沉水。
+    public static float yPerturbStrength = 1.2f;
     public static Vector4 SampleNoise(Vector3 position)
     {
         // 用世界坐标X*缩放系数 作为UV.x，Z*缩放系数 作为UV.y
@@ -85,8 +88,8 @@ public class HexMetrics
         // 1. 采样噪声：获取当前顶点位置对应的四通道噪声数据（Vector4）
         Vector4 noiseSample = HexMetrics.SampleNoise(position);
 
-        // 2. 通道映射+范围调整
-        position.y += (noiseSample.y * 2f - 1f) * HexMetrics.cellPerturbStrength; // G通道→Y轴（注释，暂不扰动）
+        // 2. 通道映射：noiseSample.y*2-1 ∈ [-1,1]，乘有界强度后天然夹在 ±yPerturbStrength，无需 modulo
+        position.y += (noiseSample.y * 2f - 1f) * HexMetrics.yPerturbStrength; // G通道→Y轴（有界高程扰动）
 
         // 3. 返回扰动后的顶点位置（包含噪声信息的Vector3）
         return new Vector3(0, position.y, 0);

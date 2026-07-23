@@ -398,7 +398,16 @@ public interface IMeshGenerator
     /// <summary>
     /// 获取一个团块势力范围的顶点
     /// </summary>
-    List<List<Vector3>> GetOneSphereOfInfluenceVertices(List<HexCellData> hexCells, out int edgeCount, IMapDataService _mapDataService);    
+    List<List<Vector3>> GetOneSphereOfInfluenceVertices(List<HexCellData> hexCells, out int edgeCount, IMapDataService _mapDataService);
+
+    /// <summary>
+    /// 获取一个团块势力范围的顶点（区分"描边地块"与"归属地块"）。
+    /// hexCells：真正参与描边的地块（如敌方仅当前可见的部分）；
+    /// membershipCells：判定"边是否为势力边界"所用的完整归属集合（如敌方完整势力范围）。
+    /// 邻居只要属于 membershipCells，那条边即视为内部边不描——
+    /// 从而被迷雾切断的一侧不会画出"假边界"，形成开口图形。
+    /// </summary>
+    List<List<Vector3>> GetOneSphereOfInfluenceVertices(List<HexCellData> hexCells, ICollection<HexCellData> membershipCells, out int edgeCount, IMapDataService _mapDataService);
 
     /// <summary>
     /// 获取一段边缘线的绘制UV
@@ -419,4 +428,7 @@ public interface IMeshGenerator
 
     ///////////////////- 迷雾的封边 -///////////////////
     List<Vector3> GetFogCoverVertices(List<Vector3> vector3s, float increment);
+
+    ///////////////////- 迷雾连接面片（矩形封皮内边 ↔ 地图真实轮廓 之间的环带）-///////////////////
+    void GetFogConnectorBoundaries(out List<Vector3> rectBoundary, out List<Vector3> realOutline, IMapDataService _mapDataService);
 }

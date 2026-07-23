@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Zenject;
 
-public class GameFlowManager : MonoBehaviour
+public class GameFlowManager : MonoBehaviour, IInitializable
 {
     
     [Inject] private MapRenderer mapRenderer;
@@ -12,37 +12,42 @@ public class GameFlowManager : MonoBehaviour
     [Inject] private MapVisualEventSO _mapVisualEvent;
     [Inject] private IAIManager _iaiManager;
     [Inject] private AudioManager _audioManager;
+    [Inject] private EndGame _endGame;
 
-    void Start()
+    public void Initialize()
     {
         _audioManager.PlayBGM("Theme_Mistery_But_Then_Happy_Loop");
         mapGenerator.Generate();
         mapRenderer.MapRender();
         _iaiManager.AIInit();
         PlayerInit();
+        _endGame.MarkInitializationComplete();
     }
 
 
     public void PlayerInit()
     {
-        //Íæ¼Ò³õÊ¼»¯
-        //Ëæ»úÌí¼ÓÒ»»·ÊÓÒ°
-        System.Random random = new System.Random();
-        HexCellData h;
-        while (true)
+        //ç©å®¶åˆå§‹åŒ–ï¼šéšæœºä¸€ä¸ªéæ°´ã€æ— åŸçš„é™†åœ°æ ¼
+        System.Random random = SeedService.GetRandom("Player");
+
+        var candidates = new List<HexCellData>();
+        foreach (HexCellData cell in _mapDataService.GetAllCells())
         {
-            int j = random.Next(_mapDataService.GetAllCells().Count); // Éú³É[0, Count)
-
-            h = _mapDataService.GetCell(j);
-
-            if (
-                //²»ÄÜ³öÉúÔÚº£Àï
-                h.HexType != Enums.HexType.LakeOrSea &&
-                //Ö»ÄÜ³öÉúÔÚÎŞÖ÷Ö®µØ
-                h.Player_City_Index.Equals(new KeyValuePair<int, int>(-1, -1))
-                )
-            { break; }
+            if (cell != null &&
+                cell.HexType != Enums.HexType.LakeOrSea &&
+                cell.Player_City_Index.Equals(new KeyValuePair<int, int>(-1, -1)))
+            {
+                candidates.Add(cell);
+            }
         }
+
+        if (candidates.Count == 0)
+        {
+            Debug.LogError("ç©å®¶åˆå§‹åŒ–å¤±è´¥ï¼šåœ°å›¾ä¸Šæ²¡æœ‰å¯ç”¨çš„é™†åœ°æ ¼ï¼ˆæ°´åŸŸé˜ˆå€¼è¿‡é«˜æˆ–é«˜åº¦èŒƒå›´è¿‡ä½ï¼‰ã€‚");
+            return;
+        }
+
+        HexCellData h = candidates[random.Next(candidates.Count)];
 
         mapGenerator.SpawnHexCenterPoint = h.RealCenterWorldCoordinate;
         h.ExploreThisHexCell();

@@ -44,7 +44,7 @@ public class UIConfigProvider : IUIConfigProvider
         RuntimeCanvases.Add(canvas);
     }
 
-    public GameObject NextCardPlaceholder { get; set; } = new GameObject(); // 运行时存储
+    public GameObject NextCardPlaceholder { get; set; } // 运行时存储
     public Vector3 CardSize => _cardSize;
     public Vector3 NextCardSize => _nextCardSize;
 

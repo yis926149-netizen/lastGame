@@ -84,7 +84,7 @@ public class Triangulator
         }
 
         // 设置合并阈值，防止微小位移导致无法匹配原始高度
-        tess.Tessellate(WindingRule.EvenOdd, ElementType.Polygons, 3, (pos, data, weights) => {
+        tess.Tessellate(WindingRule.NonZero, ElementType.Polygons, 3, (pos, data, weights) => {
             // 当 LibTess 产生新顶点（如相交点）时，计算加权平均高度
             float interpolatedY = 0;
             for (int i = 0; i < 4; i++)

@@ -18,7 +18,7 @@ public class BuildingData
     //额外血量
     public float extraHP = 0f;
 
-    public BuildingData(Enums.BulidingType type, IBuildingDataProvider provider)
+    public BuildingData(Enums.BulidingType type, IBuildingDataProvider provider, int? buildingDatabaseId = null)
     {
         this.type = type;
         this.buildingDataProvider = provider; // 赋值依赖
@@ -29,7 +29,7 @@ public class BuildingData
             return;
         }
 
-        hp = buildingDataProvider.GetBuildingBaseHP((int)type) + extraHP;
+        hp = buildingDataProvider.GetBuildingBaseHP(buildingDatabaseId ?? (int)type) + extraHP;
         currentHp = hp;
     }
 }

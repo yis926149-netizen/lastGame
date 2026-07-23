@@ -15,23 +15,23 @@ public class HexMapServiceTests
     {
         _container = new DiContainer();
 
-        // ´´½¨Ò»¸öÁÙÊ±ÅäÖÃSO
+        // ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½SO
         _config = ScriptableObject.CreateInstance<MapGenerationConfigSO>();
         _config.xNumber = 5;
         _config.zNumber = 5;
         _config.OuterRadius = 3f;
         _container.BindInstance(_config);
 
-        // °ó¶¨·þÎñ×ÔÉí
+        // ï¿½ó¶¨·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         _container.Bind<IMapDataService>().To<HexMapService>().AsSingle();
 
-        // ³õÊ¼»¯Êý¾Ý
+        // ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         InitializeMapData();
     }
 
     private void InitializeMapData()
     {
-        // ¹¹Ôì¼òµ¥µÄ 5x5 µØÍ¼Êý¾Ý
+        // ï¿½ï¿½ï¿½ï¿½òµ¥µï¿½ 5x5 ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½
         var hexToCell = new Dictionary<Vector3, HexCellData>();
         var orderToCell = new Dictionary<int, HexCellData>();
         var centerWorld = new List<Vector3>();
@@ -44,7 +44,8 @@ public class HexMapServiceTests
             {
                 int offset = z / 2;
                 Vector3 hexCoord = new Vector3(x - offset, -(x - offset) - z, z);
-                Vector3 worldPos = new Vector3(x * 2, 0, z * 1.5f); // ¼ò»¯¼ÆËã
+                float innerRadius = _config.OuterRadius * 0.866025404f;
+                Vector3 worldPos = new Vector3(hexCoord.x * 2f * innerRadius + hexCoord.z * innerRadius, 0, hexCoord.z * 1.5f * _config.OuterRadius);
                 var cell = new HexCellData(Enums.HexType.NoRiver, order, hexCoord, worldPos, 1f);
                 hexToCell[hexCoord] = cell;
                 orderToCell[order] = cell;
@@ -54,7 +55,7 @@ public class HexMapServiceTests
             }
         }
 
-        var hexVertices = new Vector3[0]; // ²âÊÔÖÐ²»ÐèÒª
+        var hexVertices = new Vector3[0]; // ï¿½ï¿½ï¿½ï¿½ï¿½Ð²ï¿½ï¿½ï¿½Òª
         var verticesList = new List<Vector3>();
         var mesh = new Mesh();
         var gridGo = new GameObject();
@@ -75,7 +76,7 @@ public class HexMapServiceTests
     [Test]
     public void GetNeighbor_ReturnsCorrectNeighbor()
     {
-        var center = _service.GetCell(new Vector3(1, -1, 0)); // È¡Ò»¸öÖÐÐÄµã
+        var center = _service.GetCell(new Vector3(1, -1, 0)); // È¡Ò»ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½
         var neighbor = _service.GetNeighbor(center, Enums.HexDirection.NE);
         Assert.IsNotNull(neighbor);
         Assert.AreEqual(new Vector3(1, -2, 1), neighbor.HexCoordinate);
@@ -84,9 +85,28 @@ public class HexMapServiceTests
     [Test]
     public void WorldToHexCoordinate_FindsClosestHex()
     {
-        var worldPos = new Vector3(2.1f, 0, 1.4f);
-        var hex = _service.WorldToHexCoordinate(worldPos);
-        // ¸ù¾Ý¼ò»¯µØÍ¼£¬Ô¤ÆÚÓ¦Îª (1, -1, 0) »ò¸½½ü
-        Assert.IsTrue(_service.TryGetCell(hex, out _));
+        HexCellData expected = _service.GetCell(new Vector3(1, -2, 1));
+
+        Assert.IsTrue(_service.TryWorldToHexCoordinate(expected.CenterWorldCoordinate + new Vector3(0.1f, 5f, -0.1f), out Vector3 hex));
+        Assert.AreEqual(expected.HexCoordinate, hex);
+    }
+
+    [Test]
+    public void TryWorldToHexCoordinate_OutsideMap_ReturnsFalse()
+    {
+        Assert.IsFalse(_service.TryWorldToHexCoordinate(new Vector3(1000f, 0f, 1000f), out _));
+        Assert.IsNull(_service.GetCellByWorldPosition(new Vector3(1000f, 0f, 1000f)));
+    }
+
+    [Test]
+    public void GetNeighbors_CenterAndCorner_ReturnSixAndTwoUniqueCells()
+    {
+        HexCellData center = _service.GetCell(new Vector3(1, -3, 2));
+        HexCellData corner = _service.GetCell(Vector3.zero);
+
+        CollectionAssert.AllItemsAreUnique(_service.GetNeighbors(center));
+        Assert.AreEqual(6, _service.GetNeighbors(center).Count);
+        CollectionAssert.AllItemsAreUnique(_service.GetNeighbors(corner));
+        Assert.AreEqual(2, _service.GetNeighbors(corner).Count);
     }
 }

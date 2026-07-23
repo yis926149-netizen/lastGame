@@ -72,10 +72,24 @@ public class CharacterData
         this.UnitID = UnitID;
         this.model = model;
         this.unitMovementController = unitMovementController;
-        this.unitData = unitData;
-        currentHp = unitData.hp;
-        currentAttackValue = unitData.BasicAttackValue;
-        Defense = unitData.Defense;
+        this.unitData = new UnitData(unitData);
+        currentHp = this.unitData.hp;
+        currentAttackValue = this.unitData.BasicAttackValue;
+        Defense = this.unitData.Defense;
+    }
+
+    public float Heal(float amount)
+    {
+        if (amount <= 0 || unitData == null) return 0;
+
+        float previousHp = currentHp;
+        currentHp = Mathf.Clamp(currentHp + amount, 0, unitData.hp);
+        if (healthBar != null)
+        {
+            healthBar.value = unitData.hp > 0 ? currentHp / unitData.hp : 0;
+        }
+
+        return currentHp - previousHp;
     }
 
 }

@@ -73,26 +73,25 @@ public class RiverGenerator : MonoBehaviour
     }
     */
 
-    public static int[] RiverGeneration(int x,int z, int minLongestLength,int maxLongestLength, float riverSourceGenerationProbability, IMapDataService _mapDataService)
+    public static int[] RiverGeneration(int x,int z, int minLongestLength,int maxLongestLength, float riverSourceGenerationProbability, IMapDataService _mapDataService, System.Random random)
     {
         //一条河流的迭代流程就是：切换主体 |—— 剔除不可流往的方向 | (若剩余方向数量不为零)—— 随机下一个流往方向 | (若河流长度未达标)—— 进行下一次迭代
         //                                                          | (若剩余方向数量为零)—— 停止迭代             | (若河流长度达标)—— 停止迭代
 
         //生成源头地块
-        int[] riverSources = GenerateRiverSource(x, z, riverSourceGenerationProbability);
+        int[] riverSources = GenerateRiverSource(x, z, riverSourceGenerationProbability, random);
         if (riverSources == null || riverSources.Length == 0)
         {
             //Debug.Log("河流源头数量为0");
             return null;
         }
         //获取河流长度
-        int[] riverLength = GenerateRiverLength(minLongestLength, maxLongestLength, riverSources.Length);
+        int[] riverLength = GenerateRiverLength(minLongestLength, maxLongestLength, riverSources.Length, random);
 
         //根据源头生成完整河流
         for(int i = 0; i < riverSources.Length; i++)
         {
             
-            System.Random random = new System.Random();
             Enums.HexDirection OutgoingDirection = Enums.HexDirection.None;
             //该源头河流的现有长度
             int currentLength = 0;
@@ -103,6 +102,10 @@ public class RiverGenerator : MonoBehaviour
                 continue;
             }
             HexCellData hexCellData = _mapDataService.GetCell(riverSources[i]);
+            if (hexCellData.hasRiver || WaterLevelConfig.IsWater(hexCellData))
+            {
+                continue;
+            }
 
             //一条河流迭代
             while (true)
@@ -170,14 +173,13 @@ public class RiverGenerator : MonoBehaviour
     /// <param name="x,z">地图的行、列</param>
     /// <param name="riverSourceGenerationProbability">河流生成概率</param>
     /// <returns>返回源头地块的生成序号</returns>
-    private static int[] GenerateRiverSource(int x,int z,float riverSourceGenerationProbability)
+    private static int[] GenerateRiverSource(int x,int z,float riverSourceGenerationProbability, System.Random random)
     {
         /*
         ∵最开始就可以知道生成(x*z)个地块
         ∴生成⌊(x*z)*generateProbability⌋个源头
         ∴在（0，x*z）中生成不重复的随机数，对应生成序号的地块即源头
         */
-        System.Random random = new System.Random();
         //地块数量
         int HexNumber = x * z;
         //源头数量
@@ -211,9 +213,8 @@ public class RiverGenerator : MonoBehaviour
     /// <param name="minLongestLength">最小长度</param>
     /// <param name="maxLongestLength">最大长度</param>
     /// <returns>根据规则为每个源头生成一个河流长度</returns>
-    private static int[] GenerateRiverLength(int minLongestLength, int maxLongestLength, int riverSourceCount)
+    private static int[] GenerateRiverLength(int minLongestLength, int maxLongestLength, int riverSourceCount, System.Random random)
     {
-        System.Random random = new System.Random();
         //河流最小长度为2
         minLongestLength = minLongestLength < 2 ? 2 : minLongestLength;
         maxLongestLength = maxLongestLength < minLongestLength ? minLongestLength + 1 : maxLongestLength;

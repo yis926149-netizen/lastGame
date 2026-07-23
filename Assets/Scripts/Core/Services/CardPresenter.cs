@@ -1,5 +1,4 @@
-﻿﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using Zenject;
@@ -19,6 +18,8 @@ public class CardPresenter : IInitializable
     [Inject] private Tech_CultureTreeController _techCultureController;
     [Inject] private IUnitRepository _unitRepository;
     [Inject] private AudioManager _audioManager;
+    [Inject] private UnitMovementSystem _movementSystem;
+    [Inject] private LazyInject<IGameStateMachine> _gameStateMachine;
 
     private ICardView _nextCardView;
     private List<ICardView> _cardViews = new List<ICardView>();
@@ -26,57 +27,29 @@ public class CardPresenter : IInitializable
     private bool _isDealing = false;
     private Queue<CardData> _initialDealQueue = new Queue<CardData>();
 
-    // 简单的 MonoBehaviour 类用于运行协程
-    private class CoroutineRunner : MonoBehaviour { }
-
     public void Initialize()
     {
-        // 创建一个临时 GameObject 来运行协程
-        var runnerGO = new GameObject("CardPresenterCoroutineRunner");
-        var runner = runnerGO.AddComponent<CoroutineRunner>();
-        runner.StartCoroutine(WaitForHandPanelAndInit(runnerGO));
-    }
-
-    private IEnumerator WaitForHandPanelAndInit(GameObject runnerGO)
-    {
-        //Debug.Log("[CardPresenter] WaitForHandPanelAndInit 开始");
-
-        // 1. 等待 Canvas 作为卡牌父物体存在
-        Transform handRoot = null;
-        //Debug.Log("[CardPresenter] 等待 Canvas...");
-        while (handRoot == null)
+        _handRoot = GameObject.Find("Canvas")?.transform;
+        if (_handRoot == null)
         {
-            handRoot = GameObject.Find("Canvas")?.transform; 
-            if (handRoot == null)
-                yield return null;
+            throw new System.InvalidOperationException("[CardPresenter] Initialization failed: Canvas was not found.");
         }
 
-        //Debug.Log("[CardPresenter] Canvas 找到: " + handRoot.name);
-        _handRoot = handRoot;
-
-        // 2. 等待 NextCardPlaceholder 存在且拥有 RectTransform
-        RectTransform placeholderRect = null;
-        //Debug.Log("[CardPresenter] 等待 NextCardPlaceholder...");
-        while (placeholderRect == null)
+        GameObject placeholder = _uiConfig.NextCardPlaceholder;
+        if (placeholder == null)
         {
-            var placeholder = _uiConfig?.NextCardPlaceholder;
-            if (placeholder != null)
-            {
-                placeholderRect = placeholder.GetComponent<RectTransform>();
-            }
-            if (placeholderRect == null)
-                yield return null;
-        }
-        //Debug.Log("[CardPresenter] NextCardPlaceholder 找到，RectTransform 正常");
-
-        // 3. 销毁临时 runner
-        if (runnerGO != null)
-        {
-            GameObject.Destroy(runnerGO);
-            //Debug.Log("[CardPresenter] 临时协程 runner 已销毁");
+            throw new System.InvalidOperationException(
+                "[CardPresenter] Initialization failed: MapGenerator did not set NextCardPlaceholder.");
         }
 
-        // 4. 准备初始 5 张卡的数据
+        RectTransform placeholderRect = placeholder.GetComponent<RectTransform>();
+        if (placeholderRect == null)
+        {
+            throw new System.InvalidOperationException(
+                "[CardPresenter] Initialization failed: NextCardPlaceholder has no RectTransform.");
+        }
+
+        // 准备初始 5 张卡的数据
         //Debug.Log("[CardPresenter] 开始准备初始 5 张卡牌数据");
         for (int i = 0; i < 5; i++)
         {
@@ -90,7 +63,7 @@ public class CardPresenter : IInitializable
         }
        // Debug.Log($"[CardPresenter] 初始卡牌数据准备完成，共 {_initialDealQueue.Count} 张");
 
-        // 5. 开始顺序发牌
+        // 开始顺序发牌
         //Debug.Log("[CardPresenter] 开始发牌...（5张手牌 + 1张预告卡）");
         DealNextCardFromQueue(placeholderRect, () =>
         {
@@ -246,27 +219,32 @@ public class CardPresenter : IInitializable
     /// <summary>
     /// 处理拖拽结束（放置卡牌）
     /// </summary>
-    public void HandleCardDragEnd(ICardView view, HexCellData targetCell, Vector3 releaseWorldPos)
+    public bool HandleCardDragEnd(ICardView view, HexCellData targetCell, Vector3 releaseWorldPos)
     {
-        if (!IsReleaseValid(view.CardID, targetCell)) return;
+        if (_gameStateMachine.Value.CurrentPhase is not PlayerPhase || !IsReleaseValid(view.CardID, targetCell))
+            return false;
+
+        bool spawned = view.CardID < _unitData.GetUnitIconCount()
+            ? SpawnUnit(view.CardID, targetCell.RealCenterWorldCoordinate)
+            : SpawnBuilding((int)(view.CardID - _unitData.GetUnitIconCount()), targetCell.RealCenterWorldCoordinate);
+        if (!spawned) return false;
 
         _cardService.RemoveCard(view.PlacementID);
-
-        if (view.CardID < _unitData.GetUnitIconCount())
-            SpawnUnit(view.CardID, targetCell.RealCenterWorldCoordinate);
-        else
-            SpawnBuilding((int)(view.CardID - _unitData.GetUnitIconCount()), targetCell.RealCenterWorldCoordinate);
 
         (view as MonoBehaviour)?.gameObject.SetActive(false);
         GameObject.Destroy((view as MonoBehaviour)?.gameObject);
         _cardViews.Remove(view);
 
         TryDealFromNextIfPossible();
+        return true;
     }
 
     private bool IsReleaseValid(int cardID, HexCellData cell)
     {
-        if (cardID != 0 && cell.Player_City_Index.Key != 0) return false;
+        if (cell == null || _movementSystem.IsDestinationReserved(cell.HexCoordinate)) return false;
+        int ownerIndex = cell.Player_City_Index.Key;
+        if (cardID == 0 && ownerIndex != -1 && ownerIndex != 0) return false;
+        if (cardID != 0 && ownerIndex != 0) return false;
         if (!cell.IsExplored) return false;
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
@@ -275,10 +253,23 @@ public class CardPresenter : IInitializable
     }
 
     // ====================== 单位生成 ======================
-    private void SpawnUnit(int unitID, Vector3 position)
+    private bool SpawnUnit(int unitID, Vector3 position)
     {
-        GameObject g = Object.Instantiate(_unitData.GetUnitPrefab(unitID));
-        g.transform.SetParent(GameObject.Find("PlayerUnit").transform, false);
+        GameObject prefab = _unitData.GetUnitPrefab(unitID);
+        Transform parent = GameObject.Find("PlayerUnit")?.transform;
+        Canvas prefabCanvas = prefab != null ? prefab.GetComponentInChildren<Canvas>() : null;
+        bool hasUnitUi = prefabCanvas != null &&
+                         prefabCanvas.transform.childCount >= 2 &&
+                         prefabCanvas.transform.GetChild(1).childCount >= 3 &&
+                         prefabCanvas.transform.GetChild(1).GetComponent<Slider>() != null;
+        if (prefab == null || parent == null || !hasUnitUi)
+        {
+            Debug.LogError($"[CardPresenter] Unit card {unitID} cannot be deployed because its prefab hierarchy is incomplete.");
+            return false;
+        }
+
+        GameObject g = Object.Instantiate(prefab);
+        g.transform.SetParent(parent, false);
         g.transform.position = position;
         g.tag = "PlayerUnit";
 
@@ -291,9 +282,9 @@ public class CardPresenter : IInitializable
             g.GetComponent<UnitMovementController>(),
             _unitData.GetUnitData(unitID)
         );
+        _techCultureController.ApplyPlayerCultureBonus(characterData);
 
         g.GetComponent<UnitMovementController>().characterData = characterData;
-        _unitRepository.AddPlayerUnit(g, characterData);
         g.GetComponent<UnitMovementController>().PlayerIndex = 0;
 
         // 面板数据初始化
@@ -312,45 +303,26 @@ public class CardPresenter : IInitializable
         }
         else
         {
-            infoPanelData.InfoDatas.Add(new KeyValuePair<KeyValuePair<Sprite, string>, float>(MeleeAttack, characterData.unitData.MovementPoints));
+            infoPanelData.InfoDatas.Add(new KeyValuePair<KeyValuePair<Sprite, string>, float>(MeleeAttack, characterData.unitData.BasicAttackValue));
             infoPanelData.InfoDatas.Add(new KeyValuePair<KeyValuePair<Sprite, string>, float>(Movement, characterData.unitData.MovementPoints));
         }
         characterData.infoPanelData = infoPanelData;
 
-        // UI 画布设置
-        Canvas canvas = g.GetComponentInChildren<Canvas>();
-        UIController unitCanvas = canvas.gameObject.AddComponent<UIController>();
-        _container.Inject(unitCanvas);
-        unitCanvas.UIType = "unitCanvas";
-        _uiConfig.AddRuntimeCanvas(canvas);
+        // UI 画布设置（共享样板 SpawnUIWiring；颜色沿用原玩家逻辑）
+        Color unitHealthColor = g.CompareTag("PlayerUnit") ? Color.green : Color.red;
+        SpawnUIWiring.WireUnitCanvas(g, characterData, unitHealthColor, _container, _uiConfig);
 
-        GameObject icon = canvas.transform.GetChild(0).gameObject;
-        UIController iconUI = icon.AddComponent<UIController>();
-        _container.Inject(iconUI);
-        iconUI.UIType = "unitIcon";
-
-        GameObject healthBar = canvas.transform.GetChild(1).gameObject;
-        UIController healthBarUI = healthBar.AddComponent<UIController>();
-        _container.Inject(healthBarUI);
-        healthBarUI.UIType = "healthBar";
-        characterData.healthBar = healthBar.GetComponent<Slider>();
-
-        if (g.CompareTag("PlayerUnit"))
-            healthBar.transform.GetChild(2).GetComponent<Image>().color = Color.green;
-        else if (g.CompareTag("EnemyUnit"))
-            healthBar.transform.GetChild(2).GetComponent<Image>().color = Color.red;
-
-        // 添加视野 + 占有标记
+        // Commit domain state only after the runtime object and UI are complete.
         Vector3 hexCoord = _mapDataService.WorldToHexCoordinate(g.transform.position);
         HexCellData h = _mapDataService.GetCell(hexCoord);
+        _unitRepository.AddPlayerUnit(g, characterData);
+        h.SetHaveUnit(true, g);
         for (int i = 0; i < 6; i++)
         {
             var neighbor = _mapDataService.GetNeighbor(h, (Enums.HexDirection)i);
             if (neighbor != null) neighbor.ExploreThisHexCell();
         }
         _mapVisualEvent.Raise();
-
-        h.SetHaveUnit(true, g);
 
         if(_audioManager != null)
         {
@@ -360,13 +332,51 @@ public class CardPresenter : IInitializable
         {
             Debug.LogWarning("[CardPresenter] AudioManager 未注入，无法播放单位生成");
         }
+
+        return true;
     }
 
     // ====================== 建筑生成 ======================
-    private void SpawnBuilding(int buildingID, Vector3 position)
+    private bool SpawnBuilding(int buildingID, Vector3 position)
     {
         Vector3 v = _mapDataService.WorldToHexCoordinate(position);
         HexCellData h = _mapDataService.GetCell(v);
+
+        GameObject prefab = _buildingData.GetBuildingPrefab(buildingID);
+        Transform parent = GameObject.Find("PlayerBuilding")?.transform;
+        Canvas prefabCanvas = prefab != null ? prefab.GetComponentInChildren<Canvas>() : null;
+        bool hasBuildingUi = prefabCanvas != null &&
+                             prefabCanvas.transform.childCount >= 1 &&
+                             prefabCanvas.transform.GetChild(0).childCount >= 1 &&
+                             prefabCanvas.transform.GetChild(0).GetComponent<Slider>() != null;
+        bool hasCitySphere = h != null &&
+                             _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData.ContainsKey(h.Player_City_Index.Value);
+        if (h == null || prefab == null || parent == null || !hasBuildingUi || !hasCitySphere)
+        {
+            Debug.LogError($"[CardPresenter] Building card {buildingID} cannot be deployed because its prefab hierarchy is incomplete.");
+            return false;
+        }
+
+        GameObject g = Object.Instantiate(prefab);
+        g.transform.SetParent(parent, false);
+        g.transform.position = position;
+        g.tag = "PlayerBuilding";
+
+        BuildingController buildingController = g.AddComponent<BuildingController>();
+        _container.Inject(buildingController);
+
+        BuildingData buildingData = new BuildingData(
+            (Enums.BulidingType)(buildingID + 1),
+            _buildingData,
+            buildingID);
+        _techCultureController.ApplyPlayerCultureBonus(buildingData);
+        buildingController.buildingData = buildingData;
+        buildingData.controller = buildingController;
+        buildingController.bulidingType = (Enums.BulidingType)(buildingID + 1);
+
+        // Finish runtime UI before committing map, ownership, and progression state.
+        // 共享样板 SpawnUIWiring；玩家建筑血条为绿色（canvas 已由上方 hasBuildingUi 预校验非空）。
+        SpawnUIWiring.WireBuildingCanvas(g, buildingController, Color.green, _container, _uiConfig);
 
         // 势力范围扩展
         _playerModelManager.ExpandTheSphereOfInfluence(
@@ -384,38 +394,26 @@ public class CardPresenter : IInitializable
         _mapVisualEvent.Raise();
 
         int bulidingTypeInt = buildingID;
-        GameObject g = Object.Instantiate(_buildingData.GetBuildingPrefab(bulidingTypeInt));
-        g.transform.SetParent(GameObject.Find("PlayerBuilding").transform, false);
-        g.transform.position = position;
-        g.tag = "PlayerBuilding";
-
-        BuildingController buildingController = g.AddComponent<BuildingController>();
-        _container.Inject(buildingController);
-
-        BuildingData buildingData = new BuildingData((Enums.BulidingType)(bulidingTypeInt + 1), _buildingData);
-        buildingController.buildingData = buildingData;
-        buildingData.controller = buildingController;
-        buildingController.bulidingType = (Enums.BulidingType)(bulidingTypeInt + 1);
         h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>((Enums.BulidingType)(bulidingTypeInt + 1), g);
 
         // 建筑类型特殊处理
         switch (buildingController.bulidingType)
         {
             case Enums.BulidingType.AttackStatue:
-                _audioManager.PlaySFX("Long_Sword_Scrape 01");
+                _audioManager?.PlaySFX("Long_Sword_Scrape 01");
                 _playerModelManager.Index_AttackBuilding.Add(_playerModelManager.AttackBuildingIndex++, g);
                 break;
             case Enums.BulidingType.DefenseStatue:
-                _audioManager.PlaySFX("Metallic_Weapon_Hit-014");
-                _audioManager.PlaySFX("Metallic_Weapon_Hit-020");
+                _audioManager?.PlaySFX("Metallic_Weapon_Hit-014");
+                _audioManager?.PlaySFX("Metallic_Weapon_Hit-020");
                 _playerModelManager.Index_DefenseBuilding.Add(_playerModelManager.DefenseBuildingIndex++, g);
                 break;
             case Enums.BulidingType.Altar:
-                _audioManager.PlaySFX("Chimes_Harp-012");
+                _audioManager?.PlaySFX("Chimes_Harp-012");
                 _playerModelManager.Index_AltarBuilding.Add(_playerModelManager.AltarBuildingIndex++, g);
                 break;
             case Enums.BulidingType.TechnologyAndCultural:
-                _audioManager.PlaySFX("LevelUP6");
+                _audioManager?.PlaySFX("LevelUP6");
                 _playerModelManager.Index_TechnologyAndCulturalBuilding.Add(_playerModelManager.TechnologyAndCulturalBuildingIndex++, g);
                 _techCultureController.AddTechPointsPerTurn(10);
                 _techCultureController.AddCulturePointsPerTurn(10);
@@ -427,25 +425,7 @@ public class CardPresenter : IInitializable
 
         buildingController.Player_City_Index = h.Player_City_Index;
 
-        // UI 画布
-        Canvas canvas = g.GetComponentInChildren<Canvas>();
-        if (canvas == null) return;
-
-        UIController buildingCanvas = canvas.gameObject.AddComponent<UIController>();
-        _container.Inject(buildingCanvas);
-        buildingCanvas.UIType = "buildingCanvas";
-        _uiConfig.AddRuntimeCanvas(canvas);
-
-        GameObject healthBar = canvas.transform.GetChild(0).gameObject;
-        UIController healthBarUI = healthBar.AddComponent<UIController>();
-        _container.Inject(healthBarUI);
-        healthBarUI.UIType = "buildingHealthBar";
-        buildingController.uiHealthBar = healthBar.GetComponent<Slider>();
-
-        if (g.tag == "PlayerBuilding")
-            healthBar.transform.GetChild(0).GetComponent<Image>().color = Color.green;
-        else if (g.tag == "EnemyBuilding")
-            healthBar.transform.GetChild(0).GetComponent<Image>().color = Color.red;
+        return true;
     }
 
     /// <summary>
