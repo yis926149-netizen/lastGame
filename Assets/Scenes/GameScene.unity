@@ -3334,7 +3334,6 @@ MonoBehaviour:
   _buildingDatabaseSO: {fileID: 11400000, guid: 0bfebc4b346137d45a6303df32ba1987, type: 2}
   _uiConfigSO: {fileID: 11400000, guid: 2ba0eff9153800544abde9aefc750fe1, type: 2}
   _environmentModelsSO: {fileID: 11400000, guid: 642ec823dc502f44eb83692c175fad46, type: 2}
-  _techTreeIconsSO: {fileID: 11400000, guid: 0a2af90e3af58ab4c8fc9f3eed80dad0, type: 2}
   _mapGenerationConfigSO: {fileID: 11400000, guid: 0a7ad5142d1fce34fb79cad5ae6024f5, type: 2}
   _mapVisualEventSO: {fileID: 11400000, guid: dc60f1366465c4d4a81b118cf83539be, type: 2}
   _eventSystem: {fileID: 31059276}
@@ -5601,8 +5600,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   nextTurnButtonGameObject: {fileID: 1675699251}
-  TechPoints: {fileID: 1609805831}
-  CulturePoints: {fileID: 840977699}
   unitInfoPanel: {fileID: 1990543630}
   unitNameText: {fileID: 0}
 --- !u!114 &963194233
@@ -8008,7 +8005,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1669734108
 RectTransform:
   m_ObjectHideFlags: 0
@@ -8898,7 +8895,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1823247305
 RectTransform:
   m_ObjectHideFlags: 0
@@ -10005,7 +10002,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &2040742939
 RectTransform:
   m_ObjectHideFlags: 0
