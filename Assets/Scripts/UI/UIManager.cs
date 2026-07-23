@@ -6,8 +6,6 @@ public class UIManager : MonoBehaviour, IUIManagerView
 {
     [Header("UI References")]
     public GameObject nextTurnButtonGameObject;
-    public Text TechPoints;
-    public Text CulturePoints;
 
     [Header("Unit Info Panel")]
     public GameObject unitInfoPanel;
@@ -15,16 +13,6 @@ public class UIManager : MonoBehaviour, IUIManagerView
 
     [Inject] private IUnitDataProvider _unitDataProvider;
     [Inject] private UIConfigSO _uiConfigSO;
-
-    public void SetTechPoints(int points)
-    {
-        if (TechPoints != null) TechPoints.text = points.ToString();
-    }
-
-    public void SetCulturePoints(int points)
-    {
-        if (CulturePoints != null) CulturePoints.text = points.ToString();
-    }
 
     public void SetPhase(string phaseName) { }
 

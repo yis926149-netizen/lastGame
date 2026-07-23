@@ -28,7 +28,6 @@ public class UIController : MonoBehaviour
     [Inject] private PlayerModelManager _playerModelManager;
     [Inject] private EndGame _endGame;
     [Inject] private AudioManager _audioManager;
-    [Inject] private Tech_CultureTreeController _tech_CultureTreeController;
 
     // 摄像机
     private Camera Camera;
@@ -571,8 +570,8 @@ public class UIController : MonoBehaviour
 
     private void ReapResource_Chest(CharacterData Reaper)
     {
-        _tech_CultureTreeController.AddTechPoints(30);
-        _tech_CultureTreeController.AddCulturePoints(30);
+        // 科技/文化系统已移除：宝箱不再提供科技/文化点数，仅保留收割特效。
+        // 后续如需为宝箱设计新的奖励效果，在此处填充。
         ReapResource(environmentModelsProvider.GetReapChestEffect());
     }
 

@@ -28,7 +28,6 @@ public class CardService : ICardService
     private System.Random Random => _random ??= SeedService.GetRandom("Card");
 
     [Inject] private IUIConfigProvider _uiConfig;
-    [Inject] private ITechCultureService _techCulture;
     [Inject] private IGameStateMachine _gameState;
     [Inject] private ICardUnlockRuleProvider _cardUnlockRuleProvider;
 
@@ -45,13 +44,11 @@ public class CardService : ICardService
     {
         // 共享抽卡规则（CardGenerationRule）：玩家首张移民卡保底时机 = 回合 1。
         bool giveFirstSettler = _gameState != null && _gameState.CurrentTurn == 1;
-        int techLevel = _techCulture?.TechLevel ?? 0;
-        int cultureLevel = _techCulture?.CultureLevel ?? 0;
         return CardGenerationRule.GenerateNextCardId(
             giveFirstSettler,
             ref _hasGivenFirstTurnSettler,
-            techLevel,
-            cultureLevel,
+            0,
+            0,
             _cardUnlockRuleProvider,
             Random);
     }

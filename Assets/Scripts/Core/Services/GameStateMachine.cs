@@ -9,10 +9,9 @@ public class GameStateMachine : IGameStateMachine, IInitializable
     private int _currentPhaseIndex;
     private int _currentTurn;
 
-    [Inject] private ICardService _cardService;      // ��Ϊ�ӿ�ע�룬�����
+    [Inject] private ICardService _cardService;
     [Inject] private CardPresenter _cardPresenter;
     [Inject] private IUnitRepository _unitRepository;
-    [Inject] private ITechCultureService _techCultureService;
     [Inject] private LazyInject<PlayerInputHandler> _playerInputHandler;
 
     [Inject]
@@ -111,15 +110,11 @@ public class GameStateMachine : IGameStateMachine, IInitializable
     {
         ResetUnitMovement();
 
-        _cardService.ResetDealOpportunity();           // ���á�ÿ�غ�һ�Ρ���־
-        _cardPresenter.TryDealFromNextIfPossible();    // �غϿ�ʼʱ�Զ����һ�غ����µĿղ�
+        _cardService.ResetDealOpportunity();
+        _cardPresenter.TryDealFromNextIfPossible();
 
-        // �鿨�������� + ���Է�һ���¿�
         _cardService.ResetDrawOpportunity();
         _cardPresenter.OnTurnEnded();
-
-        // �����Ƽ�/�Ļ�����������
-        _techCultureService.TriggerProgressAnimation();
     }
 
     private void ResetUnitMovement()

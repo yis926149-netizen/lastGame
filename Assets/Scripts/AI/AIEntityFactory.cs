@@ -12,7 +12,6 @@ using Zenject;
 public class AIEntityFactory
 {
     private const int AIIndex = 1;
-    private const float TechCultureBuildingPointsPerTurn = 10f;
 
     private readonly IMapDataService _mapDataService;
     private readonly DiContainer _container;
@@ -215,12 +214,7 @@ public class AIEntityFactory
             _mapVisualEvent.Raise();
         }
 
-        // 科技文化建筑：增加每回合科文产量
-        if (bulidingTypeInt == 3)
-        {
-            _aiPlayerState.TechCulture.TechPointsPerTurn += TechCultureBuildingPointsPerTurn;
-            _aiPlayerState.TechCulture.CulturePointsPerTurn += TechCultureBuildingPointsPerTurn;
-        }
+        // 科技/文化系统已移除：科技文化建筑不再产生每回合产量。
 
         buildingController.Player_City_Index = h.Player_City_Index;
 

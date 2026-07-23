@@ -15,7 +15,6 @@ public class CardPresenter : IInitializable
     [Inject] private IBuildingDataProvider _buildingData;
     [Inject] private IUnitService _unitService;
     [Inject] private PlayerModelManager _playerModelManager;
-    [Inject] private Tech_CultureTreeController _techCultureController;
     [Inject] private IUnitRepository _unitRepository;
     [Inject] private AudioManager _audioManager;
     [Inject] private UnitMovementSystem _movementSystem;
@@ -282,7 +281,6 @@ public class CardPresenter : IInitializable
             g.GetComponent<UnitMovementController>(),
             _unitData.GetUnitData(unitID)
         );
-        _techCultureController.ApplyPlayerCultureBonus(characterData);
 
         g.GetComponent<UnitMovementController>().characterData = characterData;
         g.GetComponent<UnitMovementController>().PlayerIndex = 0;
@@ -369,7 +367,6 @@ public class CardPresenter : IInitializable
             (Enums.BulidingType)(buildingID + 1),
             _buildingData,
             buildingID);
-        _techCultureController.ApplyPlayerCultureBonus(buildingData);
         buildingController.buildingData = buildingData;
         buildingData.controller = buildingController;
         buildingController.bulidingType = (Enums.BulidingType)(buildingID + 1);
@@ -415,8 +412,6 @@ public class CardPresenter : IInitializable
             case Enums.BulidingType.TechnologyAndCultural:
                 _audioManager?.PlaySFX("LevelUP6");
                 _playerModelManager.Index_TechnologyAndCulturalBuilding.Add(_playerModelManager.TechnologyAndCulturalBuildingIndex++, g);
-                _techCultureController.AddTechPointsPerTurn(10);
-                _techCultureController.AddCulturePointsPerTurn(10);
                 break;
         }
 

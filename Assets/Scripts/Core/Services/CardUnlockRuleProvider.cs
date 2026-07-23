@@ -20,15 +20,18 @@ public class CardUnlockRuleProvider : ICardUnlockRuleProvider
 
     public List<int> GetUnlockedCardIds(int techLevel, int cultureLevel)
     {
+        // 科技/文化系统已移除：现阶段无条件解锁全部单位卡与建筑卡。
+        // techLevel / cultureLevel 参数保留以兼容调用方签名，当前忽略。
+        // 后续如需按其他条件（时间、击杀数等）解锁，在此处填充规则即可。
         List<int> unlockedIds = new List<int>();
         int unitCount = (int)_unitData.GetUnitIconCount();
         int buildingCount = _buildingData.GetBuildingCardsCount();
         ValidateCardDatabase(unitCount, buildingCount);
 
         AddValidUnitIds(unlockedIds, BaseUnitIds, unitCount);
-        AddValidUnitIds(unlockedIds, TechUnitIds, unitCount, techLevel + 1);
+        AddValidUnitIds(unlockedIds, TechUnitIds, unitCount);
         AddValidBuildingIds(unlockedIds, BaseBuildingIds, unitCount, buildingCount);
-        AddValidBuildingIds(unlockedIds, CultureBuildingIds, unitCount, buildingCount, cultureLevel + 1);
+        AddValidBuildingIds(unlockedIds, CultureBuildingIds, unitCount, buildingCount);
 
         return unlockedIds;
     }

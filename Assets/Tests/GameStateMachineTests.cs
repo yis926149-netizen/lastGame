@@ -41,7 +41,6 @@ public class GameStateMachineTests
         _container.Bind<SettlementPhase>().FromInstance(_settlementPhase);
         _container.Bind<ICardService>().FromInstance(Substitute.For<ICardService>());
         _container.Bind<CardPresenter>().FromInstance(new CardPresenter());
-        _container.Bind<ITechCultureService>().FromInstance(Substitute.For<ITechCultureService>());
         _container.Bind<GameStateMachine>().AsSingle();
 
         _machine = _container.Resolve<GameStateMachine>();

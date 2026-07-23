@@ -15,20 +15,15 @@ public class SettlementPhase : MonoBehaviour, IPhase
     //注入
     [Inject] private IMapDataService _mapDataService;
     [Inject] private IUnitRepository _unitRepository;
-    [Inject] private ITechCultureService _techCultureService;
 
 
     public void Enter()
     {
-        //CommandQueue.ExecuteAll(Enums.CommandQueueType.Settlement);
-
         //每回合自动回血：农田地貌
         List<GameObject> keysToRemove = new List<GameObject>();
         foreach (var unit in _unitRepository.AllPlayerUnits)
         {
             CharacterData c = unit.Value;
-            //农田地貌
-            //位置判断
             if (c == null || c.model == null)
             {
                 keysToRemove.Add(unit.Key);
@@ -44,14 +39,14 @@ public class SettlementPhase : MonoBehaviour, IPhase
                 c.LandFormType_FromLand = 0;
                 continue;
             }
-            else 
-            { 
-                c.LandFormType_FromLand = 0.1f; 
+            else
+            {
+                c.LandFormType_FromLand = 0.1f;
             }
             c.Heal(c.LandFormType_FromLand * c.unitData.hp);
         }
 
-        if(keysToRemove.Count > 0)
+        if (keysToRemove.Count > 0)
         {
             foreach (GameObject obj in keysToRemove)
             {
@@ -59,7 +54,7 @@ public class SettlementPhase : MonoBehaviour, IPhase
             }
         }
 
-        //每回合自动回血：回血阵  
+        //每回合自动回血：回血阵
         foreach (CharacterData c in _unitRepository.AllPlayerUnits.Values)
         {
             if (c == null || c.model == null) continue;
@@ -67,7 +62,6 @@ public class SettlementPhase : MonoBehaviour, IPhase
             HexCellData h = _mapDataService.GetCellByWorldPosition(c.model.transform.position);
             if (h == null) continue;
 
-            //回血阵建筑         
             GameObject altar = h.BulidingTypeOnHex_Building.Value;
             if (h.BulidingTypeOnHex_Building.Key == Enums.BulidingType.Altar &&
                 altar != null &&
@@ -78,9 +72,6 @@ public class SettlementPhase : MonoBehaviour, IPhase
                 c.Heal(f * c.unitData.hp);
             }
         }
-
-        //结算科技值、文化值
-        _techCultureService.AddPointsPerTurn();
     }
 
     public bool CanExit() => true;

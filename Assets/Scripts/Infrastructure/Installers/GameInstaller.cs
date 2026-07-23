@@ -9,7 +9,6 @@ public class GameInstaller : MonoInstaller
     [SerializeField] private BuildingDatabaseSO _buildingDatabaseSO;
     [SerializeField] private UIConfigSO _uiConfigSO;
     [SerializeField] private EnvironmentModelsSO _environmentModelsSO;
-    [SerializeField] private TechTreeIconsSO _techTreeIconsSO;
     [SerializeField] private MapGenerationConfigSO _mapGenerationConfigSO;
     [SerializeField] private MapVisualEventSO _mapVisualEventSO;
     [SerializeField] private EventSystem _eventSystem; // ���볡���е� EventSystem
@@ -46,13 +45,9 @@ public class GameInstaller : MonoInstaller
 
         Container.Bind<IEnvironmentModelsProvider>().To<EnvironmentModelsProvider>().AsSingle();
 
-        //�Ƽ���
+        //科技图标已移除
 
-        Container.Bind<TechTreeIconsSO>().FromInstance(_techTreeIconsSO).AsSingle();
-
-        Container.Bind<ITechTreeIconsProvider>().To<TechTreeIconsProvider>().AsSingle();
-
-        //��ͼ�ؿ������
+        //地图格子数据服务
         Container.Bind<IMapDataService>()
                  .To<HexMapService>()
                  .AsSingle();
@@ -102,7 +97,6 @@ public class GameInstaller : MonoInstaller
         // AI 拆分后的协作服务（Tier 1）。AIPlayerState 作为共享状态单例，供各 AI 服务共用。
         Container.Bind<AIPlayerState>().AsSingle();
         Container.Bind<AIRandomProvider>().AsSingle();
-        Container.Bind<AITechCultureProgress>().AsSingle();
         Container.Bind<AIEntityFactory>().AsSingle();
         Container.Bind<AICardBrain>().AsSingle();
         Container.Bind<AITacticalBrain>().AsSingle();
@@ -147,9 +141,6 @@ public class GameInstaller : MonoInstaller
         Container.BindInterfacesAndSelfTo<CardService>().AsSingle();
         Container.BindInterfacesAndSelfTo<CardPresenter>().AsSingle().NonLazy();
 
-        // �Ƽ��Ļ����񣨰󶨵������е� Tech_CultureTreeController��
-        Container.BindInterfacesAndSelfTo<Tech_CultureTreeController>().FromComponentInHierarchy().AsSingle();
-
         // UIManager ��ͼ ���� ֱ�ӽ������е� UIManager ʵ��
         Container.Bind<IUIManagerView>().To<UIManager>().FromResolve();
         
@@ -160,11 +151,6 @@ public class GameInstaller : MonoInstaller
 
         // �� EndGame
         Container.Bind<EndGame>().FromComponentInHierarchy().AsSingle();
-
-        // �� TechData �� CultureData
-        Container.Bind<TechData>().FromComponentInHierarchy().AsSingle();
-
-        Container.Bind<CultureData>().FromComponentInHierarchy().AsSingle();
 
         Container.BindInitializableExecutionOrder<GameFlowManager>(-30);
         Container.BindInitializableExecutionOrder<CardPresenter>(-20);
@@ -180,7 +166,6 @@ public class GameInstaller : MonoInstaller
         AddMissing(missing, _buildingDatabaseSO, nameof(_buildingDatabaseSO));
         AddMissing(missing, _uiConfigSO, nameof(_uiConfigSO));
         AddMissing(missing, _environmentModelsSO, nameof(_environmentModelsSO));
-        AddMissing(missing, _techTreeIconsSO, nameof(_techTreeIconsSO));
         AddMissing(missing, _mapGenerationConfigSO, nameof(_mapGenerationConfigSO));
         AddMissing(missing, _mapVisualEventSO, nameof(_mapVisualEventSO));
         AddMissing(missing, _eventSystem, nameof(_eventSystem));
@@ -197,10 +182,7 @@ public class GameInstaller : MonoInstaller
         AddMissingInScene<AIManager>(missing);
         AddMissingInScene<GameFlowManager>(missing);
         AddMissingInScene<CameraController>(missing);
-        AddMissingInScene<Tech_CultureTreeController>(missing);
         AddMissingInScene<EndGame>(missing);
-        AddMissingInScene<TechData>(missing);
-        AddMissingInScene<CultureData>(missing);
 
         if (missing.Count > 0)
         {

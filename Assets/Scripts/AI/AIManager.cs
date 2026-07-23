@@ -6,7 +6,7 @@ using Zenject;
 //****************************************
 //创建人：易生
 //功能说明：AI 管理器（协调者）。持有 AI 状态与场景引用，编排开局初始化与每回合流程；
-//         具体逻辑委托给 AIEntityFactory / AICardBrain / AITacticalBrain / AITechCultureProgress。
+//         具体逻辑委托给 AIEntityFactory / AICardBrain / AITacticalBrain。
 //****************************************
 
 public class AIManager : MonoBehaviour, IAIManager

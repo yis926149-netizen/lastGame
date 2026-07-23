@@ -12,7 +12,6 @@ using UnityEngine;
 public class AITacticalBrain
 {
     private const int AIIndex = 1;
-    private const float ReapChestGain = 30f;
 
     private readonly IMapDataService _mapDataService;
     private readonly UnitMovementSystem _movementSystem;
@@ -20,7 +19,6 @@ public class AITacticalBrain
     private readonly AIFogService _aiFog;
     private readonly AIEntityFactory _factory;
     private readonly UnitRemovalService _unitRemovalService;
-    private readonly AITechCultureProgress _techCulture;
     private readonly AIRandomProvider _rng;
 
     public AITacticalBrain(
@@ -30,7 +28,6 @@ public class AITacticalBrain
         AIFogService aiFog,
         AIEntityFactory factory,
         UnitRemovalService unitRemovalService,
-        AITechCultureProgress techCulture,
         AIRandomProvider rng)
     {
         _mapDataService = mapDataService;
@@ -39,7 +36,6 @@ public class AITacticalBrain
         _aiFog = aiFog;
         _factory = factory;
         _unitRemovalService = unitRemovalService;
-        _techCulture = techCulture;
         _rng = rng;
     }
 
@@ -274,6 +270,6 @@ public class AITacticalBrain
             h.resourceModel = null;
         }
 
-        _techCulture.AddInstant(ReapChestGain, ReapChestGain);
+        // 科技/文化系统已移除：AI 收割宝箱不再获得科技/文化点数。
     }
 }

@@ -18,7 +18,6 @@ public class AICardBrain
     private readonly UnitMovementSystem _movementSystem;
     private readonly EnemyModelManager _enemyModelManager;
     private readonly AIEntityFactory _factory;
-    private readonly AITechCultureProgress _techCulture;
     private readonly AIRandomProvider _rng;
 
     public AICardBrain(
@@ -29,7 +28,6 @@ public class AICardBrain
         UnitMovementSystem movementSystem,
         EnemyModelManager enemyModelManager,
         AIEntityFactory factory,
-        AITechCultureProgress techCulture,
         AIRandomProvider rng)
     {
         _aiPlayerState = aiPlayerState;
@@ -39,7 +37,6 @@ public class AICardBrain
         _movementSystem = movementSystem;
         _enemyModelManager = enemyModelManager;
         _factory = factory;
-        _techCulture = techCulture;
         _rng = rng;
     }
 
@@ -62,12 +59,12 @@ public class AICardBrain
 
     private int GenerateCardId()
     {
-        // 共享抽卡规则（CardGenerationRule）：AI 首张移民卡保底时机 = 开局（恒 true，靠标志位只发一次）。
+        // 科技/文化系统已移除：传 0, 0 无条件解锁全部卡牌。
         return CardGenerationRule.GenerateNextCardId(
             giveFirstSettler: true,
             ref _aiPlayerState.Card.HasGivenFirstTurnSettler,
-            _aiPlayerState.TechCulture.TechLevel,
-            _aiPlayerState.TechCulture.CultureLevel,
+            0,
+            0,
             _cardUnlockRuleProvider,
             Random);
     }
@@ -78,7 +75,6 @@ public class AICardBrain
         // 与玩家类似，每回合只把“次卡”推进手牌一次
         _aiPlayerState.Card.HasDealtThisTurn = false;
         DealFromNextCardIfPossible();
-        _techCulture.AdvancePerTurn();
         PlayAICards();
     }
 

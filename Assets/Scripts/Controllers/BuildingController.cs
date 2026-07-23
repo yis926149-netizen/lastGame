@@ -18,7 +18,6 @@ public class BuildingController : MonoBehaviour
     [Inject] private AudioManager _audioManager;
     [Inject] private EnemyModelManager _enemyModelManager;
     [Inject] private PlayerModelManager _playerModelManager;
-    [Inject] private ITechCultureService _techCultureService;
 
     //对应的数据类
     [HideInInspector]
@@ -300,11 +299,7 @@ public class BuildingController : MonoBehaviour
         RemoveEntriesByValue(_playerModelManager.Index_AttackBuilding, target);
         RemoveEntriesByValue(_playerModelManager.Index_DefenseBuilding, target);
         RemoveEntriesByValue(_playerModelManager.Index_AltarBuilding, target);
-        if (RemoveEntriesByValue(_playerModelManager.Index_TechnologyAndCulturalBuilding, target))
-        {
-            _techCultureService.AddTechPointsPerTurn(-10);
-            _techCultureService.AddCulturePointsPerTurn(-10);
-        }
+        RemoveEntriesByValue(_playerModelManager.Index_TechnologyAndCulturalBuilding, target);
     }
 
     private bool RemoveEntriesByValue(Dictionary<int, GameObject> dict, GameObject target)

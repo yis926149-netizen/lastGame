@@ -10,7 +10,6 @@ public class CardServiceTests
     private IUnitDataProvider _mockUnitData;
     private IBuildingDataProvider _mockBuildingData;
     private IUIConfigProvider _mockUiConfig;
-    private ITechCultureService _mockTechCulture;
     private IGameStateMachine _mockGameState;
     private ICardUnlockRuleProvider _mockUnlockRules;
     private CardService _service;
@@ -27,7 +26,6 @@ public class CardServiceTests
         _mockBuildingData = Substitute.For<IBuildingDataProvider>();
         _mockBuildingData.GetBuildingCardsCount().Returns(4);
 
-        _mockTechCulture = Substitute.For<ITechCultureService>();
         _mockGameState = Substitute.For<IGameStateMachine>();
         _mockUnlockRules = Substitute.For<ICardUnlockRuleProvider>();
         _mockUnlockRules.GetUnlockedCardIds(Arg.Any<int>(), Arg.Any<int>())
@@ -35,7 +33,6 @@ public class CardServiceTests
 
         _container.Bind<IUnitDataProvider>().FromInstance(_mockUnitData);
         _container.Bind<IBuildingDataProvider>().FromInstance(_mockBuildingData);
-        _container.Bind<ITechCultureService>().FromInstance(_mockTechCulture);
         _container.Bind<IGameStateMachine>().FromInstance(_mockGameState);
         _container.Bind<IUIConfigProvider>().FromInstance(Substitute.For<IUIConfigProvider>());
         _container.Bind<ICardUnlockRuleProvider>().FromInstance(_mockUnlockRules);
@@ -57,14 +54,12 @@ public class CardServiceTests
     public void GenerateNextCardID_AfterFirstTurn_ReturnsOnlyUnlockedCard()
     {
         _mockGameState.CurrentTurn.Returns(2);
-        _mockTechCulture.TechLevel.Returns(9);
-        _mockTechCulture.CultureLevel.Returns(9);
-        _mockUnlockRules.GetUnlockedCardIds(9, 9).Returns(new List<int> { 15 });
+        _mockUnlockRules.GetUnlockedCardIds(0, 0).Returns(new List<int> { 15 });
 
         int id = _service.GenerateNextCardID();
 
         Assert.AreEqual(15, id);
-        _mockUnlockRules.Received(1).GetUnlockedCardIds(9, 9);
+        _mockUnlockRules.Received(1).GetUnlockedCardIds(0, 0);
     }
 
     [Test]
