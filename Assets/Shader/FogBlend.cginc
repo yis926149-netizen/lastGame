@@ -8,12 +8,15 @@ float  _FogEmission;
 float  _FogTexAmount;   // 迷雾贴图叠加强度：0=纯色，1=完全用贴图
 float4 _FogMapOrigin;   // 地图世界 XZ 包围盒起点 (x=minX, y=minZ)
 float4 _FogMapSize;     // 地图世界 XZ 尺寸 (x=sizeX, y=sizeZ)
-float  _FogMemoryDim;   // 记忆区（探索过·当前无视野）亮度系数：0=全黑，1=不压暗。建议 0.45
-fixed4 _FogMemoryColor; // 记忆区叠加颜色（RGB），默认白色(1,1,1)=不染色
 float  _FogPixelSize;   // 0=平滑曲线；>0=像素阶梯块（值=方块世界边长）
 float  _FogJaggedAmount;// 边界起伏【幅度】（世界单位）：边界在原线两侧摆动多远
 float  _FogNoiseWavelength; // 锯齿起伏的【波长】（世界单位）：越大凸起/凹口越大越舒展，越小越细碎
-sampler2D _FogMaskTex;  // 方案B：世界对齐的探索遮罩（R 通道 0/1）。
+sampler2D _FogMaskTex;  // 世界对齐的探索遮罩（R 通道 0/1）。
+
+// 【探索重构-方案三】未探索区视觉参数（去饱和+半透明雾，不再遮挡地形）
+float  _FogUnexploredDesaturate; // 未探索区去饱和强度 [0,1]，建议 0.5
+float  _FogUnexploredBlend;      // 迷雾色叠加强度 [0,1]，建议 0.5
+float2 _FogScrollSpeed;          // 雾纹理 UV 滚动速度（世界单位/秒），建议 (0.02, 0.01)
 
 struct FogInput
 {
@@ -81,57 +84,48 @@ float FogBlend_resolveEdge(float v)
     return smoothstep(0.5 - aa, 0.5 + aa, v);
 }
 
-// 探索/未探索曲线边（供 surf 使用）：在被 warp 的位置采遮罩 R 通道。
-float FogBlend_jaggedExploration(float2 uv_FogTex, float exploration)
-{
-    float2 uvW = FogBlend_warpUV(uv_FogTex);
-    float r = tex2Dlod(_FogMaskTex, float4(uvW, 0, 0)).r;
-    return FogBlend_resolveEdge(r);
-}
+// 【探索重构-阶段6】FogBlend_jaggedExploration 已删除（surf 改造后无调用者）。
 
+// 【探索重构-方案三】surf 阶段不再让未探索地形变黑，正常返回地形 Albedo。
+// 去饱和+半透明雾的处理全部移到 FogBlend_final（光照算完后统一处理）。
 fixed3 FogBlend_surf(float2 uv_FogTex, float exploration, fixed3 terrainAlbedo, inout fixed3 o_Emission)
 {
-    float exploredJagged = FogBlend_jaggedExploration(uv_FogTex, exploration);
-
-    // 在纯色迷雾基础上，用"大尺度(_FogTexScale 小)+低强度(_FogTexAmount 小)"叠加 fog2 贴图，
-    // 做一点云雾质感而不再连成面片轮廓：
-    //  - 尺度：uv = worldPos.xz * _FogTexScale，_FogTexScale 越小贴图铺得越大、纹路越稀疏舒展；
-    //  - 强度：lerp(纯色, 纯色×贴图, _FogTexAmount)，_FogTexAmount 很小时只做轻微明暗起伏。
-    //  - 锁 LOD 0：避免斜面/平面 mip 不一致产生的接缝。
-    fixed3 fogTex = tex2Dlod(_FogTex, float4(uv_FogTex, 0, 0)).rgb;
-    fixed3 fogColor = _FogColor.rgb * lerp(fixed3(1,1,1), fogTex, _FogTexAmount);
-
-    fixed3 finalAlbedo = terrainAlbedo * exploredJagged;
-    o_Emission = lerp(fogColor * _FogEmission, o_Emission, exploredJagged);
-
-    return finalAlbedo;
+    return terrainAlbedo;
 }
 
+// 【探索重构-方案三】Smoothness/Metallic 不再随探索状态归零，始终返回原值。
 fixed FogBlend_alpha(float exploration, float param)
 {
-    return param * exploration;
+    return param;
 }
 
-// 在 surf 中调用：仅在 shadow caster pass 里把未探索片元 clip 掉，使未探索地块不投射阴影。
-// UNITY_PASS_SHADOWCASTER 守卫保证只影响阴影 Pass；前向 Pass 不受影响，未探索仍显示迷雾。
-// 需要 Shader 的 #pragma surface 带 addshadow，才会生成执行 surf 的自有阴影 Pass。
+// 【探索重构-方案三】未探索格现在正常投射阴影（不再 clip），保留空函数以兼容 Shader 调用点。
 void FogBlend_shadowClip(float exploration)
 {
-#if defined(UNITY_PASS_SHADOWCASTER)
-    clip(exploration - 0.5);
-#endif
 }
 
-// 在 finalcolor 修改器中调用：光照全部算完后处理两态。
-//  - 未探索(exploration=0)：最终颜色强制覆盖为纯迷雾自发光。
-//  - 已探索(exploration=1)：正常光照颜色，全亮。
+// 【探索重构-方案三】在 finalcolor 修改器中调用：光照算完后处理未探索区视觉。
+//  - 已探索(exploredJagged=1)：正常光照颜色，不变。
+//  - 未探索(exploredJagged=0)：地形去饱和 + 叠加半透明滚动迷雾（不遮挡地形信息）。
 void FogBlend_final(float exploration, float visibility, half3 fogEmission, inout fixed4 color, float2 uv_FogTex)
 {
     float2 uvW = FogBlend_warpUV(uv_FogTex);
     float r = tex2Dlod(_FogMaskTex, float4(uvW, 0, 0)).r;
     float exploredJagged = FogBlend_resolveEdge(r);
 
-    color.rgb = lerp(fogEmission, color.rgb, exploredJagged);
+    // 未探索区颜色处理
+    fixed3 unexploredColor = color.rgb;
+    // 1. 去饱和（转灰度 + 冷色调偏移），保留地形明暗和轮廓
+    float gray = dot(unexploredColor, fixed3(0.299, 0.587, 0.114));
+    unexploredColor = lerp(unexploredColor, gray * fixed3(0.85, 0.90, 1.0), _FogUnexploredDesaturate);
+    // 2. 叠加半透明雾（UV 随时间缓慢滚动，雾纹漂移，零额外开销）
+    float2 scrollUV = uvW + _Time.y * _FogScrollSpeed;
+    fixed3 fogTex = tex2Dlod(_FogTex, float4(scrollUV, 0, 0)).rgb;
+    fixed3 fogLayer = _FogColor.rgb * lerp(fixed3(1,1,1), fogTex, _FogTexAmount) * _FogEmission;
+    unexploredColor = lerp(unexploredColor, fogLayer, _FogUnexploredBlend);
+
+    // 按锯齿边界在"未探索处理色"和"正常色"间过渡
+    color.rgb = lerp(unexploredColor, color.rgb, exploredJagged);
 }
 
 #endif

@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 14f4e59c01bb96c47bccc4020813cbec, type: 3}
+  m_Name: TalentCardSO-2
+  m_EditorClassIdentifier: 
+  talentId: 2
+  typeIcon: {fileID: 21300000, guid: f4c38285ec72c764da3197f89ba8142c, type: 3}
+  mainIcon: {fileID: 21300000, guid: 5f06bdc0ee1b11c43918b64ab8ea6698, type: 3}
+  talentName: gold
+  description: "\u63D0\u5347\u91D1\u5E01\u83B7\u53D6\u901F\u5EA6"
+  effect:
+    type: 0
+    statId: 2
+    value: 2

@@ -1,0 +1,17 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f7a65825dd065b42b64700a2ec746d3, type: 3}
+  m_Name: ExplorationRewardConfigSO
+  m_EditorClassIdentifier: 
+  goldTiers: 00000000190000003200000064000000c800000090010000
+  unitCountTiers: 000000000100000002000000030000000400000005000000
+  rewardUnitID: 2

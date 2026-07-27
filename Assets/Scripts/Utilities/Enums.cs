@@ -66,6 +66,13 @@ public class Enums
         GenericFan
     }
 
+    // 高度生成模式
+    public enum HeightGenerationMode
+    {
+        PerlinNoise,
+        PaletteMap
+    }
+
     //资源类型
     public enum ResourceType
     {
@@ -100,6 +107,9 @@ public class Enums
     //建筑类型
     public enum BulidingType
     {
-        City, AttackStatue, DefenseStatue, Altar, TechnologyAndCultural, NoBuilding
+        City, AttackStatue, DefenseStatue, Altar, TechnologyAndCultural,
+        // 【公共建筑系统】公共建筑（多格、可争夺、伪AI阵营）
+        PublicBuilding,
+        NoBuilding
     }
 }

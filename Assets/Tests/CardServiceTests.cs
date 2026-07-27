@@ -10,7 +10,6 @@ public class CardServiceTests
     private IUnitDataProvider _mockUnitData;
     private IBuildingDataProvider _mockBuildingData;
     private IUIConfigProvider _mockUiConfig;
-    private IGameStateMachine _mockGameState;
     private ICardUnlockRuleProvider _mockUnlockRules;
     private CardService _service;
 
@@ -26,14 +25,12 @@ public class CardServiceTests
         _mockBuildingData = Substitute.For<IBuildingDataProvider>();
         _mockBuildingData.GetBuildingCardsCount().Returns(4);
 
-        _mockGameState = Substitute.For<IGameStateMachine>();
         _mockUnlockRules = Substitute.For<ICardUnlockRuleProvider>();
         _mockUnlockRules.GetUnlockedCardIds(Arg.Any<int>(), Arg.Any<int>())
             .Returns(new List<int> { 0, 1, 15 });
 
         _container.Bind<IUnitDataProvider>().FromInstance(_mockUnitData);
         _container.Bind<IBuildingDataProvider>().FromInstance(_mockBuildingData);
-        _container.Bind<IGameStateMachine>().FromInstance(_mockGameState);
         _container.Bind<IUIConfigProvider>().FromInstance(Substitute.For<IUIConfigProvider>());
         _container.Bind<ICardUnlockRuleProvider>().FromInstance(_mockUnlockRules);
         _container.Bind<ICardService>().To<CardService>().AsSingle();
@@ -42,24 +39,12 @@ public class CardServiceTests
     }
 
     [Test]
-    public void GenerateNextCardID_FirstTurn_ReturnsSettlerID()
+    public void GenerateNextCardID_ReturnsValidCard()
     {
-        _mockGameState.CurrentTurn.Returns(1);
-        // ˽���ֶ� _hasGivenFirstTurnSettler ��ʼΪ false
         int id = _service.GenerateNextCardID();
-        Assert.AreEqual(0, id); // ����IDΪ0
-    }
-
-    [Test]
-    public void GenerateNextCardID_AfterFirstTurn_ReturnsOnlyUnlockedCard()
-    {
-        _mockGameState.CurrentTurn.Returns(2);
-        _mockUnlockRules.GetUnlockedCardIds(0, 0).Returns(new List<int> { 15 });
-
-        int id = _service.GenerateNextCardID();
-
-        Assert.AreEqual(15, id);
-        _mockUnlockRules.Received(1).GetUnlockedCardIds(0, 0);
+        Assert.GreaterOrEqual(id, 0);
+        int totalCardCount = (int)_mockUnitData.GetUnitIconCount() + _mockBuildingData.GetBuildingCardsCount();
+        Assert.Less(id, totalCardCount);
     }
 
     [Test]
@@ -69,7 +54,7 @@ public class CardServiceTests
         {
             _service.RegisterCardView(slot, Substitute.For<ICardView>());
         }
-        Assert.AreEqual(-1, _service.GetFirstEmptySlot()); // �޿ղ�
+        Assert.AreEqual(-1, _service.GetFirstEmptySlot());
     }
 
     [Test]

@@ -22,6 +22,11 @@ public class AIEntityFactory
     private readonly EnemyModelManager _enemyModelManager;
     private readonly MapVisualEventSO _mapVisualEvent;
     private readonly AIPlayerState _aiPlayerState;
+    // 【探索重构-阶段6】AIFogService 已移除
+    private readonly GameLoop _gameLoop;
+    private readonly UnitMovementSystem _movementSystem;
+    private readonly UnitRemovalService _unitRemovalService;
+    private readonly CombatResolver _combatResolver;
 
     // 城市预制体：由 AIManager 从其 Inspector 序列化字段传入（场景引用无法直接注入到普通类）。
     public GameObject CityPrefab { get; set; }
@@ -35,7 +40,11 @@ public class AIEntityFactory
         IUnitRepository unitRepository,
         EnemyModelManager enemyModelManager,
         MapVisualEventSO mapVisualEvent,
-        AIPlayerState aiPlayerState)
+        AIPlayerState aiPlayerState,
+        GameLoop gameLoop,
+        UnitMovementSystem movementSystem,
+        UnitRemovalService unitRemovalService,
+        CombatResolver combatResolver)
     {
         _mapDataService = mapDataService;
         _container = container;
@@ -46,6 +55,11 @@ public class AIEntityFactory
         _enemyModelManager = enemyModelManager;
         _mapVisualEvent = mapVisualEvent;
         _aiPlayerState = aiPlayerState;
+        // 【探索重构-阶段6】AIFogService 参数已移除
+        _gameLoop = gameLoop;
+        _movementSystem = movementSystem;
+        _unitRemovalService = unitRemovalService;
+        _combatResolver = combatResolver;
     }
 
     /// <summary>AI 建城</summary>
@@ -113,8 +127,7 @@ public class AIEntityFactory
         // 触发地图视觉更新（势力范围边缘线）
         _mapVisualEvent.Raise();
 
-        // 隐藏建筑（初始时不可见，等探索后才显示）
-        g.SetActive(false);
+        // 【探索重构-阶段1】AI城市始终可见，不再隐藏
     }
 
     /// <summary>AI 单位生成</summary>
@@ -163,7 +176,20 @@ public class AIEntityFactory
         HexCellData h = _mapDataService.GetCellByWorldPosition(position);
         h.SetHaveUnit(true, g);
 
-        g.SetActive(false);
+        // 【批次 D】挂载 AIUnitBrain，注入全部依赖（含 CombatResolver 和建城依赖），注册到 GameLoop
+        var brain = g.AddComponent<AIUnitBrain>();
+        brain.Initialize(
+            characterData,
+            UnitStrategyFactory.Create(UnitIndex),
+            _mapDataService,
+            _unitRepository,
+            _movementSystem,
+            combatResolver: _combatResolver,
+            factory: this,
+            unitRemovalService: _unitRemovalService);
+        _gameLoop.Register(brain);
+
+        // 【探索重构-阶段1】AI单位始终可见，不再隐藏
     }
 
     /// <summary>AI 建筑生成</summary>
@@ -196,23 +222,7 @@ public class AIEntityFactory
             h.movementCost = float.MaxValue;
         }
 
-        // 与玩家一致：建筑落地后扩展势力范围
-        if (h.Player_City_Index.Key == AIIndex &&
-            _enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData.ContainsKey(AIIndex))
-        {
-            SphereOfInfluenceRules.Expand(
-                _mapDataService,
-                v,
-                _enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData[AIIndex],
-                h.Player_City_Index
-            );
-
-            if (_enemyModelManager.Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData.TryGetValue(h.Player_City_Index, out var citySphere))
-            {
-                SphereOfInfluenceRules.Expand(_mapDataService, v, citySphere, h.Player_City_Index);
-            }
-            _mapVisualEvent.Raise();
-        }
+        // 【探索重构-阶段5.5】建筑部署不拓展势力范围。势力范围仅由探索和公共建筑占领产生。
 
         // 科技/文化系统已移除：科技文化建筑不再产生每回合产量。
 
@@ -221,6 +231,6 @@ public class AIEntityFactory
         // 单位UI画布 + 血条（共享样板；canvas 为空则中止，保留原行为）
         if (!SpawnUIWiring.WireBuildingCanvas(g, buildingController, Color.red, _container, _uiConfigProvider)) { return; }
 
-        g.SetActive(false);
+        // 【探索重构-阶段1】AI建筑始终可见，不再隐藏
     }
 }

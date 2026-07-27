@@ -39,7 +39,7 @@ public static class SpawnUIWiring
     /// 建筑 UI：根 Canvas(buildingCanvas) + 血条(buildingHealthBar, child0)。设置 controller.uiHealthBar。
     /// canvas 为空返回 false（AI 依赖此返回值中止生成；玩家已预校验 canvas 非空）。
     /// </summary>
-    public static bool WireBuildingCanvas(GameObject buildingGo, BuildingController controller, Color healthBarColor, DiContainer container, IUIConfigProvider uiConfig)
+    public static bool WireBuildingCanvas(GameObject buildingGo, BuildingBase controller, Color healthBarColor, DiContainer container, IUIConfigProvider uiConfig)
     {
         Canvas canvas = buildingGo.GetComponentInChildren<Canvas>();
         if (canvas == null) return false;

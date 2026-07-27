@@ -3,6 +3,22 @@ using System.Linq;
 using UnityEngine;
 using Zenject;
 
+//****************************************
+// 功能说明：势力范围渲染器。
+//   将边界渲染为实体城墙 + 城墩模型（替代旧的描边面片）。
+//   - 边界线段（BoundarySegment）用"城墙"预制体；
+//   - 边界折线节点（角点）用"城墩"预制体；
+//   - HexEdge 段：标准水平城墙；
+//   - Transition 段：高度差小→水平墙；高度差大→运行时 Mesh 变形墙。
+//
+// 预制体未指定时，回退到旧的描边面片渲染（保证不配置也能跑）。
+//
+// 使用方式：在场景中建空物体，挂本组件，Inspector 指定城墙/城墩预制体。
+//   Zenject 绑定：FromComponentInHierarchy。
+//
+// 详见《势力范围实体城墙改造方案.md》。
+//****************************************
+
 public class SphereOfInfluenceRenderer : MonoBehaviour
 {
     [Inject] private IMapDataService _mapDataService;
@@ -11,12 +27,42 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
     [Inject] private PlayerModelManager _playerModelManager;
     [Inject] private EnemyModelManager _enemyModelManager;
 
-    // �洢���ɵ�������󣬷�������
+    [Header("实体模型预制体（不指定则回退面片渲染）")]
+    [Tooltip("城墙预制体：Pivot 底部中心，Z 轴为长度方向，原始长度=六边形边长")]
+    [SerializeField] private GameObject _wallPrefab;
+    [Tooltip("城墩预制体：Pivot 底部中心，放在边界折线节点上")]
+    [SerializeField] private GameObject _towerPrefab;
+
+    [Header("过渡墙坡度处理")]
+    [Tooltip("高度差小于此值视为水平墙（忽略随机扰动）")]
+    [SerializeField] private float _heightTolerance = 0.15f;
+
+    // ── 对象池 ────────────────────────────────────────────
+    private readonly List<GameObject> _wallPool = new List<GameObject>();
+    private readonly List<GameObject> _towerPool = new List<GameObject>();
+    private int _activeWallCount;
+    private int _activeTowerCount;
+    private Transform _poolRoot;
+
+    // ── 旧面片渲染回退用 ──────────────────────────────────
     private GameObject _playerSphere;
     private List<GameObject> _enemySpheres = new List<GameObject>();
 
+    // ── 复用缓冲，避免每次刷新分配 ────────────────────────
+    private readonly List<BoundarySegment> _segBuffer = new List<BoundarySegment>();
+    private readonly List<Vector3> _cornerBuffer = new List<Vector3>();
+
+    private bool UseModels => _wallPrefab != null && _towerPrefab != null;
+
+    // 预制体基准缩放（保留美术在预制体上设定的 scale，不强制归一）
+    private Vector3 WallBaseScale => _wallPrefab != null ? _wallPrefab.transform.localScale : Vector3.one;
+    private Vector3 TowerBaseScale => _towerPrefab != null ? _towerPrefab.transform.localScale : Vector3.one;
+
     private void Start()
     {
+        _poolRoot = new GameObject("SphereOfInfluence_Models").transform;
+        _poolRoot.SetParent(transform, false);
+
         _mapVisualEvent.OnMapVisualChanged.AddListener(RefreshAllSpheres);
         RefreshAllSpheres();
     }
@@ -25,6 +71,7 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
     {
         if (_mapVisualEvent != null)
             _mapVisualEvent.OnMapVisualChanged.RemoveListener(RefreshAllSpheres);
+
         DestroySphere(ref _playerSphere);
         foreach (var sphere in _enemySpheres)
             DestroySphere(sphere);
@@ -33,31 +80,178 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
 
     private void RefreshAllSpheres()
     {
-        // ���پɵ�
+        if (UseModels)
+            RefreshWithModels();
+        else
+            RefreshWithMesh();
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  实体模型渲染
+    // ══════════════════════════════════════════════════════
+
+    private void RefreshWithModels()
+    {
+        // 回收全部激活实例
+        _activeWallCount = 0;
+        _activeTowerCount = 0;
+
+        // 玩家势力：完整显示
+        if (_playerModelManager.SphereOfInfluence_HexC_HexCellData.Count > 0)
+        {
+            var cells = _playerModelManager.SphereOfInfluence_HexC_HexCellData.Values.ToList();
+            BuildModelsForSphere(cells, cells);
+        }
+
+        // 敌方势力：【探索重构-阶段1】始终显示完整势力范围，不再按 IsVisible 裁切
+        foreach (var kv in _enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData)
+        {
+            var fullSphere = kv.Value.Values.Where(c => c != null).ToList();
+            if (fullSphere.Count == 0) continue;
+            BuildModelsForSphere(fullSphere, fullSphere);
+        }
+
+        // 停用多余实例
+        DeactivateExtra(_wallPool, _activeWallCount);
+        DeactivateExtra(_towerPool, _activeTowerCount);
+    }
+
+    private void BuildModelsForSphere(List<HexCellData> hexCells, ICollection<HexCellData> membershipCells)
+    {
+        _meshGenerator.ExtractSphereOfInfluenceBoundary(
+            hexCells, membershipCells, _mapDataService, _segBuffer, _cornerBuffer);
+
+        // 城墙
+        foreach (var seg in _segBuffer)
+            PlaceWall(seg);
+
+        // 城墩
+        foreach (var corner in _cornerBuffer)
+            PlaceTower(corner);
+    }
+
+    private void PlaceWall(BoundarySegment seg)
+    {
+        GameObject wall = GetPooled(_wallPool, _wallPrefab, ref _activeWallCount);
+
+        Vector3 start = seg.Start;
+        Vector3 end = seg.End;
+        float heightDelta = seg.HeightDelta;
+
+        var filter = wall.GetComponent<MeshFilter>();
+
+        bool needDeform = seg.Type == BoundarySegmentType.Transition
+                          && Mathf.Abs(heightDelta) > _heightTolerance
+                          && filter != null;
+
+        if (needDeform)
+        {
+            // 变形墙：pivot 在底部中心，放线段中点；Mesh 内部从 -heightDelta/2 渐变到 +heightDelta/2，
+            // 使两端底部分别对齐 start.y 和 end.y，墙体竖直方向保持不倾斜。
+            Vector3 deformMid = seg.Midpoint;
+            deformMid.y = (start.y + end.y) * 0.5f;
+            wall.transform.position = deformMid;
+            Vector3 horizontalDir = new Vector3(end.x - start.x, 0f, end.z - start.z);
+            if (horizontalDir.sqrMagnitude > 0.0001f)
+                wall.transform.rotation = Quaternion.LookRotation(horizontalDir.normalized);
+            wall.transform.localScale = WallBaseScale;
+
+            // 用原始预制体 Mesh 作为源
+            Mesh sourceMesh = _wallPrefab.GetComponentInChildren<MeshFilter>()?.sharedMesh;
+            if (sourceMesh != null)
+                WallMeshDeformer.ApplyDeformedMesh(filter, sourceMesh, heightDelta);
+        }
+        else
+        {
+            // 标准水平墙：还原可能残留的变形 Mesh，放中点、水平朝向、平均高度
+            if (filter != null) RestoreOriginalMesh(wall, filter);
+
+            Vector3 mid = seg.Midpoint;
+            // 水平墙：Y 取两端平均，忽略微小扰动
+            mid.y = (start.y + end.y) * 0.5f;
+            wall.transform.position = mid;
+
+            Vector3 horizontalDir = new Vector3(end.x - start.x, 0f, end.z - start.z);
+            if (horizontalDir.sqrMagnitude > 0.0001f)
+                wall.transform.rotation = Quaternion.LookRotation(horizontalDir.normalized);
+            wall.transform.localScale = WallBaseScale;
+        }
+    }
+
+    private void PlaceTower(Vector3 corner)
+    {
+        GameObject tower = GetPooled(_towerPool, _towerPrefab, ref _activeTowerCount);
+        tower.transform.position = corner;
+        tower.transform.rotation = Quaternion.identity;
+        tower.transform.localScale = TowerBaseScale;
+    }
+
+    // ── 对象池辅助 ────────────────────────────────────────
+
+    private GameObject GetPooled(List<GameObject> pool, GameObject prefab, ref int activeCount)
+    {
+        GameObject obj;
+        if (activeCount < pool.Count)
+        {
+            obj = pool[activeCount];
+        }
+        else
+        {
+            obj = Instantiate(prefab, _poolRoot);
+            pool.Add(obj);
+        }
+        obj.SetActive(true);
+        activeCount++;
+        return obj;
+    }
+
+    private void DeactivateExtra(List<GameObject> pool, int activeCount)
+    {
+        for (int i = activeCount; i < pool.Count; i++)
+        {
+            if (pool[i] == null) continue;
+            // 释放墙的动态变形 Mesh
+            var filter = pool[i].GetComponent<MeshFilter>();
+            if (filter != null) WallMeshDeformer.ReleaseDeformedMesh(filter);
+            pool[i].SetActive(false);
+        }
+    }
+
+    // 还原预制体原始 Mesh（清除上次的变形 Mesh）
+    private void RestoreOriginalMesh(GameObject wall, MeshFilter filter)
+    {
+        if (filter.sharedMesh != null && filter.sharedMesh.name == "WallDeformed")
+        {
+            WallMeshDeformer.ReleaseDeformedMesh(filter);
+            Mesh sourceMesh = _wallPrefab.GetComponentInChildren<MeshFilter>()?.sharedMesh;
+            if (sourceMesh != null) filter.sharedMesh = sourceMesh;
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  旧面片渲染（预制体未指定时回退）
+    // ══════════════════════════════════════════════════════
+
+    private void RefreshWithMesh()
+    {
         DestroySphere(ref _playerSphere);
         foreach (var go in _enemySpheres)
             DestroySphere(go);
         _enemySpheres.Clear();
 
-        // 玩家自己的势力始终完整可见：描边集合与归属集合相同
         if (_playerModelManager.SphereOfInfluence_HexC_HexCellData.Count > 0)
         {
             var cells = _playerModelManager.SphereOfInfluence_HexC_HexCellData.Values.ToList();
             _playerSphere = CreateSphereMesh(cells, cells, Color.blue, "PlayerSphereOfInfluence");
         }
 
-        // 绘制每个敌方的势力范围
         foreach (var kv in _enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData)
         {
-            // 归属集合：该敌方的完整势力范围（用于判定"边是否为真实势力边界"）
             var fullSphere = kv.Value.Values.Where(c => c != null).ToList();
-            // 三态记忆迷雾：敌方势力范围只在当前视野内可见（记忆区/未探索均不显示）——仅这部分参与描边
-            var cells = fullSphere.Where(c => c.IsVisible).ToList();
-            if (cells.Count == 0) continue;
+            // 【探索重构-阶段1】始终显示完整势力范围
+            if (fullSphere.Count == 0) continue;
             Color color = GetEnemyColor(kv.Key);
-            // 描边集合=可见子集，归属集合=完整势力范围：
-            // 被迷雾切断的一侧邻居仍属该势力→算内部边不描，形成开口图形而非"假边界"闭合圈
-            GameObject go = CreateSphereMesh(cells, fullSphere, color, $"EnemySphereOfInfluence_{kv.Key}");
+            GameObject go = CreateSphereMesh(fullSphere, fullSphere, color, $"EnemySphereOfInfluence_{kv.Key}");
             _enemySpheres.Add(go);
         }
     }
@@ -110,7 +304,6 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
 
     private Color GetEnemyColor(int enemyIndex)
     {
-        // �ɸ�����Ҫ���Ʋ�ͬ���˵���ɫ������ͳһ��ɫ
         return Color.gray;
     }
 }

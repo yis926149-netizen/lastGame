@@ -25,6 +25,14 @@ public class EnemyModelManager : MonoBehaviour
     //人机编号_势力范围颜色
     private Dictionary<int, Color> sphereOfInfluenceColor = new Dictionary<int, Color>();
 
+    // 【公共建筑系统-决策#30】记录哪些 PlayerIndex 属于公共建筑伪AI（无行为逻辑）
+    // 用于血条颜色、视野跳过等判断
+    [HideInInspector]
+    public HashSet<int> PublicBuildingPlayerIndexes = new HashSet<int>();
+
+    /// <summary>判断指定 PlayerIndex 是否为公共建筑伪AI（全局查询入口）。</summary>
+    public bool IsPublicBuilding(int playerIndex) => PublicBuildingPlayerIndexes.Contains(playerIndex);
+
     public void Awake()
     {
         //添加人机

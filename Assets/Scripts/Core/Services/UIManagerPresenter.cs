@@ -4,7 +4,6 @@ using Zenject;
 public class UIManagerPresenter : IInitializable, System.IDisposable
 {
     [Inject] private IUIManagerView _view;
-    [Inject] private IGameStateMachine _gameStateMachine;
     [Inject] private IUnitRepository _unitRepository;
 
     public GameObject CurrentSelectedUnit { get; private set; }

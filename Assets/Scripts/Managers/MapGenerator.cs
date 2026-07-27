@@ -104,7 +104,20 @@ public class MapGenerator : MonoBehaviour
         System.Random landFormRandom = SeedService.GetRandom("LandForm");
         System.Random resourceRandom = SeedService.GetRandom("Resource");
 
-        List<float> heights = TerrainHeightGeneration(x, z, terrainHeights, terrainRandom);
+        List<float> heights;
+        if (_config.heightGenerationMode == Enums.HeightGenerationMode.PaletteMap && _config.heightPaletteMap != null)
+        {
+            Debug.Log($"[MapGenerator] 使用颜色图模式生成地形。纹理：{_config.heightPaletteMap.name}, 可读性：{_config.heightPaletteMap.isReadable}");
+            heights = PaletteHeightGeneration(x, z, InnerRadius, OuterRadius, terrainRandom);
+        }
+        else
+        {
+            string reason = _config.heightGenerationMode != Enums.HeightGenerationMode.PaletteMap 
+                ? "模式选择为 PerlinNoise" 
+                : "颜色图纹理未分配";
+            Debug.Log($"[MapGenerator] 使用 Perlin 噪声生成地形（{reason}）");
+            heights = TerrainHeightGeneration(x, z, terrainHeights, terrainRandom);
+        }
 
         hexVertices = HexCoordinatesGeneration(x, z, InnerRadius, OuterRadius, heights);
 
@@ -140,6 +153,54 @@ public class MapGenerator : MonoBehaviour
         }
 
         return height;
+    }
+
+    private List<float> PaletteHeightGeneration(int xNumber, int zNumber, float InnerRadius, float OuterRadius, System.Random random)
+    {
+        List<Vector3> worldCenters = ComputeWorldCenterCoordinates(xNumber, zNumber, InnerRadius, OuterRadius);
+
+        int[,] arrHeight = TerrainGenerator.GenerateTerrainHeightFromPalette(
+            xNumber, zNumber,
+            _config.heightPaletteMap,
+            _config.minHeight, _config.maxHeight, _config.seaLevel,
+            _config.heightNoiseAmplitude, _config.heightNoiseFrequency,
+            worldCenters,
+            random);
+
+        List<float> height = new List<float>();
+        for (int z = 0; z < arrHeight.GetLength(1); z++)
+        {
+            for (int x = 0; x < arrHeight.GetLength(0); x++)
+            {
+                height.Add(arrHeight[x, z]);
+            }
+        }
+
+        if (height.Count > 0)
+        {
+            float max = height[0];
+            for (int i = 1; i < height.Count; i++)
+                if (height[i] > max) max = height[i];
+            WaterLevelConfig.MaxHeight = max;
+        }
+
+        return height;
+    }
+
+    private List<Vector3> ComputeWorldCenterCoordinates(int xNum, int zNum, float InnerRadius, float OuterRadius)
+    {
+        List<Vector3> coords = new List<Vector3>(xNum * zNum);
+        for (int j = 0; j < zNum; j++)
+        {
+            int offset = j / 2;
+            for (int i = 0; i < xNum; i++)
+            {
+                float x = (i - offset) * 2f * InnerRadius + j * InnerRadius;
+                float z = j * 1.5f * OuterRadius;
+                coords.Add(new Vector3(x, 0, z));
+            }
+        }
+        return coords;
     }
 
     //�����ؿ���������ϵ�����������꣩

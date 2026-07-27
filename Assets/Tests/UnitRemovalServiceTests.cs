@@ -18,7 +18,7 @@ public class UnitRemovalServiceTests
         _mapDataService = Substitute.For<IMapDataService>();
         _unitRepository = new UnitRepository();
         _mapVisualEvent = ScriptableObject.CreateInstance<MapVisualEventSO>();
-        _movementSystem = new UnitMovementSystem(_mapDataService, _mapVisualEvent);
+        _movementSystem = new UnitMovementSystem(_mapDataService, _mapVisualEvent, null);
         _service = new UnitRemovalService(_mapDataService, _unitRepository, _movementSystem);
 
         _unit = new GameObject("Unit");

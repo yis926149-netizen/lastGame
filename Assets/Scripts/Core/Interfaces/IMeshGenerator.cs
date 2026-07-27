@@ -410,6 +410,18 @@ public interface IMeshGenerator
     List<List<Vector3>> GetOneSphereOfInfluenceVertices(List<HexCellData> hexCells, ICollection<HexCellData> membershipCells, out int edgeCount, IMapDataService _mapDataService);
 
     /// <summary>
+    /// 提取势力范围边界线段与角点（供实体城墙/城墩渲染使用）。
+    /// 复用与 GetOneSphereOfInfluenceVertices 相同的边界判定逻辑，但输出
+    /// 结构化的 BoundarySegment（区分 HexEdge / Transition）与去重后的唯一角点集合。
+    /// </summary>
+    void ExtractSphereOfInfluenceBoundary(
+        List<HexCellData> hexCells,
+        ICollection<HexCellData> membershipCells,
+        IMapDataService _mapDataService,
+        List<BoundarySegment> segments,
+        List<Vector3> cornerPoints);
+
+    /// <summary>
     /// 获取一段边缘线的绘制UV
     /// ∵顶点是固定的，所以uv也可以硬编程
     /// </summary>
@@ -427,7 +439,7 @@ public interface IMeshGenerator
     void GetFogVertices(out List<Vector3> outerBoundary, out List<List<Vector3>> holesVector3, IMapDataService _mapDataService);
 
     ///////////////////- 迷雾的封边 -///////////////////
-    List<Vector3> GetFogCoverVertices(List<Vector3> vector3s, float increment);
+    List<Vector3> GetFogCoverVertices(List<Vector3> vector3s, float increment, float uniformHeight);
 
     ///////////////////- 迷雾连接面片（矩形封皮内边 ↔ 地图真实轮廓 之间的环带）-///////////////////
     void GetFogConnectorBoundaries(out List<Vector3> rectBoundary, out List<Vector3> realOutline, IMapDataService _mapDataService);

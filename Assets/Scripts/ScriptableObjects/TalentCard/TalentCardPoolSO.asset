@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 47b929a245d6b2b48a91920e20c8b6de, type: 3}
+  m_Name: TalentCardPoolSO
+  m_EditorClassIdentifier: 
+  cards:
+  - {fileID: 11400000, guid: 32b8a95dbce49264a94f691234a4839c, type: 2}
+  - {fileID: 11400000, guid: eaa480c277a25f147b913c688378167f, type: 2}
+  - {fileID: 11400000, guid: f69b1bd3a36d20441be3f2e7033e00ac, type: 2}

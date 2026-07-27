@@ -354,10 +354,130 @@ public class TerrainGenerator : MonoBehaviour
                         winnerCount++;
                     }
                 }
-                if (winnerCount == 1)
+        if (winnerCount == 1)
                     terrainMap[x, z] = bestHeight;
             }
         }
+        return terrainMap;
+    }
+
+    /// <summary>
+    /// 颜色图高度生成：用策划绘制的颜色图控制宏观地形分布
+    /// </summary>
+    /// <param name="paletteMap">颜色图纹理（蓝=水域、绿=平地、橙=高地）</param>
+    /// <param name="worldCenters">按 generateOrder 排列的世界坐标列表</param>
+    public static int[,] GenerateTerrainHeightFromPalette(
+        int xNumber, int zNumber,
+        Texture2D paletteMap,
+        float minHeight, float maxHeight, float seaLevel,
+        float noiseAmplitude, float noiseFrequency,
+        List<Vector3> worldCenters,
+        System.Random random)
+    {
+        if (paletteMap == null || !paletteMap.isReadable || worldCenters == null || worldCenters.Count != xNumber * zNumber)
+        {
+            Debug.LogWarning("颜色图为空/不可读或世界坐标数量不匹配，回退到 Perlin 噪声生成");
+            return GenerateTerrainHeight(xNumber, zNumber, random, 0.05f, 3, 0.5f, (int)minHeight, (int)maxHeight);
+        }
+
+        int[,] terrainMap = new int[xNumber, zNumber];
+
+        float midPoint = seaLevel + (maxHeight - seaLevel + 1f) * 0.5f;
+        float waterMid = (minHeight + seaLevel) * 0.5f;
+        float flatMid = (seaLevel + midPoint) * 0.5f;
+        float highMid = (midPoint + maxHeight) * 0.5f;
+
+        Color refBlue = new Color(0f, 0f, 1f);
+        Color refGreen = new Color(0f, 1f, 0f);
+        Color refOrange = new Color(1f, 140f / 255f, 0f);
+
+        float minWorldX = worldCenters[0].x;
+        float maxWorldX = worldCenters[0].x;
+        float minWorldZ = worldCenters[0].z;
+        float maxWorldZ = worldCenters[0].z;
+        for (int i = 1; i < worldCenters.Count; i++)
+        {
+            Vector3 wc = worldCenters[i];
+            if (wc.x < minWorldX) minWorldX = wc.x;
+            if (wc.x > maxWorldX) maxWorldX = wc.x;
+            if (wc.z < minWorldZ) minWorldZ = wc.z;
+            if (wc.z > maxWorldZ) maxWorldZ = wc.z;
+        }
+
+        float worldWidth = maxWorldX - minWorldX;
+        float worldDepth = maxWorldZ - minWorldZ;
+        if (worldWidth <= 0.0001f) worldWidth = 1f;
+        if (worldDepth <= 0.0001f) worldDepth = 1f;
+
+        float noiseOffsetX = random.Next(-100000, 100001);
+        float noiseOffsetZ = random.Next(-100000, 100001);
+
+        for (int z = 0; z < zNumber; z++)
+        {
+            for (int x = 0; x < xNumber; x++)
+            {
+                Vector3 wc = worldCenters[z * xNumber + x];
+                float u = (wc.x - minWorldX) / worldWidth;
+                float v = (wc.z - minWorldZ) / worldDepth;
+
+                Color sampled = paletteMap.GetPixelBilinear(u, v);
+
+                float dr = sampled.r - refBlue.r;
+                float dg = sampled.g - refBlue.g;
+                float db = sampled.b - refBlue.b;
+                float distBlue = Mathf.Sqrt(dr * dr + dg * dg + db * db);
+
+                dr = sampled.r - refGreen.r;
+                dg = sampled.g - refGreen.g;
+                db = sampled.b - refGreen.b;
+                float distGreen = Mathf.Sqrt(dr * dr + dg * dg + db * db);
+
+                dr = sampled.r - refOrange.r;
+                dg = sampled.g - refOrange.g;
+                db = sampled.b - refOrange.b;
+                float distOrange = Mathf.Sqrt(dr * dr + dg * dg + db * db);
+
+                float epsilon = 0.001f;
+                float wBlue = 1f / (distBlue + epsilon);
+                float wGreen = 1f / (distGreen + epsilon);
+                float wOrange = 1f / (distOrange + epsilon);
+                float totalW = wBlue + wGreen + wOrange;
+                wBlue /= totalW;
+                wGreen /= totalW;
+                wOrange /= totalW;
+
+                float baseHeight = wBlue * waterMid + wGreen * flatMid + wOrange * highMid;
+
+                int bucket;
+                if (wBlue >= wGreen && wBlue >= wOrange)
+                    bucket = 0;
+                else if (wGreen >= wBlue && wGreen >= wOrange)
+                    bucket = 1;
+                else
+                    bucket = 2;
+
+                float noiseX = (x + noiseOffsetX) * noiseFrequency;
+                float noiseZ = (z + noiseOffsetZ) * noiseFrequency;
+                float noise = (Mathf.PerlinNoise(noiseX, noiseZ) * 2f - 1f) * noiseAmplitude;
+                float finalHeight = baseHeight + noise;
+
+                switch (bucket)
+                {
+                    case 0:
+                        finalHeight = Mathf.Clamp(finalHeight, minHeight, seaLevel);
+                        break;
+                    case 1:
+                        finalHeight = Mathf.Clamp(finalHeight, seaLevel + 0.01f, midPoint - 0.01f);
+                        break;
+                    case 2:
+                        finalHeight = Mathf.Clamp(finalHeight, midPoint, maxHeight);
+                        break;
+                }
+
+                terrainMap[x, z] = Mathf.RoundToInt(finalHeight);
+            }
+        }
+
         return terrainMap;
     }
 

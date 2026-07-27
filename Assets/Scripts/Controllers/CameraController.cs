@@ -12,6 +12,10 @@ public class CameraController : MonoBehaviour, ITickable
 
     private Camera _mainCamera;
 
+    [Header("B4: 竖屏适配")]
+    public float baseFOV = 60f; // 横屏基准 FOV
+    public float portraitFOVMultiplier = 1.3f; // 竖屏 FOV 放大系数
+
     [Header("������ƶ�����")]
     public float moveSpeed = 5f;
     public float smoothMoveTime = 0.1f;
@@ -54,6 +58,21 @@ public class CameraController : MonoBehaviour, ITickable
 
     private bool _boundsInitialized = false;
 
+    // ── 屏幕震动 ──────────────────────────────────────
+    private float _shakeStrength;
+    private float _shakeDuration;
+    private float _shakeElapsed;
+    private Vector3 _shakeOffset;
+    private const float ShakeFrequency = 50f; // 震动频率 Hz（更高 = 更细碎）
+
+    /// <summary>触发一次屏幕震动（叠加在平滑位移之上，不影响相机目标位置）。</summary>
+    public void Shake(float strength, float duration)
+    {
+        _shakeStrength = strength;
+        _shakeDuration = duration;
+        _shakeElapsed = 0f;
+    }
+
     [Inject]
     public void Construct(
         IInputService input,
@@ -76,6 +95,17 @@ public class CameraController : MonoBehaviour, ITickable
         {
             Debug.LogError("CameraController: ������û���������");
             return;
+        }
+
+        // B4: 竖屏适配 - 根据屏幕宽高比动态调整 FOV
+        float aspectRatio = (float)Screen.width / Screen.height;
+        if (aspectRatio < 1f) // 竖屏
+        {
+            _mainCamera.fieldOfView = baseFOV * portraitFOVMultiplier;
+        }
+        else // 横屏
+        {
+            _mainCamera.fieldOfView = baseFOV;
         }
 
         TryInitializeBounds();
@@ -299,9 +329,8 @@ public class CameraController : MonoBehaviour, ITickable
         {
             if (c == null || c.transform.parent == null) continue;
 
-            HexCellData cell = _mapData.GetCellByWorldPosition(c.transform.parent.position);
-            if (cell != null && cell.IsExplored)
-                c.gameObject.SetActive(true);
+            // 【探索重构-阶段1】无条件恢复 Canvas，不再按 IsExplored 过滤
+            c.gameObject.SetActive(true);
         }
 
         // ==================== �̶�0.3������ɻع� ====================
@@ -342,7 +371,11 @@ public class CameraController : MonoBehaviour, ITickable
     {
         if (_mainCamera == null) return;
 
-        _mainCamera.transform.position = Vector3.SmoothDamp(_mainCamera.transform.position, _targetCameraPosition, ref _zoomVelocity, smoothZoomTime);
+        Vector3 smoothed = Vector3.SmoothDamp(_mainCamera.transform.position - _shakeOffset, _targetCameraPosition, ref _zoomVelocity, smoothZoomTime);
+
+        UpdateShakeOffset();
+
+        _mainCamera.transform.position = smoothed + _shakeOffset;
 
         float targetY = _targetCameraRotation.eulerAngles.y;
         float currentY = _mainCamera.transform.rotation.eulerAngles.y;
@@ -352,7 +385,25 @@ public class CameraController : MonoBehaviour, ITickable
         newEuler.y = smoothY;
         _mainCamera.transform.rotation = Quaternion.Euler(newEuler);
 
-        transform.position = _mainCamera.transform.position;
+        transform.position = smoothed;
+    }
+
+    private void UpdateShakeOffset()
+    {
+        if (_shakeElapsed >= _shakeDuration)
+        {
+            _shakeOffset = Vector3.zero;
+            return;
+        }
+
+        _shakeElapsed += Time.deltaTime;
+        // 衰减包络：随时间线性降至 0
+        float falloff = _shakeStrength * (1f - _shakeElapsed / _shakeDuration);
+        // 高频正弦波 + 少量随机扰动，保证视觉上是快速细碎抖动而非大幅漂移
+        float t = _shakeElapsed * ShakeFrequency;
+        float x = Mathf.Sin(t * 1.0f) + Random.Range(-0.05f, 0.05f);
+        float y = Mathf.Sin(t * 1.3f) + Random.Range(-0.05f, 0.05f);
+        _shakeOffset = new Vector3(x * falloff, y * falloff, 0f);
     }
 
     public void SetTargetPosition(Vector3 worldPosition)

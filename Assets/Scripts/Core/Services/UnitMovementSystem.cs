@@ -7,15 +7,28 @@ public class UnitMovementSystem : ITickable
 {
     private readonly IMapDataService _mapDataService;
     private readonly MapVisualEventSO _mapVisualEvent;  // 用于触发视觉更新
+    private readonly GameLoop _gameLoop;                // 用于暂停检查（批次 C）
 
     // 正在移动的单位列表
     private List<MovingUnit> _movingUnits = new List<MovingUnit>();
     private readonly Dictionary<Vector3, IUnitMovement> _reservedDestinations = new Dictionary<Vector3, IUnitMovement>();
+    private List<Vector3> _cachedAllPoints;
 
-    public UnitMovementSystem(IMapDataService mapDataService, MapVisualEventSO mapVisualEvent)
+    public UnitMovementSystem(IMapDataService mapDataService, MapVisualEventSO mapVisualEvent, GameLoop gameLoop)
     {
         _mapDataService = mapDataService;
         _mapVisualEvent = mapVisualEvent;
+        _gameLoop = gameLoop;
+    }
+
+    public IReadOnlyList<Vector3> AllHexCoordinates
+    {
+        get
+        {
+            if (_cachedAllPoints == null)
+                _cachedAllPoints = _mapDataService.GetAllHexCoordinates();
+            return _cachedAllPoints;
+        }
     }
 
     /// <summary>
@@ -25,16 +38,13 @@ public class UnitMovementSystem : ITickable
     {
         //Debug.Log($"[UnitMovementSystem] RequestMove: unit={unit.gameObject.name}, target={targetHex}, purpose={purpose}");
 
-        if (unit == null || unit.gameObject == null)
+        if ((unit as UnityEngine.Object) == null || unit.gameObject == null)
         {
             return false;
         }
 
-        if (unit.RemainingMovement <= 0)
-        {
-            Debug.LogWarning("[UnitMovementSystem] RequestMove rejected: no movement points.");
-            return false;
-        }
+        // 【批次 B】移动力校验已移除——实时化后单位移动力由 GameLoop 驱动，无配额概念。
+        // （原 RemainingMovement <= 0 判断删除）
 
         if (_movingUnits.Exists(mu => mu.Unit == unit))
         {
@@ -66,7 +76,7 @@ public class UnitMovementSystem : ITickable
 
         // 1. 计算原始最短路径
         if (!CalculateMinMovementCostBetweenTwoHexes(
-            new List<Vector3>(_mapDataService.GetAllHexCoordinates()),
+            new List<Vector3>(AllHexCoordinates),
             startHex,
             destinationHex,
             purpose,
@@ -105,13 +115,14 @@ public class UnitMovementSystem : ITickable
             actualCost += _mapDataService.GetCell(hexCoord).movementCost;
         }
 
-        if (actualCost > unit.RemainingMovement)
-        {
-            Debug.LogWarning($"[UnitMovementSystem] RequestMove rejected: cost {actualCost} > remaining {unit.RemainingMovement}.");
-            return false;
-        }
+        // 【批次 B】移动力代价校验已移除——实时化后无配额限制。
+        // （原 actualCost > unit.RemainingMovement 判断删除）
 
         // 5. 提交移动任务
+        var umc = unit as UnitMovementController;
+        float baseMovementPoints = umc?.characterData?.unitData?.MovementPoints ?? 3f;
+        float computedSpeed = Mathf.Max(1f, baseMovementPoints * 10f);
+
         var movingUnit = new MovingUnit
         {
             Unit = unit,
@@ -120,7 +131,8 @@ public class UnitMovementSystem : ITickable
             Purpose = purpose,
             StartHex = startHex,
             DestinationHex = destinationHex,
-            StartRemainingMovement = unit.RemainingMovement
+            StartRemainingMovement = unit.RemainingMovement,
+            MoveSpeed = computedSpeed
         };
         _reservedDestinations[destinationHex] = unit;
         _movingUnits.Add(movingUnit);
@@ -151,12 +163,13 @@ public class UnitMovementSystem : ITickable
     // Zenject 每帧调用（Tick）
     public void Tick()
     {
-        //Debug.Log($"[UnitMovementSystem] Tick called, moving units count: {_movingUnits.Count}");
+        // 【批次 C】暂停时停止所有移动动画
+        if (_gameLoop != null && _gameLoop.IsPaused) return;
 
         for (int i = _movingUnits.Count - 1; i >= 0; i--)
         {
             var mu = _movingUnits[i];
-            if (mu.Unit == null || mu.Unit.gameObject == null)
+            if ((mu.Unit as UnityEngine.Object) == null || mu.Unit.gameObject == null)
             {
                 ReleaseReservation(mu);
                 _movingUnits.RemoveAt(i);
@@ -218,8 +231,13 @@ public class UnitMovementSystem : ITickable
         if (startCell != null && startCell.GetUnit() == movingUnit.Unit.gameObject && startCell != destinationCell)
         {
             startCell.SetHaveUnit(false, null);
+            // 【批次 D】同步释放旧格的 Occupant
+            if (startCell.GetOccupant() == movingUnit.Unit.gameObject)
+                startCell.SetOccupant(null);
         }
         destinationCell?.SetHaveUnit(true, movingUnit.Unit.gameObject);
+        // 【批次 D】同步写入新格的 Occupant
+        destinationCell?.SetOccupant(movingUnit.Unit.gameObject);
         ReleaseReservation(movingUnit);
     }
 
@@ -231,6 +249,8 @@ public class UnitMovementSystem : ITickable
         movingUnit.Unit.gameObject.transform.position = startCell.RealCenterWorldCoordinate;
         movingUnit.Unit.RemainingMovement = movingUnit.StartRemainingMovement;
         startCell.SetHaveUnit(true, movingUnit.Unit.gameObject);
+        // 【批次 D】恢复 Occupant
+        startCell.SetOccupant(movingUnit.Unit.gameObject);
     }
 
     private void ReleaseReservation(MovingUnit movingUnit)
@@ -254,7 +274,7 @@ public class UnitMovementSystem : ITickable
     /// <returns>true 表示移动完成（到达终点或移动力耗尽），false 表示仍在移动中</returns>
     private bool UpdateMovement(MovingUnit mu)
     {
-        const float moveSpeed = 20f;
+        float moveSpeed = mu.MoveSpeed;
         const float rotationSpeed = 5f;
         Transform trans = mu.Unit.gameObject.transform;
 
@@ -269,17 +289,7 @@ public class UnitMovementSystem : ITickable
             // 吸附到当前路径点中心，避免浮点漂移
             trans.position = targetPos;
 
-            // 扣除当前格子的移动力（所有经过的格子都要扣）
-            float cost = _mapDataService.GetCell(mu.Path[mu.CurrentPathIndex]).movementCost;
-            mu.Unit.RemainingMovement -= cost;
-            //Debug.Log($"[UpdateMovement] 扣除移动力 {cost}，剩余 {mu.Unit.RemainingMovement}");
-
-            // 移动力耗尽，停止在此格子，标记完成
-            if (mu.Unit.RemainingMovement <= 0)
-            {
-                mu.CurrentPathIndex = mu.Path.Count;
-                return true;
-            }
+            // 【实时化】移动力配额已废除，不再扣减 RemainingMovement，也不再因耗尽而截断路径。
 
             // 移动到下一个节点
             mu.CurrentPathIndex++;
@@ -350,6 +360,8 @@ public class UnitMovementSystem : ITickable
     {
         //初始设置：
         //1.设置全点列表 List<Vector3> allPoints -储存全部点
+        // allPoints 转 HashSet，使后续邻居有效性判断从 O(N) 线性查找降为 O(1)
+        HashSet<Vector3> allPointsSet = new HashSet<Vector3>(allPoints);
         //2.设置一个字典 Dictionary<point, pre> point_pre -保存每个点及其前驱 - 初始化为空
         Dictionary<Vector3, Vector3> point_pre = new Dictionary<Vector3, Vector3>();
         Vector3 over = new Vector3(-111111111111111, -111111111111111111, -11111111111111111);
@@ -460,7 +472,7 @@ public class UnitMovementSystem : ITickable
             List<Vector3> toRemove = new List<Vector3>();
             foreach (var key in neighbor_Cost.Keys)
             {
-                if (!allPoints.Contains(key))
+                if (!allPointsSet.Contains(key))
                 {
                     toRemove.Add(key);
                 }
@@ -530,6 +542,8 @@ public class UnitMovementSystem : ITickable
     {
         //初始设置：
         //1.设置全点列表 List<Vector3> allPoints -储存全部点
+        // allPoints 转 HashSet，使后续邻居有效性判断从 O(N) 线性查找降为 O(1)
+        HashSet<Vector3> allPointsSet = new HashSet<Vector3>(allPoints);
         //2.设置一个字典 Dictionary<point, pre> point_pre -保存每个点及其前驱 - 初始化为空
         Dictionary<Vector3, Vector3> point_pre = new Dictionary<Vector3, Vector3>();
         Vector3 over = new Vector3(-111111111111111, -111111111111111111, -11111111111111111);
@@ -596,7 +610,7 @@ public class UnitMovementSystem : ITickable
             List<Vector3> toRemove = new List<Vector3>();
             foreach (var key in neighbor_Cost.Keys)
             {
-                if (!allPoints.Contains(key))
+                if (!allPointsSet.Contains(key))
                 {
                     toRemove.Add(key);
                 }
@@ -686,5 +700,6 @@ public class UnitMovementSystem : ITickable
         public Vector3 StartHex;
         public Vector3 DestinationHex;
         public float StartRemainingMovement;
+        public float MoveSpeed;       // 实时移动速度（世界单位/秒），基于 UnitData.MovementPoints * 10
     }
 }

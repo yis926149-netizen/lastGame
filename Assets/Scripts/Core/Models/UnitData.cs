@@ -18,6 +18,9 @@ public class UnitData
     //��Ұ��Χ - �ж�Ч����Ѱ·
     public float ViewPoints;
 
+    //【批次 D】攻速间隔（秒），两次攻击结算之间的冷却。默认 1.5f。
+    public float AttackInterval = 1.5f;
+
     public UnitData(int id, string unitName, float MovementPoints, int hp, int attackRange, int attackValue, float viewPoints, float defense)
     {
         this.id = id;
@@ -41,5 +44,6 @@ public class UnitData
             source.ViewPoints,
             source.Defense)
     {
+        AttackInterval = source.AttackInterval;
     }
 }

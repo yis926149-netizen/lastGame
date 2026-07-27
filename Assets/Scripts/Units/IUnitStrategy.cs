@@ -9,8 +9,11 @@ using UnityEngine;
 
 public interface IUnitStrategy
 {
-    /// <summary>选择下一格的目的地（棋盘坐标）。无可走目标时返回 null。</summary>
-    Vector3? ChooseNextStep(UnitBrainBase brain);
+    /// <summary>
+    /// 计算完整路径到目标（棋盘坐标列表）。无可走目标时返回 null。
+    /// 返回的路径为 [下一格, 下下格, ..., 终点]，调用方可逐格消费。
+    /// </summary>
+    System.Collections.Generic.List<Vector3> ChooseNextPath(UnitBrainBase brain);
 
     /// <summary>当前是否可以发起攻击（近战：同格；远程：射程内有目标）。</summary>
     bool CanAttack(UnitBrainBase brain);

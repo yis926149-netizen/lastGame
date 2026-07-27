@@ -7,14 +7,18 @@ public class GameInstaller : MonoInstaller
 {
     [SerializeField] private UnitDatabaseSO _unitDatabaseSO;
     [SerializeField] private BuildingDatabaseSO _buildingDatabaseSO;
+    [SerializeField] private PublicBuildingSO _publicBuildingSO;
     [SerializeField] private UIConfigSO _uiConfigSO;
     [SerializeField] private EnvironmentModelsSO _environmentModelsSO;
     [SerializeField] private MapGenerationConfigSO _mapGenerationConfigSO;
     [SerializeField] private MapVisualEventSO _mapVisualEventSO;
-    [SerializeField] private EventSystem _eventSystem; // ���볡���е� EventSystem
-    [SerializeField] private Camera _mainCamera;       // �������
-    [SerializeField] private UIManager _uiManager; // ���볡���е� UIManager
-    [SerializeField] private Canvas _targetUICanvas; // ���������ڵ����� Canvas
+    [SerializeField] private EventSystem _eventSystem; // 引用场景中的 EventSystem
+    [SerializeField] private Camera _mainCamera;       // 主相机
+    [SerializeField] private UIManager _uiManager; // 引用场景中的 UIManager
+    [SerializeField] private Canvas _targetUICanvas; // 拖拽操作的目标 Canvas
+    [SerializeField] private TalentCardPoolSO _talentCardPoolSO; // 天赋卡池
+    [SerializeField] private TalentCardSelectionUI _talentCardSelectionUI; // 天赋卡选择 UI
+    [SerializeField] private ExplorationRewardConfigSO _explorationRewardConfigSO; // 探索奖励配置
     public override void InstallBindings()
     {
         ValidateRequiredReferences();
@@ -31,6 +35,11 @@ public class GameInstaller : MonoInstaller
         Container.Bind<BuildingDatabaseSO>().FromInstance(_buildingDatabaseSO).AsSingle();
 
         Container.Bind<IBuildingDataProvider>().To<BuildingDataProvider>().AsSingle();
+
+        // 【公共建筑系统】公共建筑配置与生成器
+        Container.Bind<PublicBuildingSO>().FromInstance(_publicBuildingSO).AsSingle();
+        Container.Bind<IPublicBuildingDataProvider>().To<PublicBuildingDataProvider>().AsSingle();
+        Container.Bind<PublicBuildingGenerator>().AsSingle();
 
         // UI
 
@@ -71,10 +80,23 @@ public class GameInstaller : MonoInstaller
         Container.Bind<IMeshGenerator>().To<MeshGeneratorService>().AsSingle();
 
         // 三态记忆迷雾 - 视野计算服务
-        Container.Bind<FieldOfViewService>().AsSingle();
+        // 【探索重构-阶段6】FieldOfViewService 和 AIFogService 已移除
 
-        // AI 逻辑迷雾服务（仅逻辑，不渲染）
-        Container.Bind<AIFogService>().AsSingle();
+        // 【探索重构-阶段3】主动探索服务及占位实现
+        Container.Bind<IExplorationService>().To<ExplorationService>().AsSingle();
+        Container.Bind<IExplorationRule>().To<AdjacencyExplorationRule>().AsSingle();   // 邻接规则
+
+        // 【探索奖励随机机制】探索奖励系统
+        Container.Bind<ExplorationRewardConfigSO>().FromInstance(_explorationRewardConfigSO).AsSingle();
+        Container.Bind<ExplorationRewardSystem>().AsSingle().NonLazy(); // NonLazy 确保立即构造并订阅事件
+
+        // 【探索重构-阶段7】金币资源系统
+        Container.Bind(typeof(GoldWallet), typeof(IPlayerResourceWallet)).To<GoldWallet>().AsSingle();
+        Container.Bind<IExplorationCostProvider>().To<FixedExplorationCostProvider>().AsSingle();
+        Container.BindInterfacesAndSelfTo<GoldIncomeService>().AsSingle().NonLazy();   // ITickable 被动收入
+
+        // 【探索重构-阶段5.5】势力范围服务（新模型：主城固有范围 + 探索占领 + 公共建筑占领）
+        Container.Bind<ITerritoryService>().To<TerritoryService>().AsSingle();
 
         //��ͼ�¼�
         Container.BindInstance(_mapVisualEventSO).AsSingle();
@@ -82,16 +104,16 @@ public class GameInstaller : MonoInstaller
         //������Χ���
         Container.Bind<PlayerModelManager>().FromComponentInHierarchy().AsSingle();
         Container.Bind<EnemyModelManager>().FromComponentInHierarchy().AsSingle();
+        // 势力范围渲染器：改为场景组件（需在 Inspector 指定城墙/城墩预制体）。
+        // 场景中若无该组件，回退到新建组件（预制体为空 → 自动回退面片渲染）。
         Container.Bind<SphereOfInfluenceRenderer>()
-                 .FromNewComponentOnNewGameObject()
+                 .FromComponentInHierarchy()
                  .AsSingle()
                  .NonLazy();
 
-        // �غ�״̬���Ľ׶���AI
-        Container.Bind<PlayerPhase>().FromComponentInHierarchy().AsSingle();
-        Container.Bind<SettlementPhase>().FromComponentInHierarchy().AsSingle();
+        // 【检查点 6】PlayerPhase/SettlementPhase/AIPhase/AITacticalBrain/GameStateMachine 已删除
+
         // AI 管理器：同时绑定具体类 AIManager 与接口 IAIManager 到同一场景组件。
-        // GameFlowManager 依赖接口；AIPhase 依赖具体类（需 MonoBehaviour.StartCoroutine 作协程宿主）。
         Container.BindInterfacesAndSelfTo<AIManager>().FromComponentInHierarchy().AsSingle();
 
         // AI 拆分后的协作服务（Tier 1）。AIPlayerState 作为共享状态单例，供各 AI 服务共用。
@@ -99,20 +121,32 @@ public class GameInstaller : MonoInstaller
         Container.Bind<AIRandomProvider>().AsSingle();
         Container.Bind<AIEntityFactory>().AsSingle();
         Container.Bind<AICardBrain>().AsSingle();
-        Container.Bind<AITacticalBrain>().AsSingle();
 
-        Container.Bind<AIPhase>().AsSingle();
+        // 【探索重构】AI 自动探索 + 卡牌定时器
+        Container.BindInterfacesAndSelfTo<AIAutoExplorer>().AsSingle().NonLazy();
+        Container.BindInterfacesAndSelfTo<AICardTicker>().AsSingle().NonLazy();
+
         Container.BindInterfacesAndSelfTo<GameFlowManager>()
                  .FromComponentInHierarchy()
                  .AsSingle();
 
-        // ����Ϸ״̬����ʵ��IInitiable�����Ա㴴���ͳ�ʼ��
-        Container.BindInterfacesAndSelfTo<GameStateMachine>().AsSingle().NonLazy();
+        // 【检查点 6】GameStateMachine 已删除。GameLoop 替代为 IInitializable + ITickable。
+
         Container.Bind<IUnitService>().To<UnitService>().AsSingle();
         Container.Bind<UnitRemovalService>().AsSingle();
 
+        // 【批次 D】战斗结算器
+        Container.Bind<CombatResolver>().AsSingle();
+
+        // 【天赋卡系统】阵营级 Buff 服务
+        Container.Bind<IFactionBuffService>().To<FactionBuffService>().AsSingle();
+
         // concrete class ע��� ITickable ע��
         Container.BindInterfacesAndSelfTo<UnitMovementSystem>().AsSingle();
+
+        // 【批次 A】GameLoop：注册为 IInitializable + ITickable + 具体类（AsSingle）
+        Container.BindInterfacesAndSelfTo<GameLoop>().AsSingle();
+
 
         // �������
         Container.Bind<IInputService>()
@@ -138,8 +172,16 @@ public class GameInstaller : MonoInstaller
                  .AsSingle();
 
         //����
+        // 【天赋卡系统】数据、触发、UI、AI自动选择
+        Container.Bind<TalentCardPoolSO>().FromInstance(_talentCardPoolSO).AsSingle();
+        Container.Bind<TalentCardTriggerAdapter>().AsSingle();
+        Container.Bind<AITalentCardAutoSelector>().AsSingle().NonLazy();
+        Container.BindInterfacesAndSelfTo<TalentCardBootstrap>().AsSingle();
+        Container.Bind<TalentCardSelectionUI>().FromInstance(_talentCardSelectionUI).AsSingle();
+
         Container.BindInterfacesAndSelfTo<CardService>().AsSingle();
         Container.BindInterfacesAndSelfTo<CardPresenter>().AsSingle().NonLazy();
+        // IPlayerUnitSpawnService 已通过 BindInterfacesAndSelfTo<CardPresenter> 自动绑定，无需额外注册
 
         // UIManager ��ͼ ���� ֱ�ӽ������е� UIManager ʵ��
         Container.Bind<IUIManagerView>().To<UIManager>().FromResolve();
@@ -155,7 +197,7 @@ public class GameInstaller : MonoInstaller
         Container.BindInitializableExecutionOrder<GameFlowManager>(-30);
         Container.BindInitializableExecutionOrder<CardPresenter>(-20);
         Container.BindInitializableExecutionOrder<UIManagerPresenter>(-10);
-        Container.BindInitializableExecutionOrder<GameStateMachine>(0);
+        Container.BindInitializableExecutionOrder<TalentCardBootstrap>(10);
     }
 
     private void ValidateRequiredReferences()
@@ -164,6 +206,7 @@ public class GameInstaller : MonoInstaller
 
         AddMissing(missing, _unitDatabaseSO, nameof(_unitDatabaseSO));
         AddMissing(missing, _buildingDatabaseSO, nameof(_buildingDatabaseSO));
+        AddMissing(missing, _publicBuildingSO, nameof(_publicBuildingSO));
         AddMissing(missing, _uiConfigSO, nameof(_uiConfigSO));
         AddMissing(missing, _environmentModelsSO, nameof(_environmentModelsSO));
         AddMissing(missing, _mapGenerationConfigSO, nameof(_mapGenerationConfigSO));
@@ -172,13 +215,14 @@ public class GameInstaller : MonoInstaller
         AddMissing(missing, _mainCamera, nameof(_mainCamera));
         AddMissing(missing, _uiManager, nameof(_uiManager));
         AddMissing(missing, _targetUICanvas, nameof(_targetUICanvas));
+        AddMissing(missing, _talentCardPoolSO, nameof(_talentCardPoolSO));
+        AddMissing(missing, _talentCardSelectionUI, nameof(_talentCardSelectionUI));
+        AddMissing(missing, _explorationRewardConfigSO, nameof(_explorationRewardConfigSO));
 
         AddMissingInScene<MapGenerator>(missing);
         AddMissingInScene<MapRenderer>(missing);
         AddMissingInScene<PlayerModelManager>(missing);
         AddMissingInScene<EnemyModelManager>(missing);
-        AddMissingInScene<PlayerPhase>(missing);
-        AddMissingInScene<SettlementPhase>(missing);
         AddMissingInScene<AIManager>(missing);
         AddMissingInScene<GameFlowManager>(missing);
         AddMissingInScene<CameraController>(missing);
@@ -207,6 +251,10 @@ public class GameInstaller : MonoInstaller
             foreach (FogManager fogManager in root.GetComponentsInChildren<FogManager>(true))
             {
                 fogManager.enabled = true;
+            }
+            foreach (ExplorationPillarPool pool in root.GetComponentsInChildren<ExplorationPillarPool>(true))
+            {
+                pool.enabled = true;
             }
         }
     }

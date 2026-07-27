@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   OuterRadius: 3
   SolidAreaRatio: 0.7
-  xNumber: 11
-  zNumber: 11
+  xNumber: 20
+  zNumber: 30
   useFixedSeed: 1
   randomSeed: 20260719
   generatorVersion: 2
@@ -43,6 +43,10 @@ MonoBehaviour:
   waterSurfaceOffset: 2
   elevationStep: 0.5
   verticalPerturbRatio: 0.4
+  heightGenerationMode: 1
+  heightPaletteMap: {fileID: 2800000, guid: 776a39f836795984393cdf8532973854, type: 3}
+  heightNoiseAmplitude: 0.5
+  heightNoiseFrequency: 0.1
   useHeightBasedSubdivision: 1
   stepHeight: 1
   maxStepSubdivision: 8

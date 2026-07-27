@@ -5700,13 +5700,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5481162226636533870}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.6952104, y: -0, z: -0, w: 0.7188064}
-  m_LocalPosition: {x: -1021.6326, y: -556.0569, z: -160.2797}
-  m_LocalScale: {x: 19.43651, y: 10.748443, z: 11.799102}
+  m_LocalRotation: {x: -0.5, y: 0.5, z: -0.5, w: 0.5}
+  m_LocalPosition: {x: -1023, y: -556.0569, z: -160.2797}
+  m_LocalScale: {x: 1.192567, y: 0.65949273, z: 0.7239581}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 5230480243900895229}
-  m_LocalEulerAnglesHint: {x: -88.088, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 90, z: -90}
 --- !u!4 &5104606241345215593
 Transform:
   m_ObjectHideFlags: 0
@@ -7672,9 +7672,9 @@ MonoBehaviour:
   m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 1920, y: 1080}
+  m_ReferenceResolution: {x: 1080, y: 1920}
   m_ScreenMatchMode: 0
-  m_MatchWidthOrHeight: 0.5
+  m_MatchWidthOrHeight: 1
   m_PhysicalUnit: 3
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
@@ -8461,7 +8461,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5481162226636533870}
-  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+  m_Mesh: {fileID: 10209, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!4 &7784341144583817797
 Transform:
   m_ObjectHideFlags: 0
@@ -8507,17 +8507,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_Version: 3
-  m_UsePipelineSettings: 1
-  m_AdditionalLightsShadowResolutionTier: 2
-  m_LightLayerMask: 1
-  m_RenderingLayers: 1
-  m_CustomShadowLayers: 0
-  m_ShadowLayerMask: 1
-  m_ShadowRenderingLayers: 1
-  m_LightCookieSize: {x: 1, y: 1}
-  m_LightCookieOffset: {x: 0, y: 0}
-  m_SoftShadowQuality: 0
 --- !u!23 &7804109359750050407
 MeshRenderer:
   m_ObjectHideFlags: 0

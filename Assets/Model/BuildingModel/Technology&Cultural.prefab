@@ -10105,6 +10105,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 859392375290665774}
+  - component: {fileID: 188217737377642261}
   m_Layer: 0
   m_Name: Technology&Cultural
   m_TagString: Untagged
@@ -10131,6 +10132,31 @@ Transform:
   - {fileID: 4638037123315496521}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &188217737377642261
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4379563533962267394}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c9ca26e9d091de54cac853f6a5d06fd0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  buildingData:
+    controller: {fileID: 0}
+    hp: 0
+    currentHp: 0
+    type: 0
+    AltarValue: 0
+    extraHP: 0
+    HealInterval: 0
+    captureHp: 0
+    defenseHp: 0
+  uiHealthBar: {fileID: 0}
+  bulidingType: 5
+  Attacker: {fileID: 0}
 --- !u!1 &4928432999173758902
 GameObject:
   m_ObjectHideFlags: 0

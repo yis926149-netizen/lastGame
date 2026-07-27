@@ -146,7 +146,16 @@ public class FogManager : MonoBehaviour
         List<Vector3> innerBoundary = new List<Vector3>();
         List<List<Vector3>> holes = new List<List<Vector3>>();
         _meshGenerator.GetFogVertices(out innerBoundary, out holes, _mapDataService);
-        outerBoundary = _meshGenerator.GetFogCoverVertices(innerBoundary, increment);
+
+        // 计算所有边缘地块的平均高度
+        float avgHeight = 0f;
+        if (innerBoundary.Count > 0)
+        {
+            foreach (var v in innerBoundary) avgHeight += v.y;
+            avgHeight /= innerBoundary.Count;
+        }
+
+        outerBoundary = _meshGenerator.GetFogCoverVertices(innerBoundary, increment, avgHeight);
         holes.Clear();
         holes.Add(innerBoundary);
 
@@ -160,7 +169,16 @@ public class FogManager : MonoBehaviour
         List<Vector3> innerBoundary = new List<Vector3>();
         List<List<Vector3>> holes = new List<List<Vector3>>();
         _meshGenerator.GetFogVertices(out innerBoundary, out holes, _mapDataService);
-        outerBoundary = _meshGenerator.GetFogCoverVertices(innerBoundary, increment);
+
+        // 计算所有边缘地块的平均高度
+        float avgHeight = 0f;
+        if (innerBoundary.Count > 0)
+        {
+            foreach (var v in innerBoundary) avgHeight += v.y;
+            avgHeight /= innerBoundary.Count;
+        }
+
+        outerBoundary = _meshGenerator.GetFogCoverVertices(innerBoundary, increment, avgHeight);
         holes.Clear();
         holes.Add(innerBoundary);
 

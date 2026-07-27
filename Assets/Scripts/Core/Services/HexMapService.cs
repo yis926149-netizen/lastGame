@@ -10,6 +10,7 @@ public class HexMapService : IMapDataService
     private List<Vector3> _centerWorldCoordinates;
     private Dictionary<Vector3, Vector3> _centerWorldToHex;
     private GameObject _mapGameObject;
+    private float? _cachedCellRadius;
 
     //��ͼ����
     private Vector3[] _hexVertices;
@@ -20,6 +21,9 @@ public class HexMapService : IMapDataService
     private GameObject _gridGameObject;
 
     public GameObject MapGameObject => _mapGameObject;
+
+    private List<HexCellData> _cachedAllCells;
+    private List<Vector3> _cachedAllHexCoords;
 
     public void Initialize(
         Dictionary<Vector3, HexCellData> hexToCell,
@@ -50,6 +54,8 @@ public class HexMapService : IMapDataService
         _verticesList = verticesList;
         _mesh = mesh;
         _gridGameObject = gridGameObject;
+
+        _cachedCellRadius = ComputeCellRadius();
     }
 
     public void UpdateRuntimeData(List<Vector3> verticesList, Mesh mesh, GameObject gridGameObject)
@@ -85,7 +91,12 @@ public class HexMapService : IMapDataService
         return _orderToCell != null && _orderToCell.TryGetValue(generateOrder, out cell);
     }
 
-    public List<HexCellData> GetAllCells() => _hexToCell?.Values.ToList() ?? new List<HexCellData>();
+    public List<HexCellData> GetAllCells()
+    {
+        if (_cachedAllCells == null && _hexToCell != null)
+            _cachedAllCells = new List<HexCellData>(_hexToCell.Values);
+        return _cachedAllCells ?? new List<HexCellData>();
+    }
 
     public Vector3 WorldToHexCoordinate(Vector3 worldPosition)
     {
@@ -126,6 +137,13 @@ public class HexMapService : IMapDataService
 
     private float GetCellRadius()
     {
+        if (_cachedCellRadius.HasValue) return _cachedCellRadius.Value;
+        _cachedCellRadius = ComputeCellRadius();
+        return _cachedCellRadius.Value;
+    }
+
+    private float ComputeCellRadius()
+    {
         if (_centerWorldCoordinates.Count == 1) return 0f;
 
         Vector3 first = _centerWorldCoordinates[0];
@@ -141,7 +159,12 @@ public class HexMapService : IMapDataService
     }
 
     public List<Vector3> GetAllWorldCoordinates() => _centerWorldCoordinates;
-    public List<Vector3> GetAllHexCoordinates() => _hexToCell.Keys.ToList();
+    public List<Vector3> GetAllHexCoordinates()
+    {
+        if (_cachedAllHexCoords == null && _hexToCell != null)
+            _cachedAllHexCoords = new List<Vector3>(_hexToCell.Keys);
+        return _cachedAllHexCoords ?? new List<Vector3>();
+    }
 
     public Dictionary<Vector3, HexCellData> GetHexToCell() => _hexToCell;
 

@@ -13,12 +13,14 @@ using Zenject;
 //   IsPaused == true 时，单位行为/移动动画/结算定时器全部停止；
 //   摄像机控制与卡牌拖拽（UI 交互）不受暂停影响。
 //
-// 【检查点 2：搭架子】空壳，不注册为 ITickable，不驱动任何逻辑，
-//   不参与 DI 绑定，游戏仍由 GameStateMachine 回合制驱动。
-//   将在检查点 4 接管驱动。
+// 【批次 A】已注册为 IInitializable + ITickable，每帧遍历空闲 Brain 触发
+//   OnStepFinished()——此时 OnStepFinished 内部仍为空占位，游戏行为不变。
+//   将在批次 B 接入实际决策逻辑。
+//
+// 【批次 C】SetPaused 将广播暂停状态到 UnitMovementSystem 等。
 //****************************************
 
-public class GameLoop
+public class GameLoop : IInitializable, ITickable
 {
     /// <summary>全局暂停标志（对应暂停按钮）。</summary>
     public bool IsPaused { get; private set; }
@@ -26,27 +28,75 @@ public class GameLoop
     /// <summary>累计游戏时间（秒），暂停时不累加。</summary>
     public float GameTime { get; private set; }
 
-    // 注册到循环的所有单位 Brain（检查点 4 接入）
+    // 注册到循环的所有单位 Brain
     private readonly List<UnitBrainBase> _brains = new List<UnitBrainBase>();
+
+    // 【公共建筑系统-决策#26/#41】公共建筑列表（单独遍历，不改 UnitBrainBase）
+    private readonly List<PublicBuildingBase> _publicBuildings = new List<PublicBuildingBase>();
+
+    public void Initialize()
+    {
+        // 批次 A：无额外初始化操作
+    }
+
+    /// <summary>Zenject 每帧调用。</summary>
+    public void Tick()
+    {
+        if (IsPaused) return;
+        GameTime += Time.deltaTime;
+
+        // 顺序遍历：同一帧内按遍历顺序决策，先到先得（见 5.6 决策顺序化）
+        for (int i = _brains.Count - 1; i >= 0; i--)
+        {
+            var brain = _brains[i];
+            if (brain == null)
+            {
+                _brains.RemoveAt(i);
+                continue;
+            }
+
+            // 跳过已销毁、暂停或忙碌的单位
+            if (brain.IsPaused) continue;
+            if (brain.IsBusy) continue;
+
+            brain.OnStepFinished();
+        }
+
+        // 【公共建筑系统】检测公共建筑死亡（易主），替代 Update() 轮询
+        TickPublicBuildings();
+    }
+
+    // ── 公共建筑 Tick（决策#15/#26）─────────────────
+    private void TickPublicBuildings()
+    {
+        for (int i = _publicBuildings.Count - 1; i >= 0; i--)
+        {
+            var pb = _publicBuildings[i];
+            if (pb == null)
+            {
+                _publicBuildings.RemoveAt(i);
+                continue;
+            }
+
+            if (pb.CheckDeath())
+            {
+                pb.OnDeath();
+            }
+        }
+    }
 
     public void SetPaused(bool paused)
     {
         IsPaused = paused;
-        // TODO（检查点 4）：广播暂停状态到各 Brain 与移动系统。
-    }
 
-    /// <summary>
-    /// 每帧驱动。
-    /// 【检查点 2】空实现，未接入。
-    /// </summary>
-    public void Tick(float deltaTime)
-    {
-        if (IsPaused) return;
-        GameTime += deltaTime;
-
-        // TODO（检查点 4 接入）：
-        // foreach (var brain in _brains) brain.OnStepFinished();
-        // 驱动结算定时器等。
+        // 广播暂停状态到所有已注册 Brain（Brain.IsPaused 控制单位决策）。
+        // 移动动画暂停由 UnitMovementSystem.Tick 直接查询 GameLoop.IsPaused 实现。
+        for (int i = _brains.Count - 1; i >= 0; i--)
+        {
+            var brain = _brains[i];
+            if (brain == null) { _brains.RemoveAt(i); continue; }
+            brain.IsPaused = paused;
+        }
     }
 
     public void Register(UnitBrainBase brain)
@@ -57,5 +107,16 @@ public class GameLoop
     public void Unregister(UnitBrainBase brain)
     {
         _brains.Remove(brain);
+    }
+
+    // ── 公共建筑注册/注销（决策#26）─────────────────
+    public void RegisterPublicBuilding(PublicBuildingBase pb)
+    {
+        if (pb != null && !_publicBuildings.Contains(pb)) _publicBuildings.Add(pb);
+    }
+
+    public void UnregisterPublicBuilding(PublicBuildingBase pb)
+    {
+        _publicBuildings.Remove(pb);
     }
 }

@@ -28,7 +28,6 @@ public class CardService : ICardService
     private System.Random Random => _random ??= SeedService.GetRandom("Card");
 
     [Inject] private IUIConfigProvider _uiConfig;
-    [Inject] private IGameStateMachine _gameState;
     [Inject] private ICardUnlockRuleProvider _cardUnlockRuleProvider;
 
     private bool _hasGivenFirstTurnSettler = false;
@@ -42,8 +41,8 @@ public class CardService : ICardService
 
     public int GenerateNextCardID()
     {
-        // 共享抽卡规则（CardGenerationRule）：玩家首张移民卡保底时机 = 回合 1。
-        bool giveFirstSettler = _gameState != null && _gameState.CurrentTurn == 1;
+        // 【检查点 6】实时化：首张移民保底不再依赖回合数，用 _hasGivenFirstTurnSettler 确保仅一次
+        bool giveFirstSettler = !_hasGivenFirstTurnSettler;
         return CardGenerationRule.GenerateNextCardId(
             giveFirstSettler,
             ref _hasGivenFirstTurnSettler,

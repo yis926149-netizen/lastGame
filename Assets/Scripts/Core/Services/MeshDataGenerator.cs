@@ -5094,6 +5094,146 @@ T2_8、P2_4、T2_9✔
     }
 
     /// <summary>
+    /// 提取势力范围边界线段与角点（实体城墙/城墩用）。
+    /// 复用与 GetOneSphereOfInfluenceVertices 完全相同的边界判定逻辑：
+    ///   - 三-1（HexEdge）：每条边界边取该地块的两个真实角点（SolidAreaVertices 的 1~6 点）；
+    ///   - 三-2（Transition）：相邻边缘地块之间的过渡边，取两个不同地块的对应角点；
+    ///   - 角点集合：所有边界线段端点去重（空间量化）。
+    /// </summary>
+    public void ExtractSphereOfInfluenceBoundary(
+        List<HexCellData> hexCells,
+        ICollection<HexCellData> membershipCells,
+        IMapDataService _mapDataService,
+        List<BoundarySegment> segments,
+        List<Vector3> cornerPoints)
+    {
+        if (membershipCells == null) { membershipCells = hexCells; }
+        segments.Clear();
+        cornerPoints.Clear();
+
+        // 角点去重：空间量化（0.01 单位精度）
+        var cornerKeys = new HashSet<long>();
+        void AddCorner(Vector3 p)
+        {
+            long key = QuantizeKey(p);
+            if (cornerKeys.Add(key)) cornerPoints.Add(p);
+        }
+
+        // 一、收集边缘地块及其边界边（与 GetOneSphereOfInfluenceVertices 同款判定）
+        List<HexCellData> edgeHexCells = new List<HexCellData>();
+        // 每个边缘地块的角点字典：索引(1~6, 0=中心) → 世界坐标
+        List<Dictionary<int, Vector3>> edgeHexPoints = new List<Dictionary<int, Vector3>>();
+        // 每个边缘地块的边界边（角点对）
+        List<List<(int a, int b)>> edgeHexBoundaryPairs = new List<List<(int a, int b)>>();
+
+        for (int i = 0; i < hexCells.Count; i++)
+        {
+            bool isEdgeAtNE = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.NE));
+            bool isEdgeAtE  = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.E));
+            bool isEdgeAtSE = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.SE));
+            bool isEdgeAtSW = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.SW));
+            bool isEdgeAtW  = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.W));
+            bool isEdgeAtNW = !membershipCells.Contains(_mapDataService.GetNeighbor(hexCells[i], Enums.HexDirection.NW));
+            bool isEdge = (isEdgeAtNE || isEdgeAtE || isEdgeAtSE || isEdgeAtSW || isEdgeAtW || isEdgeAtNW);
+
+            if (!isEdge) { continue; }
+
+            edgeHexCells.Add(hexCells[i]);
+
+            List<Vector3> v = hexCells[i].SolidAreaVertices;
+            List<int> index = new List<int>();
+            if (isEdgeAtNE) { index.AddRange(new int[] { 1, 2 }); }
+            if (isEdgeAtE)  { index.AddRange(new int[] { 2, 3 }); }
+            if (isEdgeAtSE) { index.AddRange(new int[] { 3, 4 }); }
+            if (isEdgeAtSW) { index.AddRange(new int[] { 4, 5 }); }
+            if (isEdgeAtW)  { index.AddRange(new int[] { 5, 6 }); }
+            if (isEdgeAtNW) { index.AddRange(new int[] { 6, 1 }); }
+            index.Add(0);
+            List<int> uniqueIndex = new HashSet<int>(index).ToList();
+            uniqueIndex.Sort();
+
+            Dictionary<int, Vector3> vector3s = new Dictionary<int, Vector3>();
+            for (int j = 0; j < uniqueIndex.Count; j++)
+                vector3s.Add(uniqueIndex[j], v[uniqueIndex[j]]);
+            edgeHexPoints.Add(vector3s);
+
+            List<(int a, int b)> boundaryPairs = new List<(int a, int b)>();
+            if (isEdgeAtNE) { boundaryPairs.Add((1, 2)); }
+            if (isEdgeAtE)  { boundaryPairs.Add((2, 3)); }
+            if (isEdgeAtSE) { boundaryPairs.Add((3, 4)); }
+            if (isEdgeAtSW) { boundaryPairs.Add((4, 5)); }
+            if (isEdgeAtW)  { boundaryPairs.Add((5, 6)); }
+            if (isEdgeAtNW) { boundaryPairs.Add((6, 1)); }
+            edgeHexBoundaryPairs.Add(boundaryPairs);
+        }
+
+        // 二、三-1：地块自身的边界边 → HexEdge 线段
+        for (int i = 0; i < edgeHexPoints.Count; i++)
+        {
+            foreach (var pair in edgeHexBoundaryPairs[i])
+            {
+                Vector3 a = edgeHexPoints[i][pair.a];
+                Vector3 b = edgeHexPoints[i][pair.b];
+                segments.Add(new BoundarySegment(a, b, BoundarySegmentType.HexEdge));
+                AddCorner(a);
+                AddCorner(b);
+            }
+        }
+
+        // 三、三-2：相邻边缘地块之间的过渡边 → Transition 线段
+        // 各方向对应的角点对（与 GetOneSphereOfInfluenceVertices 三-2 完全一致）
+        // j: 0=NE,1=E,2=SE,3=SW,4=W,5=NW
+        (int self, int neighbor)[][] transitionPairs = new (int, int)[][]
+        {
+            new (int,int)[] { (1, 5), (2, 4) }, // NE
+            new (int,int)[] { (2, 6), (3, 5) }, // E
+            new (int,int)[] { (3, 1), (4, 6) }, // SE
+            new (int,int)[] { (4, 2), (5, 1) }, // SW
+            new (int,int)[] { (5, 3), (6, 2) }, // W
+            new (int,int)[] { (6, 4), (1, 3) }, // NW
+        };
+        Enums.HexDirection[] dirs =
+        {
+            Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE,
+            Enums.HexDirection.SW, Enums.HexDirection.W, Enums.HexDirection.NW
+        };
+
+        for (int i = 0; i < edgeHexCells.Count; i++)
+        {
+            for (int j = 0; j < 6; j++)
+            {
+                HexCellData neighborCell = _mapDataService.GetNeighbor(edgeHexCells[i], dirs[j]);
+                if (neighborCell == null || !edgeHexCells.Contains(neighborCell)) continue;
+
+                int index = edgeHexCells.IndexOf(neighborCell);
+                if (index < 0) continue;
+
+                foreach (var (self, nb) in transitionPairs[j])
+                {
+                    if (edgeHexPoints[i].ContainsKey(self) && edgeHexPoints[index].ContainsKey(nb))
+                    {
+                        Vector3 a = edgeHexPoints[i][self];
+                        Vector3 b = edgeHexPoints[index][nb];
+                        segments.Add(new BoundarySegment(a, b, BoundarySegmentType.Transition));
+                        AddCorner(a);
+                        AddCorner(b);
+                    }
+                }
+            }
+        }
+    }
+
+    // 空间量化键（0.01 单位精度），用于角点去重
+    private static long QuantizeKey(Vector3 p)
+    {
+        long qx = (long)Mathf.Round(p.x * 100f);
+        long qy = (long)Mathf.Round(p.y * 100f);
+        long qz = (long)Mathf.Round(p.z * 100f);
+        // 打包成单一 long（各占约 21 位，范围足够地图尺度）
+        return (qx & 0x1FFFFF) | ((qy & 0x1FFFFF) << 21) | ((qz & 0x1FFFFF) << 42);
+    }
+
+    /// <summary>
     /// 获取一段边缘线的绘制UV
     /// ∵顶点是固定的，所以uv也可以硬编程
     /// </summary>
@@ -5957,39 +6097,35 @@ T2_8、P2_4、T2_9✔
     }
 
     /////////////////////////////////////////////////////////////////////- 迷雾的封皮 -/////////////////////////////////////////////////////////////////////
-    public List<Vector3> GetFogCoverVertices(List<Vector3> vector3s, float increment)
+    public List<Vector3> GetFogCoverVertices(List<Vector3> vector3s, float increment, float uniformHeight)
     {
-        if (vector3s == null || vector3s.Count != 4)
+        if (vector3s == null || vector3s.Count < 3)
         {
-            Debug.LogError("需要输入4个顶点。");
+            Debug.LogError("输入顶点数量不足。");
             return vector3s;
         }
 
-        // 1. 计算中心点
+        // 1. 计算中心点（仅用于扩展方向）
         Vector3 center = Vector3.zero;
         foreach (var v in vector3s) center += v;
-        center /= 4f;
+        center /= vector3s.Count;
 
-        // 2. 扩充顶点
+        // 2. 扩充顶点，Y 统一使用传入的平均高度
         List<Vector3> expandedPoints = new List<Vector3>();
         foreach (var v in vector3s)
         {
-            // 获取从中心指向顶点的向量
             Vector3 dir = v - center;
-
-            // 将向量分解为分量并进行单位化推移
-            // 我们通过 Sign 函数确定它是往左上、右上、左下还是右下扩充
             Vector3 offset = new Vector3(
                 Mathf.Sign(dir.x) * increment,
                 0,
                 Mathf.Sign(dir.z) * increment
             );
-
-            expandedPoints.Add(v + offset);
+            Vector3 expanded = v + offset;
+            expanded.y = uniformHeight;
+            expandedPoints.Add(expanded);
         }
 
         // 3. 顺时针排序 (基于 XZ 平面的极角)
-        // 使用 Atan2(z, x) 可以很方便地按环形排序
         return expandedPoints
             .OrderByDescending(v => Mathf.Atan2(v.z - center.z, v.x - center.x))
             .ToList();

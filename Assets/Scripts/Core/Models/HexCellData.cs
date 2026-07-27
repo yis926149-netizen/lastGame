@@ -219,15 +219,71 @@ public class HexCellData
     //该地块是否被玩家探索
     public bool IsExplored { get; private set; }
 
-    //该地块当前是否在己方视野内（三态记忆迷雾：每回合/每次行动重算，反复 true↔false）。
-    // 未探索=!IsExplored；记忆区=IsExplored&&!IsVisible；可见=IsVisible。
-    public bool IsVisible;
+    // 【探索重构-阶段6】IsVisible 已移除。地图全可见，只保留 IsExplored（是否已探索/占领）。
+
+    // 【公共建筑系统-决策#42】该地块是否不可探索（公共建筑占位格+周围一环）
+    // 这些地块只能通过占领公共建筑获得，不能通过探索系统主动探索
+    public bool IsUnexplorable { get; set; }
 
     //该地块的建筑类型
     public KeyValuePair<Enums.BulidingType, GameObject> BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(Enums.BulidingType.NoBuilding, null);
 
-    //该地块上是否存在单位
+    // 【公共建筑系统-决策#29】若本格是公共建筑的占位格（根格或子格），存根格 Controller 引用；
+    // 普通格保持 null。子格被攻击时通过此引用转发到根格，实现多格共享一份 HP。
+    public PublicBuildingBase publicBuildingRoot = null;
+
+    //该地块上是否存在单位（旧字段，与 Occupant 并存，不删）
     private KeyValuePair<bool, GameObject> HaveUnit = new KeyValuePair<bool, GameObject>(false, null);
+
+    // ── 【批次 D】实时占用系统 ───────────────────────────────────
+    // Occupant：格子主人（普通移动占用）。一格一主，主人为 null 表示空格。
+    // AttackerSlots：6 方向进攻槽。近战单位进入目标格时占一个方向槽，允许同格共存（最多 6 个攻击者）。
+    private GameObject _occupant;
+    private readonly GameObject[] _attackerSlots = new GameObject[6];
+
+    /// <summary>格子当前是否有移动主人（普通占用）。</summary>
+    public bool HasOccupant() => _occupant != null;
+
+    /// <summary>获取格子移动主人。</summary>
+    public GameObject GetOccupant() => _occupant;
+
+    /// <summary>设置格子移动主人。传 null 表示释放。</summary>
+    public void SetOccupant(GameObject unit) => _occupant = unit;
+
+    /// <summary>
+    /// 尝试占用指定方向的进攻槽（0-5）。
+    /// 槽为空则写入 unit 返回 true；已被其他单位占用则返回 false。
+    /// </summary>
+    public bool TryClaimAttackerSlot(int dir, GameObject unit)
+    {
+        if (dir < 0 || dir >= 6) return false;
+        if (_attackerSlots[dir] != null && _attackerSlots[dir] != unit) return false;
+        _attackerSlots[dir] = unit;
+        return true;
+    }
+
+    /// <summary>释放指定方向的进攻槽。</summary>
+    public void ReleaseAttackerSlot(int dir)
+    {
+        if (dir >= 0 && dir < 6) _attackerSlots[dir] = null;
+    }
+
+    /// <summary>
+    /// 根据两个六边形坐标计算进攻方向槽（0-5，对应 NE/E/SE/SW/W/NW）。
+    /// 从 fromHex 进入 toHex 时的方向。匹配失败返回 -1。
+    /// </summary>
+    public static int GetAttackerSlotDirection(Vector3 fromHex, Vector3 toHex)
+    {
+        Vector3 delta = toHex - fromHex;
+        // 方向偏移与 HexMapService.GetNeighbor 中的偏移一致
+        if (delta == new Vector3(0, -1, 1))  return 0; // NE
+        if (delta == new Vector3(1, -1, 0))  return 1; // E
+        if (delta == new Vector3(1, 0, -1))  return 2; // SE
+        if (delta == new Vector3(0, 1, -1))  return 3; // SW
+        if (delta == new Vector3(-1, 1, 0))  return 4; // W
+        if (delta == new Vector3(-1, 0, 1))  return 5; // NW
+        return -1;
+    }
 
     public HexCellData(Enums.HexType HexType, int GenerateOrder, Vector3 HexCoordinate, Vector3 CenterWorldCoordinate, float Height)
     {
@@ -245,29 +301,22 @@ public class HexCellData
         if (WaterLevelConfig.IsWater(this))
         {          
             movementCost = float.MaxValue;
-            
         }
-        //单位不能走未探索的路
-        if (!IsExplored)
-        {
-            movementCost = float.MaxValue;
-        }       
+        // 【探索重构-阶段2】未探索格不再通过 movementCost 隐式阻挡寻路（方案C：探索不限制移动）
+        // 地貌有树林：寻路权重 + 1
+        if (landFormType == Enums.LandFormType.Forest) { movementCost += 1; }
     }
 
     //设置该地块已探索
-    public void ExploreThisHexCell()
+    // 【探索重构-阶段3】访问权改为 internal，强制通过 IExplorationService.TryExplore 调用
+    internal void ExploreThisHexCell()
     {
         IsExplored = true;
 
-        //普通地块
-        movementCost = 1;
-        //地貌有树林：移动力 + 1
-        if (landFormType == Enums.LandFormType.Forest) { movementCost += 1; }
-
-        //湖不能进去
-        if (HexType == Enums.HexType.LakeOrSea) { movementCost = float.MaxValue; }
-        //进攻、防御建筑不能路过，不能停留
-        if (BulidingTypeOnHex_Building.Key == Enums.BulidingType.AttackStatue || BulidingTypeOnHex_Building.Key == Enums.BulidingType.DefenseStatue) { movementCost = float.MaxValue; }
+        // 【探索重构-阶段2】movementCost 不再随探索状态改变：
+        //  - 构造时已按实际地形计算（普通1/森林2/水域MaxValue）
+        //  - 建筑放置（AttackStatue/DefenseStatue）由 CardPresenter/AIEntityFactory 各自设置为 MaxValue
+        //  - 探索不改变寻路权重，与单位移动完全解耦
 
         //物体显隐不再在此处零散处理：统一由 MapRenderer.SyncCellObjectVisibility
         //（OnMapVisualChanged 事件驱动，按"归属×三态"规则集中同步）。

@@ -4,7 +4,7 @@ using UnityEngine.UI;
 using Zenject;
 using DG.Tweening;
 
-public class CardPresenter : IInitializable
+public class CardPresenter : IInitializable, IPlayerUnitSpawnService
 {
     [Inject] private ICardService _cardService;
     [Inject] private IMapDataService _mapDataService;
@@ -18,7 +18,11 @@ public class CardPresenter : IInitializable
     [Inject] private IUnitRepository _unitRepository;
     [Inject] private AudioManager _audioManager;
     [Inject] private UnitMovementSystem _movementSystem;
-    [Inject] private LazyInject<IGameStateMachine> _gameStateMachine;
+    [Inject] private UnitRemovalService _unitRemovalService;
+    [Inject] private CombatResolver _combatResolver;
+    [Inject] private GameLoop _gameLoop;
+    [Inject] private ITerritoryService _territoryService;
+    [Inject] private GoldWallet _goldWallet;  // 【探索重构-阶段5.5】部署合法性检查
 
     private ICardView _nextCardView;
     private List<ICardView> _cardViews = new List<ICardView>();
@@ -220,13 +224,17 @@ public class CardPresenter : IInitializable
     /// </summary>
     public bool HandleCardDragEnd(ICardView view, HexCellData targetCell, Vector3 releaseWorldPos)
     {
-        if (_gameStateMachine.Value.CurrentPhase is not PlayerPhase || !IsReleaseValid(view.CardID, targetCell))
+        // 【批次 C】实时化后：暂停时不可放卡（IsPaused），运行时始终可放（无回合阶段限制）
+        if (_gameLoop.IsPaused || !IsReleaseValid(view.CardID, targetCell))
             return false;
 
         bool spawned = view.CardID < _unitData.GetUnitIconCount()
-            ? SpawnUnit(view.CardID, targetCell.RealCenterWorldCoordinate)
+            ? SpawnUnit(view.CardID, targetCell.RealCenterWorldCoordinate) != null
             : SpawnBuilding((int)(view.CardID - _unitData.GetUnitIconCount()), targetCell.RealCenterWorldCoordinate);
         if (!spawned) return false;
+
+        // 【探索重构-阶段7】出牌扣费
+        _goldWallet.TrySpendGold(0, _goldWallet.CardCost);
 
         _cardService.RemoveCard(view.PlacementID);
 
@@ -241,10 +249,9 @@ public class CardPresenter : IInitializable
     private bool IsReleaseValid(int cardID, HexCellData cell)
     {
         if (cell == null || _movementSystem.IsDestinationReserved(cell.HexCoordinate)) return false;
-        int ownerIndex = cell.Player_City_Index.Key;
-        if (cardID == 0 && ownerIndex != -1 && ownerIndex != 0) return false;
-        if (cardID != 0 && ownerIndex != 0) return false;
-        if (!cell.IsExplored) return false;
+        // 【探索重构-阶段7】部署需在势力范围内 + 有足够金币
+        if (!_territoryService.IsInPlayerTerritory(cell)) return false;
+        if (_goldWallet.Gold < _goldWallet.CardCost) return false;
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
         if (cardID < _unitData.GetUnitIconCount() && cell.IsHaveUnit()) return false;
@@ -252,7 +259,14 @@ public class CardPresenter : IInitializable
     }
 
     // ====================== 单位生成 ======================
-    private bool SpawnUnit(int unitID, Vector3 position)
+
+    /// <summary>IPlayerUnitSpawnService 实现：外部系统（如探索奖励）调用此方法生成玩家单位。</summary>
+    public GameObject SpawnPlayerUnit(int unitID, Vector3 worldPosition)
+    {
+        return SpawnUnit(unitID, worldPosition);
+    }
+
+    private GameObject SpawnUnit(int unitID, Vector3 position)
     {
         GameObject prefab = _unitData.GetUnitPrefab(unitID);
         Transform parent = GameObject.Find("PlayerUnit")?.transform;
@@ -264,7 +278,7 @@ public class CardPresenter : IInitializable
         if (prefab == null || parent == null || !hasUnitUi)
         {
             Debug.LogError($"[CardPresenter] Unit card {unitID} cannot be deployed because its prefab hierarchy is incomplete.");
-            return false;
+            return null;
         }
 
         GameObject g = Object.Instantiate(prefab);
@@ -315,12 +329,26 @@ public class CardPresenter : IInitializable
         HexCellData h = _mapDataService.GetCell(hexCoord);
         _unitRepository.AddPlayerUnit(g, characterData);
         h.SetHaveUnit(true, g);
-        for (int i = 0; i < 6; i++)
-        {
-            var neighbor = _mapDataService.GetNeighbor(h, (Enums.HexDirection)i);
-            if (neighbor != null) neighbor.ExploreThisHexCell();
-        }
+        // 【探索重构-阶段5】部署不再自动探索周围地块
         _mapVisualEvent.Raise();
+
+        // 【批次 D】挂载 PlayerUnitBrain，注入全部依赖（含 CombatResolver 和建城所需依赖），注册到 GameLoop
+        var brain = g.AddComponent<PlayerUnitBrain>();
+        brain.Initialize(
+            characterData,
+            UnitStrategyFactory.Create(unitID),
+            _mapDataService,
+            _unitRepository,
+            _movementSystem,
+            combatResolver: _combatResolver,
+            container: _container,
+            buildingData: _buildingData,
+            uiConfig: _uiConfig,
+            playerModelManager: _playerModelManager,
+            mapVisualEvent: _mapVisualEvent,
+            unitRemovalService: _unitRemovalService,
+            audioManager: _audioManager);
+        _gameLoop.Register(brain);
 
         if(_audioManager != null)
         {
@@ -331,7 +359,7 @@ public class CardPresenter : IInitializable
             Debug.LogWarning("[CardPresenter] AudioManager 未注入，无法播放单位生成");
         }
 
-        return true;
+        return g;
     }
 
     // ====================== 建筑生成 ======================
@@ -375,19 +403,9 @@ public class CardPresenter : IInitializable
         // 共享样板 SpawnUIWiring；玩家建筑血条为绿色（canvas 已由上方 hasBuildingUi 预校验非空）。
         SpawnUIWiring.WireBuildingCanvas(g, buildingController, Color.green, _container, _uiConfig);
 
-        // 势力范围扩展
-        _playerModelManager.ExpandTheSphereOfInfluence(
-            v, _playerModelManager.SphereOfInfluence_HexC_HexCellData, h.Player_City_Index);
-        _playerModelManager.ExpandTheSphereOfInfluence(
-            v, _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData[h.Player_City_Index.Value], h.Player_City_Index);
-        _mapVisualEvent.Raise();
+        // 【探索重构-阶段5.5】建筑部署不拓展势力范围。势力范围仅由探索和公共建筑占领产生。
 
-        // 视野
-        for (int i = 0; i < 6; i++)
-        {
-            var neighbor = _mapDataService.GetNeighbor(h, (Enums.HexDirection)i);
-            if (neighbor != null) neighbor.ExploreThisHexCell();
-        }
+        // 【探索重构-阶段5】部署不再自动探索周围地块
         _mapVisualEvent.Raise();
 
         int bulidingTypeInt = buildingID;
@@ -436,16 +454,12 @@ public class CardPresenter : IInitializable
         }
     }
 
-    /// <summary>
-    /// 尝试把次卡发到手牌（每回合只允许一次）
-    /// </summary>
+    // 【批次 B】实时化：移除每回合发卡限制（CanDealThisTurn 在实时下无意义）
+    // 只要手牌有空位且预览槽有卡，立即补发。
     public void TryDealFromNextIfPossible()
     {
-        if (!_cardService.CanDealThisTurn() || _nextCardView == null) return;
+        if (_nextCardView == null) return;
         if (_cardService.GetFirstEmptySlot() == -1) return;
-
-        // 立即锁定本回合发卡权限 
-        _cardService.MarkDealtThisTurn();
 
         // 立即开始滑动旧次卡（不等待）
         PromoteNextCardToHand();

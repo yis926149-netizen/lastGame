@@ -11,6 +11,7 @@ TagManager:
   - PlayerBuilding
   - EnemyUnit
   - EnemyBuilding
+  - NeutralBuilding
   layers:
   - Default
   - TransparentFX

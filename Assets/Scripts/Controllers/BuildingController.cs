@@ -7,147 +7,35 @@ using Zenject;
 
 //****************************************
 //创建人：易生
-//功能说明：
+//功能说明：普通建筑控制器（城市、雕像、祭坛等）
+// 【公共建筑系统-决策#17】继承 BuildingBase，保留现有逻辑，城市易主/普通建筑销毁不动
 //****************************************
 
-public class BuildingController : MonoBehaviour
+public class BuildingController : BuildingBase
 {
-    //注入
-    [Inject] private IMapDataService _mapDataService;
-    [Inject] private MapVisualEventSO _mapVisualEvent;
-    [Inject] private AudioManager _audioManager;
-    [Inject] private EnemyModelManager _enemyModelManager;
-    [Inject] private PlayerModelManager _playerModelManager;
-
-    //对应的数据类
-    [HideInInspector]
-    public BuildingData buildingData;
-
-    //建筑血条
-    [HideInInspector]
-    public Slider uiHealthBar;
-
-    //建筑类型
-    public Enums.BulidingType bulidingType;
-    
-    //建筑所属
-    public KeyValuePair<int,int> Player_City_Index = new KeyValuePair<int,int>();
-
-    //攻击该建筑的单位
-    public GameObject Attacker;
-
-    //城市易主
+    //城市易主锁（防止重复触发）
     public bool isCityChangeOwner = false;
-    private bool _isDestroyed;
-
-    void Start()
-    {
-
-    }
-
 
     void Update()
     {
-        if (!_isDestroyed && !isCityChangeOwner && uiHealthBar != null && uiHealthBar.value <= 0)
-        {            
-            if(bulidingType == Enums.BulidingType.City)
-            {
-                isCityChangeOwner = true;
-                CityDestroyed();
-            }
-            else
-            {
-                BuildingDestroyed();
-            }
-          
+        if (CheckDeath() && !isCityChangeOwner)
+        {
+            OnDeath();
         }
     }
 
-    //建筑被攻击
-    public void BuildingAttacked(GameObject enemyAttacker)
+    // ── 实现基类死亡抽象方法 ──────────────────────────
+    public override void OnDeath()
     {
-        if (buildingData == null || enemyAttacker == null)
+        if (bulidingType == Enums.BulidingType.City)
         {
-            Debug.LogWarning("[BuildingController] BuildingAttacked skipped: missing buildingData or attacker.");
-            return;
+            isCityChangeOwner = true;
+            CityDestroyed();
         }
-
-        var attackerController = enemyAttacker.GetComponent<UnitMovementController>();
-        if (attackerController == null || attackerController.characterData == null)
+        else
         {
-            Debug.LogWarning("[BuildingController] BuildingAttacked skipped: attacker unit data is missing.");
-            return;
+            BuildingDestroyed();
         }
-
-        //受击数据处理
-        //血量计算
-        buildingData.currentHp -= AttackDataComputation(attackerController.characterData, buildingData);
-
-        // 兜底：某些运行时创建路径可能未正确缓存血条
-        if (uiHealthBar == null)
-        {
-            uiHealthBar = GetComponentInChildren<Slider>();
-        }
-        if (uiHealthBar != null)
-        {
-            uiHealthBar.value = buildingData.currentHp / buildingData.hp;
-        }
-
-        Attacker = enemyAttacker;
-    }
-
-    //攻击数据计算
-    public float AttackDataComputation(CharacterData attacker, BuildingData theAttacked)
-    {
-        //被攻击者的所在地块
-
-        HexCellData h = _mapDataService.GetCellByWorldPosition(transform.position);
-        //攻击者所在地块
-        
-        HexCellData attackerHex = _mapDataService.GetCellByWorldPosition(attacker.model.transform.position);
-
-        //建筑：加防御力建筑：一环内城市无敌
-        float HaveDefenseBuilding = 1;
-        for (int i = 0; i < 6; i++)
-        {
-            HexCellData neighborHex = _mapDataService.GetNeighbor(h, (Enums.HexDirection)i);
-            if (neighborHex != null && neighborHex.BulidingTypeOnHex_Building.Key == Enums.BulidingType.DefenseStatue && bulidingType == Enums.BulidingType.City)
-            {
-                HaveDefenseBuilding = 0;
-            }
-        }
-
-        //建筑：加攻击力建筑：一环内加攻击力(可叠加)
-        float AttackStatueGain = 0;
-        for (int i = 0; i < 6; i++)
-        {
-            HexCellData neighborHex = _mapDataService.GetNeighbor(attackerHex, (Enums.HexDirection)i);
-            if (neighborHex != null && neighborHex.BulidingTypeOnHex_Building.Key == Enums.BulidingType.AttackStatue)
-            {
-                AttackStatueGain += 0.7f;
-            }
-        }
-
-
-        //剩余血量 = 血量  - Mathf.Max(0,(攻击力 * 攻击增益 - 防御力*防御增益))      
-        float AttackPower = attacker.currentAttackValue;
-        float AttackGain = 1 + attacker.Resource_Animals + AttackStatueGain;       
-
-        /*
-        Debug.Log("AttackPower：" + AttackPower);
-        Debug.Log("AttackGain：" + AttackGain);
-        Debug.Log("Defense：" + Defense);
-        Debug.Log("DefenseGain：" + DefenseGain);
-        Debug.Log($"伤害数值：{AttackPower * AttackGain - Defense * DefenseGain}");
-        */
-
-        //因为资源增益是一次性效果，所以用完要清空
-        if (AttackGain > 1)
-        {
-            attacker.Resource_Animals = 0;
-        }
-
-        return Mathf.Max(0, AttackPower * AttackGain * HaveDefenseBuilding);
     }
 
     //市中心死亡

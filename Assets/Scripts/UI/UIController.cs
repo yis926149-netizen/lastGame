@@ -18,7 +18,7 @@ public class UIController : MonoBehaviour
     [Inject] private IMapDataService _mapDataService;
     [Inject] private DiContainer _container;
     [Inject] private MapVisualEventSO _mapVisualEvent;
-    [Inject] private IGameStateMachine _gameStateMachine;
+    [Inject] private GameLoop _gameLoop;
     [Inject] private UnitMovementSystem _movementSystem;
     [Inject] private IInputService _input;
     [Inject] private PlayerInputHandler _playerInputHandler;
@@ -28,6 +28,8 @@ public class UIController : MonoBehaviour
     [Inject] private PlayerModelManager _playerModelManager;
     [Inject] private EndGame _endGame;
     [Inject] private AudioManager _audioManager;
+    [Inject] private GoldWallet _goldWallet; // 【探索重构-阶段7】
+    [Inject] private IFactionBuffService _factionBuff; // 天赋 Buff 服务
 
     // 摄像机
     private Camera Camera;
@@ -76,9 +78,7 @@ public class UIController : MonoBehaviour
             _nextTurnButtonComponent = transform.GetComponent<Button>();
             UITool.AddButtonClickEvent(_nextTurnButtonComponent, NextTurn);
 
-            // 订阅阶段变化：仅玩家阶段可用，AI/结算阶段禁用
-            if (_gameStateMachine != null)
-                _gameStateMachine.PhaseChanged += RefreshNextTurnButtonInteractable;
+            // 【检查点 6】回合制已停用，按钮始终可点击，无阶段变化订阅
             RefreshNextTurnButtonInteractable();
         }
 
@@ -156,6 +156,25 @@ public class UIController : MonoBehaviour
         {
             UITool.AddButtonClickEvent(transform.GetComponent<Button>(), ContinueGame);
         }
+
+        // 金币显示 HUD
+        if (UIType == "GoldWallet")
+        {
+            var goldText = transform.GetChild(0)?.GetComponent<Text>();
+            if (goldText != null)
+            {
+                goldText.text = _goldWallet.Gold.ToString();
+                _goldWallet.OnGoldChanged += (g) => goldText.text = g.ToString();
+            }
+
+            var incomeText = transform.GetChild(2)?.GetComponent<Text>();
+            if (incomeText != null)
+            {
+                RefreshIncomeText(incomeText);
+                if (_factionBuff != null)
+                    _factionBuff.OnBuffsChanged += () => RefreshIncomeText(incomeText);
+            }
+        }
     }
 
     void Update()
@@ -176,7 +195,7 @@ public class UIController : MonoBehaviour
                 _isInfoPanelVisible = shouldBeVisible;
                 RectTransform panel = transform.GetComponent<RectTransform>();
                 panel.DOKill();
-                Vector2 target = InfoPanelOriginalRectPosition + (shouldBeVisible ? new Vector2(0, 315) : Vector2.zero);
+                Vector2 target = InfoPanelOriginalRectPosition + (shouldBeVisible ? new Vector2(0, Screen.height * 0.29f) : Vector2.zero); // B3: 信息面板滑入改为屏幕高度比例
                 panel.DOAnchorPos(target, 0.5f).SetLink(gameObject);
             }
         }
@@ -185,8 +204,8 @@ public class UIController : MonoBehaviour
         if (_isRangedAttackMode)
         {
             var controller = _rangedAttacker != null ? _rangedAttacker.GetComponent<UnitMovementController>() : null;
-            if (_gameStateMachine.CurrentPhase is not PlayerPhase ||
-                _uiPresenter.CurrentSelectedUnit != _rangedAttacker ||
+            // 【批次 C】移除 CurrentPhase is not PlayerPhase 判断——实时化后无回合阶段
+            if (_uiPresenter.CurrentSelectedUnit != _rangedAttacker ||
                 controller == null || !controller.CanBeSelected)
             {
                 CancelRangedAttackMode();
@@ -206,32 +225,30 @@ public class UIController : MonoBehaviour
         }
     }
 
-    // ---------- 下一回合 ----------
+    // ---------- 暂停/继续（原“下一回合”按钮）----------
+    // 【批次 C】实时化后此按钮改为暂停/继续切换，不再推进回合。
     public void NextTurn()
     {
-        Debug.Log("点击了【下一回合按钮】");
         _audioManager.PlaySFX("Trumpet-009");
-        _gameStateMachine?.EndTurn();
+        _gameLoop?.SetPaused(!(_gameLoop?.IsPaused ?? false));
     }
 
-    // 仅在玩家阶段允许点击“下一回合”，AI/结算阶段禁用
+    // 【批次 C】暂停/继续按钮始终可点击（无回合阶段限制）
     private void RefreshNextTurnButtonInteractable()
     {
         if (_nextTurnButtonComponent == null) return;
-        _nextTurnButtonComponent.interactable = _gameStateMachine?.CurrentPhase is PlayerPhase;
+        _nextTurnButtonComponent.interactable = true;
     }
 
     private void OnDestroy()
     {
-        if (UIType == "nextTurnButton" && _gameStateMachine != null)
-            _gameStateMachine.PhaseChanged -= RefreshNextTurnButtonInteractable;
+        // 【检查点 6】回合制 PhaseChanged 事件已移除，无取消订阅需要
     }
 
     // ---------- 单位信息面板按钮 ----------
     public void UnitInfoPanelSkillButton()
     {
-        if (_gameStateMachine.CurrentPhase is not PlayerPhase) return;
-
+        // 【批次 C】移除回合阶段门控，实时化后始终允许
         GameObject selectedUnit = _uiPresenter.CurrentSelectedUnit;
         if (selectedUnit == null) return;
 
@@ -261,105 +278,26 @@ public class UIController : MonoBehaviour
         Debug.Log("点击了跳过按钮");
     }
 
-    // ---------- 移民建城技能 ----------
+    // ---------- 移民建城技能（已移除） ----------
     private void CityBuilderSkill()
     {
-        GameObject unit = _uiPresenter.CurrentSelectedUnit;
-        if (unit == null) return;
-
-        HexCellData targetCell = _mapDataService.GetCellByWorldPosition(unit.transform.position);
-        if (!IsValidPlayerCityCell(targetCell, unit))
-        {
-            Debug.LogWarning("[UIController] 当前位置无法建城：地块不合法或属于敌方势力。");
-            return;
-        }
-
-        // 生成城市模型
-        GameObject city = Instantiate(buildingDataProvider.GetCityModel());
-        city.transform.SetParent(GameObject.Find("PlayerBuilding").transform, false);
-        city.transform.position = unit.transform.position;
-        city.tag = "PlayerBuilding";
-
-        BuildingController buildingController = city.AddComponent<BuildingController>();
-        _container.Inject(buildingController);
-        BuildingData buildingData = new BuildingData(Enums.BulidingType.City, buildingDataProvider);
-        buildingController.buildingData = buildingData;
-        buildingData.controller = buildingController;
-
-        HexCellData hB = _mapDataService.GetCellByWorldPosition(city.transform.position);
-        buildingController.bulidingType = Enums.BulidingType.City;
-        hB.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(Enums.BulidingType.City, city);
-        int cityIndex = _playerModelManager.AllocateCityIndex();
-        buildingController.Player_City_Index = new KeyValuePair<int, int>(0, cityIndex);
-
-        // UI画布
-        Canvas canvas = city.GetComponentInChildren<Canvas>();
-        UIController buildingCanvas = _container.InstantiateComponent<UIController>(canvas.gameObject);
-        _container.Inject(buildingCanvas);
-        buildingCanvas.UIType = "buildingCanvas";
-        uiConfigProvider.AddRuntimeCanvas(canvas);
-
-        GameObject healthBar = canvas.transform.GetChild(0).gameObject;
-        UIController healthBarUI = _container.InstantiateComponent<UIController>(healthBar.gameObject);
-        _container.Inject(healthBarUI);
-        healthBarUI.UIType = "buildingHealthBar";
-        buildingController.uiHealthBar = healthBar.GetComponent<Slider>();
-
-        if (city.CompareTag("PlayerBuilding"))
-            UITool.TrySetSliderFillColor(buildingController.uiHealthBar, Color.green);
-        else if (city.CompareTag("EnemyBuilding"))
-            UITool.TrySetSliderFillColor(buildingController.uiHealthBar, Color.red);
-
-        _unitRemovalService.RemoveUnit(unit);
-
-        // 添加势力范围
-        _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData.Add(cityIndex, new Dictionary<Vector3, HexCellData>());
-
-        _playerModelManager.ExpandTheSphereOfInfluence(
-            _mapDataService.WorldToHexCoordinate(city.transform.position),
-            _playerModelManager.SphereOfInfluence_HexC_HexCellData,
-            new KeyValuePair<int, int>(0, cityIndex)
-        );
-
-        _playerModelManager.ExpandTheSphereOfInfluence(
-            _mapDataService.WorldToHexCoordinate(city.transform.position),
-            _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData[cityIndex],
-            new KeyValuePair<int, int>(0, cityIndex)
-        );
-
-        _mapVisualEvent.Raise();
-        _playerModelManager.CityCount++;
-
-        // 添加视野
-        HexCellData h = _mapDataService.GetCellByWorldPosition(city.transform.position);
-        for (int i = 0; i < 6; i++)
-        {
-            var neighbor = _mapDataService.GetNeighbor(h, (Enums.HexDirection)i);
-            if (neighbor != null)
-                neighbor.ExploreThisHexCell();
-        }
-        _mapVisualEvent.Raise();
-
-        _audioManager.PlaySFX("Drum_Rolls-006");
+        // 【探索重构-阶段5.5】建新城功能移除。
+        // 玩家只有一个主城（开局生成），势力范围通过探索扩张。
+        Debug.LogWarning("[UIController] 建城功能已移除。");
     }
 
     private bool IsValidPlayerCityCell(HexCellData cell, GameObject settlerObj)
     {
-        if (cell == null) return false;
-        if (cell.HexType == Enums.HexType.LakeOrSea) return false;
-        if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
-        if (cell.Player_City_Index.Key != -1 && cell.Player_City_Index.Key != 0) return false;
-        if (!cell.IsHaveUnit()) return true;
-
-        GameObject occupiedUnit = cell.GetUnit();
-        return occupiedUnit == settlerObj;
+        // 【探索重构-阶段5.5】建城检查已废弃，始终返回 false。
+        return false;
     }
 
     // ---------- 进入远程攻击模式 ----------
     private void EnterRangedAttackMode(GameObject attacker)
     {
         var controller = attacker != null ? attacker.GetComponent<UnitMovementController>() : null;
-        if (_gameStateMachine.CurrentPhase is not PlayerPhase || controller == null || !controller.CanBeSelected) return;
+        // 【批次 C】移除回合阶段门控
+        if (controller == null || !controller.CanBeSelected) return;
 
         int attackRange = controller.characterData?.unitData?.BasicAttackRange ?? 0;
         if (attackRange <= 1) return;
@@ -481,10 +419,9 @@ public class UIController : MonoBehaviour
                 GameObject enemy = kv.Key;
                 if (enemy == null) continue;
 
-                // 迷雾过滤：只给玩家当前视野内(IsVisible)的敌方单位生成红圈。
-                // 否则记忆区/未探索地块上的敌人也会被标出，等于泄露迷雾外的敌人位置。
+                // 【探索重构-阶段1】所有敌方单位始终可见，无需 IsVisible 过滤
                 HexCellData cell = _mapDataService.GetCellByWorldPosition(enemy.transform.position);
-                if (cell == null || !cell.IsVisible) continue;
+                if (cell == null) continue;
 
                 var indicator = Instantiate(prefab, indicatorParent);
                 indicator.transform.position = enemy.transform.position + Vector3.up * 0.2f;
@@ -505,8 +442,7 @@ public class UIController : MonoBehaviour
     // ---------- 收割资源 ----------
     public void UnitInfoPanelReapButton()
     {
-        if (_gameStateMachine.CurrentPhase is not PlayerPhase) return;
-
+        // 【批次 C】移除回合阶段门控，实时化后始终允许
         GameObject selectedUnit = _uiPresenter.CurrentSelectedUnit;
         if (selectedUnit == null) return;
 
@@ -628,5 +564,12 @@ public class UIController : MonoBehaviour
     {
         _audioManager.PlayBGM("Theme_Mistery_But_Then_Happy_Loop");
         _endGame.HideEndUI();
+    }
+
+    private void RefreshIncomeText(Text incomeText)
+    {
+        if (incomeText == null) return;
+        float multiplier = _factionBuff != null ? _factionBuff.GetStatMultiplier(0, "gold") : 1f;
+        incomeText.text = Mathf.RoundToInt(_goldWallet.PassiveIncomePerTick * multiplier).ToString();
     }
 }

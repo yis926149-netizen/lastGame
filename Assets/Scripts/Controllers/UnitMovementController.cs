@@ -109,10 +109,27 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     private bool _isMeleeAttackInProgress = false;
     private bool _isDeathScheduled = false;
 
+    // 【批次 D】动画-only 标志：为 true 时 CommenceAttack 分支不施加伤害（伤害已由 CombatResolver 结算）
+    private bool _animOnly = false;
+
     // ---------- IUnitMovement 接口实现 ----------
     public GameObject gameObject => base.gameObject;
 
-    public Vector3 CurrentHexCoordinate => _mapDataService.WorldToHexCoordinate(transform.position);
+    private Vector3 _cachedHexCoord;
+    private bool _hexCoordCached;
+
+    public Vector3 CurrentHexCoordinate
+    {
+        get
+        {
+            if (!_hexCoordCached)
+            {
+                _cachedHexCoord = _mapDataService.WorldToHexCoordinate(transform.position);
+                _hexCoordCached = true;
+            }
+            return _cachedHexCoord;
+        }
+    }
 
     public float RemainingMovement
     {
@@ -129,13 +146,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
     public void MoveTo(Vector3 targetHex, Enums.MovementPurpose purpose = Enums.MovementPurpose.MoveToDestination)
     {
-        //Debug.Log($"[UnitMovementController] MoveTo called on {gameObject.name}, target={targetHex}, purpose={purpose}, remainingMP={currentMovementPoints}");
-
-        if (currentMovementPoints <= 0)
-        {
-            Debug.LogWarning("[UnitMovementController] MoveTo aborted: no movement points left.");
-            return;
-        }
+        // 【实时化】移动力配额概念已废除，不再用 currentMovementPoints 作为移动许可判断。
 
         if (purpose == Enums.MovementPurpose.MoveToAttack)
         {
@@ -184,7 +195,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         if (target == null || characterData?.unitData == null) return false;
         if (!CanBeSelected || characterData.unitData.BasicAttackRange <= 1) return false;
 
-        Vector3 currentHex = _mapDataService.WorldToHexCoordinate(transform.position);
+        Vector3 currentHex = CurrentHexCoordinate;
         Vector3 targetHex = _mapDataService.WorldToHexCoordinate(target.transform.position);
         float distance = (Mathf.Abs(currentHex.x - targetHex.x) +
                           Mathf.Abs(currentHex.y - targetHex.y) +
@@ -194,7 +205,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         var targetUnit = target.GetComponent<UnitMovementController>();
         if (targetUnit != null && (targetUnit.characterData == null || targetUnit.characterData.currentHp <= 0)) return false;
 
-        var targetBuilding = target.GetComponent<BuildingController>();
+        var targetBuilding = target.GetComponent<BuildingBase>();
         if (targetUnit == null && (targetBuilding?.buildingData == null || targetBuilding.buildingData.currentHp <= 0)) return false;
 
         attackedUnit = target;
@@ -219,21 +230,10 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         isMoving = false;
         characterData.isSelected = false;
 
-        _uiPresenter.RefreshCurrentUnitInfo();
+        _cachedHexCoord = _mapDataService.WorldToHexCoordinate(transform.position);
+        _hexCoordCached = true;
 
-        // 添加一环视野（仅玩家单位可写玩家专属的 IsExplored；
-        // AI 单位的探索由 AIFogService 独立维护，绝不能污染玩家迷雾）
-        if (PlayerIndex == 0)
-        {
-            HexCellData h = _mapDataService.GetCellByWorldPosition(transform.position);
-            for (int i = 0; i < 6; i++)
-            {
-                if (_mapDataService.GetNeighbor(h, (Enums.HexDirection)i) != null)
-                    _mapDataService.GetNeighbor(h, (Enums.HexDirection)i).ExploreThisHexCell();
-            }
-        }
-        // 无论玩家/AI 移动都刷新一次视觉：玩家侧需重算 IsVisible 与敌方单位显隐
-        _mapVisualEvent.Raise();
+        _uiPresenter.RefreshCurrentUnitInfo();
 
         // 如果本次移动目的是攻击，则触发攻击逻辑
         if (movementPurpose == Enums.MovementPurpose.MoveToAttack && attackedUnit != null)
@@ -242,6 +242,15 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         }
 
         movementPurpose = Enums.MovementPurpose.None;
+
+        // 【批次 B】通知 Brain 决策下一步（形成逐格决策循环）
+        // Brain 在 GameLoop.Tick 中也会周期性检测，此处的直接调用是为了减少延迟。
+        var brain = GetComponent<UnitBrainBase>();
+        if (brain != null && !brain.IsPaused)
+        {
+            brain.ResetSearchThrottle();
+            brain.OnStepFinished();
+        }
     }
 
     // ---------- 攻击、受击、死亡等 ----------
@@ -421,7 +430,9 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             animator.SetBool("isAttack", true);
             isAttack = true;
 
-            if (attackedUnit != null)
+            // 【批次 D】_animOnly 为 true 时表示伤害已由 CombatResolver 瞬间结算，
+            // 此处仅播放动画/音效/特效，跳过所有伤害判定（避免双重扣血）。
+            if (!_animOnly && attackedUnit != null)
             {
                 // 通知被攻击者
                 UnitMovementController targetCtrl = attackedUnit.GetComponent<UnitMovementController>();
@@ -431,15 +442,14 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
                     targetCtrl.enemyAttacker = gameObject;
                 }
 
-                // 建筑
-                if (attackTarget == "EnemyBuilding" || attackTarget == "PlayerBuilding")
+                // 建筑（支持多格公共建筑攻击转发，决策#37）
+                if (attackTarget == "EnemyBuilding" || attackTarget == "PlayerBuilding" || attackTarget == "NeutralBuilding")
                 {
-                    attackedUnit.GetComponent<BuildingController>()?.BuildingAttacked(gameObject);
+                    attackedUnit.GetComponent<BuildingBase>()?.BuildingAttacked(gameObject);
                 }
             }
 
-            // 扣除移动力（攻击即耗尽）
-            currentMovementPoints = 0;
+            // 【批次 D】攻击不再耗尽移动力（实时化无配额）。旧 currentMovementPoints = 0 删除。
 
             // 特效、音效等保持不变...
             Transform hitParticles = transform.GetChild(transform.childCount - 1);
@@ -554,6 +564,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         animator.SetBool("isAttack", false);
         isAttack = false;
         attackedUnit = null; // 清除目标引用，避免残留
+        _animOnly = false;   // 重置动画-only 标志
     }
 
     /// <summary>
@@ -618,5 +629,58 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         isMoved = false; // 新回合可移动
     }
 
+    // ── 【批次 D】纯动画接口：不含任何伤害，供 CombatResolver 结算后调用 ────────────
+    /// <summary>
+    /// 播放一次近战攻击动画（冲刺 → 攻击动画 → 返回原位 + 音效）。
+    /// 伤害已由 CombatResolver 瞬间结算，此处仅负责表现。
+    /// </summary>
+    public void PlayAttackAnim(GameObject target)
+    {
+        if (target == null || isAttackingInProgress) return;
+
+        _animOnly = true;            // 告诉 CommenceAttack 分支跳过伤害
+        attackedUnit = target;
+        attackTarget = target.tag;
+        isAttackingInProgress = true;
+
+        HexCellData cell = _mapDataService.GetCellByWorldPosition(transform.position);
+        attackerPosition = cell != null ? cell.RealCenterWorldCoordinate : transform.position;
+
+        Vector3 lookTarget = target.transform.position;
+        lookTarget.y = transform.position.y;
+        transform.LookAt(lookTarget);
+
+        attackTargetPosition = target.transform.position;
+        // 新版战斗逻辑已由 CombatResolver 瞬时结算；这里只原地播放表现，
+        // 不再复用旧版“冲向目标再退回原格”的攻击位移状态机。
+        GoToAttackPosition = false;
+        ReturnToOriginalPosition = false;
+        _isMeleeAttackInProgress = false;
+        CommenceAttack = true;
+    }
+
+    /// <summary>
+    /// 播放一次远程攻击动画（原地朝向目标 + 攻击动画 + 音效，无冲刺）。
+    /// 伤害已由 CombatResolver 瞬间结算，此处仅负责表现。
+    /// </summary>
+    public void PlayRangedAttackAnim(GameObject target)
+    {
+        if (target == null || isAttackingInProgress) return;
+
+        _animOnly = true;
+        attackedUnit = target;
+        attackTarget = target.tag;
+        isAttackingInProgress = true;
+        _isMeleeAttackInProgress = false; // 远程不返回原位
+
+        attackerPosition = transform.position;
+
+        Vector3 lookTarget = target.transform.position;
+        lookTarget.y = transform.position.y;
+        transform.LookAt(lookTarget);
+
+        // 直接进入攻击动画（不冲刺）
+        CommenceAttack = true;
+    }
 
 }

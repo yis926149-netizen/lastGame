@@ -15,6 +15,7 @@ public class EndGame : MonoBehaviour
     [Inject] private AudioManager _audioManager;
 
     public bool isEndThisGame = false;
+    public bool neverWin;
     public Transform VictoryAnimation;
     public Transform DefeatAnimation;
     public Transform VictoryUI;
@@ -46,6 +47,10 @@ public class EndGame : MonoBehaviour
             _playerHasOwnedCity,
             _playerModelManager.CityCount,
             AICityCount());
+        if (neverWin && Result == EndGameResult.Victory)
+        {
+            Result = EndGameResult.None;
+        }
         if (Result != EndGameResult.None)
         {
             isEndThisGame = true;

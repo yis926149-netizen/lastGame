@@ -19,6 +19,7 @@ public class AICardBrain
     private readonly EnemyModelManager _enemyModelManager;
     private readonly AIEntityFactory _factory;
     private readonly AIRandomProvider _rng;
+    private readonly GoldWallet _goldWallet;
 
     public AICardBrain(
         AIPlayerState aiPlayerState,
@@ -28,7 +29,8 @@ public class AICardBrain
         UnitMovementSystem movementSystem,
         EnemyModelManager enemyModelManager,
         AIEntityFactory factory,
-        AIRandomProvider rng)
+        AIRandomProvider rng,
+        GoldWallet goldWallet)
     {
         _aiPlayerState = aiPlayerState;
         _cardUnlockRuleProvider = cardUnlockRuleProvider;
@@ -38,6 +40,7 @@ public class AICardBrain
         _enemyModelManager = enemyModelManager;
         _factory = factory;
         _rng = rng;
+        _goldWallet = goldWallet;
     }
 
     private System.Random Random => _rng.Random;
@@ -133,11 +136,18 @@ public class AICardBrain
 
     private bool TryPlaySingleCard(int cardId)
     {
+        // 【探索重构-阶段7】出牌消耗金币
+        if (_goldWallet.GetGold(AIIndex) < _goldWallet.CardCost) return false;
+
         int unitCount = (int)_unitDataProvider.GetUnitIconCount();
         bool isBuildingCard = cardId >= unitCount;
-        return isBuildingCard
+        bool success = isBuildingCard
             ? TrySpawnBuildingFromCard(cardId)
             : TrySpawnUnitFromCard(cardId);
+
+        if (success)
+            _goldWallet.TrySpendGold(AIIndex, _goldWallet.CardCost);
+        return success;
     }
 
     private bool TrySpawnUnitFromCard(int unitId)

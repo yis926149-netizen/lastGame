@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using Zenject;
 
@@ -7,14 +8,18 @@ public class MapRenderer : MonoBehaviour
     private readonly Dictionary<(int owner, Enums.HexDirection direction), RectangleTransitionMeshData> _genericRectangleMeshes
         = new Dictionary<(int owner, Enums.HexDirection direction), RectangleTransitionMeshData>();
 
+    /// <summary>探索费用标签预制体：需在 Inspector 中指定（子物体需有 Text 组件）</summary>
+    public GameObject CostLabelPrefab;
+
     [Inject] private IMapDataService _mapDataService;
     [Inject] private IEnvironmentModelsProvider environmentModelsProvider;
     [Inject] private MapGenerationConfigSO _config;
     [Inject] private IMeshGenerator _meshGenerator;
     [Inject] private MapGenerator mapGenerator;
     [Inject] private MapVisualEventSO _mapVisualEvent;
-    [Inject] private FieldOfViewService _fieldOfView;
-    [Inject] private IUnitRepository _unitRepository;
+    [Inject] private GoldWallet _goldWallet;
+    [Inject(Id = "TargetUICanvas")] private Canvas _targetUICanvas;
+    [Inject] private IExplorationService _explorationService;
 
     private Mesh _terrainMesh;
     private Mesh _waterMesh;
@@ -25,9 +30,6 @@ public class MapRenderer : MonoBehaviour
     private Color[] _cachedTerrainColors;
     private Color[] _cachedWaterColors;
     private Color[] _cachedRiverColors;
-    private Dictionary<GameObject, Renderer[]> _enemyRendererCache;
-    private Dictionary<GameObject, Canvas[]> _enemyCanvasCache;
-    private List<int> _fogMaskStampedGIndices;
 
     // 方案B：世界对齐的探索遮罩贴图（像素锯齿边界用）。R 通道 0/1，双线性采样得到边界渐变带。
     private Texture2D _fogMaskTex;
@@ -70,6 +72,14 @@ public class MapRenderer : MonoBehaviour
         // 4. ���� - ʹ���¼�ϵͳ�����ɸ� FogManager ʵ�������ĳ�ʼ��
         _mapVisualEvent.FogInit();
 
+        // 5. 探索费用标签渲染器
+        if (CostLabelPrefab != null)
+        {
+            var labelGo = new GameObject("CostLabelRenderer");
+            labelGo.transform.SetParent(transform);
+            var labelRenderer = labelGo.AddComponent<CostLabelRenderer>();
+            labelRenderer.Initialize(_mapDataService, _goldWallet, CostLabelPrefab, _targetUICanvas, _explorationService, _mapVisualEvent);
+        }
     }
 
     //����ͼMesh����
@@ -91,28 +101,6 @@ public class MapRenderer : MonoBehaviour
         //����˳��
         //�ӻ���˳�б�
         List<List<int>> subList = new List<List<int>>() { highDrawOrderList, flatDrawOrderList, seafloorDrawOrderList };
-
-        //�����������˳��
-        //����
-        //���������˳��
-        List<List<int>> transitionRectDrawOrderList = new List<List<int>>();
-        //�Լ��Ĳ���
-        List<Material> materialAs = new List<Material>();
-        //�ھӵĲ���
-        List<Material> materialBs = new List<Material>();
-
-        //����
-        //���������˳��
-        List<List<int>> transitionTriDrawOrderList = new List<List<int>>();
-        //����A�Ĳ��� - ˳ʱ������
-        List<Material> materialAsTri = new List<Material>();
-        //����B�Ĳ���
-        List<Material> materialBsTri = new List<Material>();
-        //����C�Ĳ���
-        List<Material> materialCsTri = new List<Material>();
-
-        //�����������˳�򣨺���û�ã���
-        List<int> transitionDrawOrderList = new List<int>();
 
         //��ֵ����
         //ʵ������
@@ -172,12 +160,11 @@ public class MapRenderer : MonoBehaviour
             MainMeshDrawOrderElementAddRule(ref hexCellData, ints, ref subList, IndexOffset);
         }
         // 矩形过渡
+        var rectGroups = new Dictionary<(Material, Material), List<int>>();
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //根据六边形顶点坐标取出hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
             Color cellColor = FogVertexColor(hexCellData);
-            //绘制顺序偏移
             int IndexOffset = verticesList.Count;
             Enums.HexDirection[] hexDirections = new Enums.HexDirection[3] { Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE };
             for (int i = 0; i < hexDirections.Length; i++)
@@ -188,13 +175,10 @@ public class MapRenderer : MonoBehaviour
                 MainMeshRectFunction(hexCellData, hexDirections[i], out isSlope, out isRiver);
                 List<int> ints = new List<int>();
 
-                // 始终生成通用矩形剖面并缓存：三角过渡（GetGenericTriangleMesh）会引用相邻矩形的
-                // 表面边界剖面，河道边的表面边界与通用矩形一致，缺失会导致三角过渡查表抛异常。
                 RectangleTransitionMeshData rectangle = GetGenericRectangleMesh(ref hexCellData, hexDirections[i]);
 
                 if (isRiver)
                 {
-                    // 河道边：渲染带河道（侧壁+河床底面）的过渡几何，不使用通用矩形的渲染输出。
                     if (isSlope)
                     {
                         int preCount = verticesList.Count;
@@ -228,21 +212,24 @@ public class MapRenderer : MonoBehaviour
                     OtherMeshDrawOrderElementAddRule(ref hexCellData, flatRectangle.Indices, ref ints, IndexOffset);
                 }
 
-                materialAs.Add(HexController.SetHexMaterial(hexCellData, _config.mapMaterial));
-                materialBs.Add(HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, hexDirections[i]), _config.mapMaterial));
-
-                transitionDrawOrderList.AddRange(ints);
-                transitionRectDrawOrderList.Add(ints);
+                Material matA = HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
+                Material matB = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, hexDirections[i]), _config.mapMaterial);
+                var key = (matA, matB);
+                if (!rectGroups.ContainsKey(key))
+                    rectGroups[key] = new List<int>();
+                rectGroups[key].AddRange(ints);
             }
-
         }
+        var mergedRectIndices = new List<List<int>>(rectGroups.Values);
+        var mergedMaterialAs = rectGroups.Keys.Select(k => k.Item1).ToList();
+        var mergedMaterialBs = rectGroups.Keys.Select(k => k.Item2).ToList();
+
         // 三角过渡
+        var triGroups = new Dictionary<(Material, Material, Material), List<int>>();
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //根据六边形顶点坐标取出hexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
             Color cellColor = FogVertexColor(hexCellData);
-            //绘制顺序偏移
             int IndexOffset = verticesList.Count;
 
             Enums.HexDirection[][] h = new Enums.HexDirection[2][]
@@ -251,7 +238,6 @@ public class MapRenderer : MonoBehaviour
                 new[] { Enums.HexDirection.E, Enums.HexDirection.SE }
             };
 
-            //每个地块有两个三角过渡区域NE_E和E_SE           
             for (int i = 0; i < 2; i++)
             {
                 if (_mapDataService.GetNeighbor(hexCellData, h[i][0]) == null || _mapDataService.GetNeighbor(hexCellData, h[i][1]) == null) continue;
@@ -266,38 +252,32 @@ public class MapRenderer : MonoBehaviour
                 hexCellData.MeshTransitionVertexRanges.Add((preCount, addedCount));
                 OtherMeshDrawOrderElementAddRule(ref hexCellData, triangle.Indices, ref ints, IndexOffset);
 
-                materialAsTri.Add(HexController.SetHexMaterial(hexCellData, _config.mapMaterial));
-                materialBsTri.Add(HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, h[i][0]), _config.mapMaterial));
-                materialCsTri.Add(HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, h[i][1]), _config.mapMaterial));
-
-                transitionDrawOrderList.AddRange(ints);
-                transitionTriDrawOrderList.Add(ints);
+                Material matA = HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
+                Material matB = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, h[i][0]), _config.mapMaterial);
+                Material matC = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, h[i][1]), _config.mapMaterial);
+                var key = (matA, matB, matC);
+                if (!triGroups.ContainsKey(key))
+                    triGroups[key] = new List<int>();
+                triGroups[key].AddRange(ints);
             }
         }
-        //����CreatMesh()
-        //�����λ���˳��
-        int[][] arrArawOrder = new int[3 + transitionRectDrawOrderList.Count + transitionTriDrawOrderList.Count][];
-        //����
+        var mergedTriIndices = new List<List<int>>(triGroups.Values);
+        var mergedMaterialAsTri = triGroups.Keys.Select(k => k.Item1).ToList();
+        var mergedMaterialBsTri = triGroups.Keys.Select(k => k.Item2).ToList();
+        var mergedMaterialCsTri = triGroups.Keys.Select(k => k.Item3).ToList();
+
+        // arrArawOrder：实心区 3 个 + 矩形过渡 N 个 + 三角过渡 M 个
+        int[][] arrArawOrder = new int[3 + mergedRectIndices.Count + mergedTriIndices.Count][];
         arrArawOrder[0] = subList[2].ToArray();
-        //ƽ��
         arrArawOrder[1] = subList[1].ToArray();
-        //�ߵ�
         arrArawOrder[2] = subList[0].ToArray();
-        //���ι�������
 
-        int transitionOffset = 3;
-        for (int i = 0; i < transitionRectDrawOrderList.Count; i++)
-        {
-            arrArawOrder[transitionOffset + i] = transitionRectDrawOrderList[i].ToArray();
-        }
-        //���ǹ�������
-        transitionOffset = transitionRectDrawOrderList.Count + 3;
-        for (int i = 0; i < transitionTriDrawOrderList.Count; i++)
-        {
-            arrArawOrder[transitionOffset + i] = transitionTriDrawOrderList[i].ToArray();
-        }
+        int offset = 3;
+        for (int i = 0; i < mergedRectIndices.Count; i++)
+            arrArawOrder[offset++] = mergedRectIndices[i].ToArray();
+        for (int i = 0; i < mergedTriIndices.Count; i++)
+            arrArawOrder[offset++] = mergedTriIndices[i].ToArray();
 
-        // 创建主体地图 Mesh，并将临时数据存储到 mapGenerator
         Color[] terrainColorArray = allColors.ToArray();
         _cachedTerrainColors = terrainColorArray;
         Mesh mainMesh = MapController.CreatMesh(
@@ -307,12 +287,11 @@ public class MapRenderer : MonoBehaviour
                    arrArawOrder,
                    _mapDataService.MapGameObject,
                    _config.mapMaterial,
-                   materialAs.ToArray(),
-                   materialBs.ToArray(),
-
-                   materialAsTri.ToArray(),
-                   materialBsTri.ToArray(),
-                   materialCsTri.ToArray(),
+                   mergedMaterialAs.ToArray(),
+                   mergedMaterialBs.ToArray(),
+                   mergedMaterialAsTri.ToArray(),
+                   mergedMaterialBsTri.ToArray(),
+                   mergedMaterialCsTri.ToArray(),
                    _config.blendMask,
                    _config.blendContrast,
                    _config.blendSmooth,
@@ -666,20 +645,27 @@ public class MapRenderer : MonoBehaviour
         }
 
         Shader gridLineShader = Shader.Find("Custom/GridLine") ?? Shader.Find("Unlit/Color") ?? Shader.Find("Hidden/InternalErrorShader");
-        //Ϊÿ���ؿ������ߵ�������һ��GameObject
+        int vertexOffset = 0;
         for (int j = 0, i = 0; j < hexVertices.Length; j++)
         {
-            //���������������ȡhexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
-            //���ǡ����򺣡�������
             if (isLakeOrSea(hexCellData)) { continue; }
 
+            var localVerts = verticesGridLine.GetRange(vertexOffset, 12).ToArray();
+            var localUVs = uvGridLine.GetRange(vertexOffset, 12).ToArray();
+            var absoluteIndices = drawOrderGridLine[i];
+            var localIndices = new int[absoluteIndices.Count];
+            for (int k = 0; k < absoluteIndices.Count; k++)
+                localIndices[k] = absoluteIndices[k] - vertexOffset;
+
             GameObject go = new GameObject($"SubGridLine_{j}");
-            MapController.CreatMesh(verticesGridLine.ToArray(), uvGridLine.ToArray(), drawOrderGridLine[i++].ToArray(), go, new Material(gridLineShader));
+            MapController.CreatMesh(localVerts, localUVs, localIndices, go, new Material(gridLineShader), addCollider: false);
             hexCellData.GridMesh = go;
             go.SetActive(false);
             go.transform.parent = GridLine.transform;
 
+            vertexOffset += 12;
+            i++;
         }
         mapGenerator.gridGameObject = GridLine;
     }
@@ -1056,7 +1042,6 @@ public class MapRenderer : MonoBehaviour
 
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //���������������ȡhexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
             if((int)hexCellData.landFormType == 4) { continue; }
             hexCellData.landFormModel = Instantiate(environmentModelsProvider.GetLandFormPrefab((int)hexCellData.landFormType));
@@ -1064,14 +1049,15 @@ public class MapRenderer : MonoBehaviour
             hexCellData.landFormModel.AddComponent<ModelController>();
             hexCellData.landFormModel.transform.SetParent(landForm.transform);
         }
-           
+
+        if (landForm.transform.childCount > 0)
+            StaticBatchingUtility.Combine(landForm);
     }
     private void InstantiateResources(Vector3[] hexVertices)
     {
         GameObject Resource = new GameObject("Resource");
         for (int j = 0; j < hexVertices.Length; j++)
         {
-            //���������������ȡhexCell
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
             if ((int)hexCellData.resourceType >= 4) { continue; }
             hexCellData.resourceModel = Instantiate(environmentModelsProvider.GetResourcePrefab((int)hexCellData.resourceType));
@@ -1080,6 +1066,8 @@ public class MapRenderer : MonoBehaviour
             hexCellData.resourceModel.transform.SetParent(Resource.transform);
         }
 
+        if (Resource.transform.childCount > 0)
+            StaticBatchingUtility.Combine(Resource);
     }
 
     private void Awake()
@@ -1096,13 +1084,6 @@ public class MapRenderer : MonoBehaviour
     {
         if (!_isSubscribed || _mapVisualEvent == null) return;
         _mapVisualEvent.OnMapVisualChanged.RemoveListener(OnMapVisualChanged);
-
-        if (_unitRepository != null)
-        {
-            _unitRepository.OnEnemyUnitAdded -= OnEnemyUnitAdded;
-            _unitRepository.OnEnemyUnitRemoved -= OnEnemyUnitRemoved;
-        }
-
         _isSubscribed = false;
     }
 
@@ -1110,123 +1091,12 @@ public class MapRenderer : MonoBehaviour
     {
         if (_isSubscribed || _mapVisualEvent == null) return;
         _mapVisualEvent.OnMapVisualChanged.AddListener(OnMapVisualChanged);
-
-        if (_unitRepository != null)
-        {
-            _unitRepository.OnEnemyUnitAdded += OnEnemyUnitAdded;
-            _unitRepository.OnEnemyUnitRemoved += OnEnemyUnitRemoved;
-        }
-
         _isSubscribed = true;
     }
 
     private void OnMapVisualChanged()
     {
-        // 先重算视野（IsVisible），再刷视觉——保证"先算可见性、再画"。
-        _fieldOfView?.Recompute();
-        UpdateExplorationVisuals();
         UpdateFogMask();
-        SyncCellObjectVisibility();
-    }
-
-    private void OnEnemyUnitAdded(int aiIndex, GameObject unitGO, CharacterData data)
-    {
-        if (unitGO == null) return;
-        if (_enemyRendererCache == null)
-            _enemyRendererCache = new Dictionary<GameObject, Renderer[]>();
-        if (_enemyCanvasCache == null)
-            _enemyCanvasCache = new Dictionary<GameObject, Canvas[]>();
-        _enemyRendererCache[unitGO] = unitGO.GetComponentsInChildren<Renderer>(true);
-        _enemyCanvasCache[unitGO] = unitGO.GetComponentsInChildren<Canvas>(true);
-    }
-
-    private void OnEnemyUnitRemoved(GameObject unitGO)
-    {
-        if (unitGO == null) return;
-        _enemyRendererCache?.Remove(unitGO);
-        _enemyCanvasCache?.Remove(unitGO);
-    }
-
-    /// <summary>
-    /// 集中式物体可见性同步（三态记忆迷雾，归属×状态规则）：
-    ///  - 中立地物（地貌/资源）：按所在格 IsExplored 显隐（记忆区仍显示）。
-    ///  - 己方单位/建筑：永远可见，跳过。
-    ///  - 敌方建筑/城市（静态）：按所在格 IsExplored 显隐（记忆区显示当前真实状态，无快照）。
-    ///  - 敌方单位（动态）：按所在格 IsVisible 只关渲染（Renderer.enabled），
-    ///    保留移动/AI/回合逻辑，避免迷雾里的敌人冻结。
-    /// </summary>
-    private void SyncCellObjectVisibility()
-    {
-        var cells = _mapDataService?.GetAllCells();
-        if (cells == null) return;
-
-        foreach (var cell in cells)
-        {
-            if (cell == null) continue;
-
-            // 中立地物：地貌与资源模型
-            if (cell.landFormModel != null && cell.landFormModel.activeSelf != cell.IsExplored)
-                cell.landFormModel.SetActive(cell.IsExplored);
-            if (cell.resourceModel != null && cell.resourceModel.activeSelf != cell.IsExplored)
-                cell.resourceModel.SetActive(cell.IsExplored);
-
-            // 建筑（含城市）：己方永远可见；敌方按 IsExplored 显隐
-            GameObject building = cell.BulidingTypeOnHex_Building.Value;
-            if (building != null)
-            {
-                bool isEnemyBuilding = cell.Player_City_Index.Key > 0
-                    || building.CompareTag("EnemyBuilding");
-                bool show = !isEnemyBuilding || cell.IsExplored;
-                if (building.activeSelf != show)
-                    building.SetActive(show);
-            }
-        }
-
-        // 敌方单位：始终保持 GameObject 激活（保留移动/AI/回合逻辑——UnitMovementController
-        // 的协程/Update 需物体激活才能运行，否则迷雾里的敌人无法移动、AI 回合会卡住），
-        // 只用 Renderer/Canvas.enabled 控制可见性。按所在格 IsVisible 显隐（记忆区隐藏）。
-        if (_unitRepository != null)
-        {
-            foreach (var group in _unitRepository.AllEnemyUnitGroups)
-            {
-                foreach (var kv in group)
-                {
-                    GameObject unitGO = kv.Key;
-                    if (unitGO == null) continue;
-                    if (!unitGO.activeSelf) unitGO.SetActive(true);
-
-                    HexCellData cell = _mapDataService.GetCellByWorldPosition(unitGO.transform.position);
-                    bool visible = cell != null && cell.IsExplored;
-
-                    Renderer[] cachedRenderers = null;
-                    Canvas[] cachedCanvases = null;
-                    bool hasRendererCache = _enemyRendererCache != null && _enemyRendererCache.TryGetValue(unitGO, out cachedRenderers);
-                    bool hasCanvasCache = _enemyCanvasCache != null && _enemyCanvasCache.TryGetValue(unitGO, out cachedCanvases);
-
-                    if (hasRendererCache)
-                    {
-                        foreach (var r in cachedRenderers)
-                            if (r != null) r.enabled = visible;
-                    }
-                    else
-                    {
-                        foreach (var r in unitGO.GetComponentsInChildren<Renderer>(true))
-                            r.enabled = visible;
-                    }
-
-                    if (hasCanvasCache)
-                    {
-                        foreach (var c in cachedCanvases)
-                            if (c != null) c.enabled = visible;
-                    }
-                    else
-                    {
-                        foreach (var c in unitGO.GetComponentsInChildren<Canvas>(true))
-                            c.enabled = visible;
-                    }
-                }
-            }
-        }
     }
 
     private void SetupFogGlobalShaderProperties(Vector3[] hexVertices)
@@ -1288,6 +1158,11 @@ public class MapRenderer : MonoBehaviour
         Shader.SetGlobalFloat("_FogJaggedAmount", _config != null ? _config.fogJaggedAmount : 1.0f);
         Shader.SetGlobalFloat("_FogNoiseWavelength", _config != null ? _config.fogNoiseWavelength : 2.0f);
 
+        // 【探索重构-方案三】未探索区视觉参数（去饱和+半透明雾）
+        Shader.SetGlobalFloat("_FogUnexploredDesaturate", 0.5f);
+        Shader.SetGlobalFloat("_FogUnexploredBlend", 0.7f);
+        Shader.SetGlobalVector("_FogScrollSpeed", new Vector4(0.02f, 0.01f, 0f, 0f));
+
         // 方案B：按同一包围盒新建探索遮罩并绑定为全局纹理（内容由 UpdateFogMask 增量盖章）。
         CreateFogMask(minX, minZ, sizeX, sizeZ);
         Shader.SetGlobalTexture("_FogMaskTex", _fogMaskTex);
@@ -1329,13 +1204,11 @@ public class MapRenderer : MonoBehaviour
         UpdateRiverExplorationVisuals();
     }
 
-    // 三态记忆迷雾顶点色编码：.r=IsExplored(0/1)、.g=IsVisible(0/1)。
-    // Shader 据此区分 未探索(r=0) / 记忆区(r=1,g=0,压暗) / 可见(r=1,g=1,全亮)。
+    // 【探索重构-阶段6】顶点色编码简化：.r=IsExplored(0/1)，.g 废弃（固定0）
     private static Color FogVertexColor(HexCellData cell)
     {
         float r = cell.IsExplored ? 1f : 0f;
-        float g = cell.IsVisible ? 1f : 0f;
-        return new Color(r, g, 0f, 1f);
+        return new Color(r, 0f, 0f, 1f);
     }
 
     // ===================== 方案B：世界探索遮罩贴图 =====================
@@ -1366,16 +1239,14 @@ public class MapRenderer : MonoBehaviour
         _fogMaskStamped.Clear();
     }
 
-    // 把一格的六边形足迹盖章进遮罩的指定通道（toGreen=false→R 已探索；true→G 当前视野）。
-    // 用【精确正六边形】填充（尖顶朝±z、平边在±x，内切半径=InnerRadius）：六边形能完美平铺，
-    // 因此已探索区无缝、无外扩，基础边界正好落在六边形棱上（最贴边）。只改目标通道字节，不动其它通道。
-    private void StampCellToFogMask(HexCellData cell, bool toGreen, List<int> collectIndices = null)
+    // 把一格的六边形足迹盖章进遮罩的 R 通道（已探索）。
+    private void StampCellToFogMask(HexCellData cell)
     {
         if (_fogMaskData == null) return;
         Vector3 c = cell.CenterWorldCoordinate;
-        float o = _config != null ? _config.OuterRadius : 3f;    // 外接半径（顶点距离，仅用于 AABB）
-        float ir = _config != null ? _config.InnerRadius : 2.598f; // 内切半径 apothem（三条边法向上的判定阈值）
-        const float H = 0.8660254f; // sin60/cos30
+        float o = _config != null ? _config.OuterRadius : 3f;
+        float ir = _config != null ? _config.InnerRadius : 2.598f;
+        const float H = 0.8660254f;
 
         int px0 = Mathf.Clamp(Mathf.FloorToInt((c.x - o - _fogMaskOrigin.x) / _fogMaskSize.x * _fogMaskW), 0, _fogMaskW - 1);
         int px1 = Mathf.Clamp(Mathf.CeilToInt ((c.x + o - _fogMaskOrigin.x) / _fogMaskSize.x * _fogMaskW), 0, _fogMaskW - 1);
@@ -1389,57 +1260,29 @@ public class MapRenderer : MonoBehaviour
             {
                 float wx = _fogMaskOrigin.x + (px + 0.5f) / _fogMaskW * _fogMaskSize.x;
                 float dx = wx - c.x, dz = wz - c.z;
-                // 点在正六边形内 ⇔ 在三条边法向(0°, 60°, 120°)上的投影都 ≤ 内切半径 ir
                 if (Mathf.Abs(dx) <= ir &&
                     Mathf.Abs(0.5f * dx + H * dz) <= ir &&
                     Mathf.Abs(-0.5f * dx + H * dz) <= ir)
                 {
                     int idx = py * _fogMaskW + px;
-                    Color32 col = _fogMaskData[idx];
-                    if (toGreen) { col.g = 255; collectIndices?.Add(idx); }
-                    else col.r = 255;
-                    _fogMaskData[idx] = col;
+                    _fogMaskData[idx].r = 255;
                 }
             }
         }
     }
 
-    // 更新探索遮罩：R=已探索（单调，增量盖章）、G=当前视野（动态，每回合清空后重盖）。
+    // 更新探索遮罩：R=已探索（单调，增量盖章）。
     private void UpdateFogMask()
     {
         if (_fogMaskTex == null || _fogMaskData == null || _cellsInGenerateOrder == null) return;
 
-        // R 通道（已探索，单调只增）：只盖新探索的格子，盖过的跳过。
         foreach (var cell in _cellsInGenerateOrder)
         {
             if (cell == null || !cell.IsExplored) continue;
-            if (!_fogMaskStamped.Add(cell)) continue; // Add 返回 false = 已盖过
-            StampCellToFogMask(cell, false);
+            if (!_fogMaskStamped.Add(cell)) continue;
+            StampCellToFogMask(cell);
         }
 
-        // G 通道：增量更新——先清空上一轮的 G 像素，再盖本轮可见格。
-        if (_fogMaskStampedGIndices != null)
-        {
-            foreach (int idx in _fogMaskStampedGIndices)
-            {
-                Color32 col = _fogMaskData[idx];
-                col.g = 0;
-                _fogMaskData[idx] = col;
-            }
-            _fogMaskStampedGIndices.Clear();
-        }
-        else
-        {
-            _fogMaskStampedGIndices = new List<int>(1024);
-        }
-
-        foreach (var cell in _cellsInGenerateOrder)
-        {
-            if (cell != null && cell.IsVisible)
-                StampCellToFogMask(cell, true, _fogMaskStampedGIndices);
-        }
-
-        // R 可能新增、G 每回合都变 → 整图上传（纹理很小，成本可忽略）。
         _fogMaskTex.SetPixels32(_fogMaskData);
         _fogMaskTex.Apply(false);
     }

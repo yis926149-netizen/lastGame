@@ -10,6 +10,7 @@ public static class SeedService
     private const int AI       = 601;
     private const int Card     = 701;
     private const int TransitionTest = 801;
+    private const int PublicBuilding = 901;
 
     private static bool _initialized = false;
     private static int _rootSeed;
@@ -35,6 +36,7 @@ public static class SeedService
             "AI"       => AI,
             "Card"     => Card,
             "TransitionTest" => TransitionTest,
+            "PublicBuilding" => PublicBuilding,
             _          => throw new ArgumentException($"未知模块 ID: {moduleId}")
         };
 
