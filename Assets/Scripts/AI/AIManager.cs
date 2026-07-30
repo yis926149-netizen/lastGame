@@ -16,6 +16,7 @@ public class AIManager : MonoBehaviour, IAIManager
     [Inject] private AICardBrain _cardBrain;
     [Inject] private AIRandomProvider _rng;
     [Inject] private GoldWallet _goldWallet;
+    [Inject] private MapGenerationConfigSO _config;
 
     // 城市预制体：Inspector 序列化引用，注入后转交工厂（场景引用无法直接注入普通类）。
     public GameObject AICity;
@@ -45,7 +46,7 @@ public class AIManager : MonoBehaviour, IAIManager
         foreach (HexCellData cell in _mapDataService.GetAllCells())
         {
             if (IsUnoccupiedLandCell(cell) &&
-                cell.HexCoordinate.z >= 20f && cell.HexCoordinate.z <= 27f)
+                _config.aiZone.Contains(cell.HexCoordinate.z))
             {
                 candidates.Add(cell);
             }
@@ -74,12 +75,12 @@ public class AIManager : MonoBehaviour, IAIManager
         var centerCell = _mapDataService.GetCellByWorldPosition(cityWorldPos);
         if (centerCell == null) return;
 
-        centerCell.ExploreThisHexCell();
+        centerCell.ExploreBy(1);
         for (int i = 0; i < 6; i++)
         {
             var neighbor = _mapDataService.GetNeighbor(centerCell, (Enums.HexDirection)i);
             if (neighbor != null)
-                neighbor.ExploreThisHexCell();
+                neighbor.ExploreBy(1);
         }
     }
 

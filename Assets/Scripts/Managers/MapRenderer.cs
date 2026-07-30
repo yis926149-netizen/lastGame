@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Rendering;
 using Zenject;
 
 public class MapRenderer : MonoBehaviour
@@ -20,12 +21,17 @@ public class MapRenderer : MonoBehaviour
     [Inject] private GoldWallet _goldWallet;
     [Inject(Id = "TargetUICanvas")] private Canvas _targetUICanvas;
     [Inject] private IExplorationService _explorationService;
+    [Inject(Optional = true)] private ILogisticsService _logisticsService;
 
     private Mesh _terrainMesh;
     private Mesh _waterMesh;
     private Mesh _riverMesh;
     private List<HexCellData> _cellsInGenerateOrder;
     private bool _isSubscribed;
+    private bool _isLogisticsSubscribed;
+    private GameObject _landFormRoot;
+    private GameObject _resourceRoot;
+    private FogEnvironmentSelectiveEffect _environmentFogEffect;
 
     private Color[] _cachedTerrainColors;
     private Color[] _cachedWaterColors;
@@ -37,7 +43,15 @@ public class MapRenderer : MonoBehaviour
     private Vector2 _fogMaskOrigin;   // 世界 (minX, minZ)，与 _FogMapOrigin 一致
     private Vector2 _fogMaskSize;     // 世界 (sizeX, sizeZ)，与 _FogMapSize 一致
     private int _fogMaskW, _fogMaskH;
-    private readonly HashSet<HexCellData> _fogMaskStamped = new HashSet<HexCellData>();
+
+    // 【迷雾过渡】驱动 FogAlpha 逐帧过渡，实现逐渐消散/重聚。
+    private readonly FogTransitionManager _fogTransition = new FogTransitionManager();
+    // 限频刷新：过渡进行中每隔固定时间才重建纹理/顶点色（人眼几乎无感，省性能）。
+    private float _fogRefreshTimer;
+    private const float FogRefreshInterval = 1f / 20f; // 20fps 刷新一次视觉
+    // 首次（开局）用快照立即到位，之后才走过渡动画。
+    private bool _fogInitialized;
+
 
     // ��Ⱦ��ͼ�Ӿ�����
     public void MapRender()
@@ -68,6 +82,7 @@ public class MapRenderer : MonoBehaviour
         // 3. ʵ������ò����Դģ��
         InstantiateLandForms(hexVertices);
         InstantiateResources(hexVertices);
+        SetupEnvironmentFogEffect();
 
         // 4. ���� - ʹ���¼�ϵͳ�����ɸ� FogManager ʵ�������ĳ�ʼ��
         _mapVisualEvent.FogInit();
@@ -78,7 +93,7 @@ public class MapRenderer : MonoBehaviour
             var labelGo = new GameObject("CostLabelRenderer");
             labelGo.transform.SetParent(transform);
             var labelRenderer = labelGo.AddComponent<CostLabelRenderer>();
-            labelRenderer.Initialize(_mapDataService, _goldWallet, CostLabelPrefab, _targetUICanvas, _explorationService, _mapVisualEvent);
+            labelRenderer.Initialize(_mapDataService, _goldWallet, CostLabelPrefab, _targetUICanvas, _explorationService, _mapVisualEvent, _logisticsService);
         }
     }
 
@@ -91,6 +106,8 @@ public class MapRenderer : MonoBehaviour
         List<Vector2> uvList = new List<Vector2>(cellCount * 44);
         List<Color> allColors = new List<Color>(cellCount * 44);
         _cellsInGenerateOrder = new List<HexCellData>(cellCount);
+        var rectangleVertexRanges = new List<(int start, int count)>();
+        var triangleVertexRanges = new List<(int start, int count)>();
 
         //�ߵػ���˳��
         List<int> highDrawOrderList = new List<int>();
@@ -203,14 +220,20 @@ public class MapRenderer : MonoBehaviour
                 else
                 {
                     int preCount = verticesList.Count;
-                    RectangleTransitionMeshData flatRectangle = RectangleTransitionMesh.ToFlatShaded(rectangle);
-                    verticesList.AddRange(flatRectangle.Vertices);
-                    uvList.AddRange(flatRectangle.UVs);
+                    RectangleTransitionMeshData usedRect = RectFlat(_config.shadingStyle)
+                        ? RectangleTransitionMesh.ToFlatShaded(rectangle)
+                        : rectangle;
+                    verticesList.AddRange(usedRect.Vertices);
+                    uvList.AddRange(usedRect.UVs);
                     int addedCount = verticesList.Count - preCount;
                     for (int c = 0; c < addedCount; c++) allColors.Add(cellColor);
                     hexCellData.MeshTransitionVertexRanges.Add((preCount, addedCount));
-                    OtherMeshDrawOrderElementAddRule(ref hexCellData, flatRectangle.Indices, ref ints, IndexOffset);
+                    OtherMeshDrawOrderElementAddRule(ref hexCellData, usedRect.Indices, ref ints, IndexOffset);
                 }
+
+                int rectangleVertexCount = verticesList.Count - IndexOffset;
+                if (rectangleVertexCount > 0)
+                    rectangleVertexRanges.Add((IndexOffset, rectangleVertexCount));
 
                 Material matA = HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
                 Material matB = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, hexDirections[i]), _config.mapMaterial);
@@ -250,6 +273,7 @@ public class MapRenderer : MonoBehaviour
                 int addedCount = verticesList.Count - preCount;
                 for (int c = 0; c < addedCount; c++) allColors.Add(cellColor);
                 hexCellData.MeshTransitionVertexRanges.Add((preCount, addedCount));
+                triangleVertexRanges.Add((preCount, addedCount));
                 OtherMeshDrawOrderElementAddRule(ref hexCellData, triangle.Indices, ref ints, IndexOffset);
 
                 Material matA = HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
@@ -304,6 +328,8 @@ public class MapRenderer : MonoBehaviour
             mapGenerator.verticesList = verticesList;
             mapGenerator.mesh = mainMesh;
         }
+        PostProcessNormals(mainMesh, _config.shadingStyle, rectangleVertexRanges, triangleVertexRanges);
+        Debug.Log($"MapRenderer: terrain shading style = {_config.shadingStyle}");
         _terrainMesh = mainMesh;
     }
 
@@ -763,19 +789,20 @@ public class MapRenderer : MonoBehaviour
         if (directionA == Enums.HexDirection.NE && directionB == Enums.HexDirection.E)
         {
             HexCellData neighborNE = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE);
-            // 渲染前展开为逐面独立顶点（flat shading），避免 center-fan 中心枢纽顶点被平均出发暗的法线。
-            return TriangleTransitionMesh.ToFlatShaded(RectangleDrivenTriangleMesh.BuildNEE(
+            var raw = RectangleDrivenTriangleMesh.BuildNEE(
                 GetRectangleMesh(hexCellData, Enums.HexDirection.NE),
                 GetRectangleMesh(neighborNE, Enums.HexDirection.SE),
-                GetRectangleMesh(hexCellData, Enums.HexDirection.E)));
+                GetRectangleMesh(hexCellData, Enums.HexDirection.E));
+            return TriFlat(_config.shadingStyle) ? TriangleTransitionMesh.ToFlatShaded(raw) : raw;
         }
         if (directionA == Enums.HexDirection.E && directionB == Enums.HexDirection.SE)
         {
             HexCellData neighborSE = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE);
-            return TriangleTransitionMesh.ToFlatShaded(RectangleDrivenTriangleMesh.BuildESE(
+            var raw = RectangleDrivenTriangleMesh.BuildESE(
                 GetRectangleMesh(hexCellData, Enums.HexDirection.E),
                 GetRectangleMesh(neighborSE, Enums.HexDirection.NE),
-                GetRectangleMesh(hexCellData, Enums.HexDirection.SE)));
+                GetRectangleMesh(hexCellData, Enums.HexDirection.SE));
+            return TriFlat(_config.shadingStyle) ? TriangleTransitionMesh.ToFlatShaded(raw) : raw;
         }
 
         throw new System.ArgumentException("Unsupported triangle directions.");
@@ -1038,7 +1065,8 @@ public class MapRenderer : MonoBehaviour
 
     private void InstantiateLandForms(Vector3[] hexVertices)
     {
-        GameObject landForm = new GameObject("LandForm");
+        _landFormRoot = new GameObject("LandForm");
+        SetLayerRecursively(_landFormRoot, LayerMask.NameToLayer("FogAffectedEnvironment"));
 
         for (int j = 0; j < hexVertices.Length; j++)
         {
@@ -1047,15 +1075,18 @@ public class MapRenderer : MonoBehaviour
             hexCellData.landFormModel = Instantiate(environmentModelsProvider.GetLandFormPrefab((int)hexCellData.landFormType));
             hexCellData.landFormModel.transform.position = hexCellData.RealCenterWorldCoordinate + new Vector3(0, 0, 0);
             hexCellData.landFormModel.AddComponent<ModelController>();
-            hexCellData.landFormModel.transform.SetParent(landForm.transform);
+            hexCellData.landFormModel.transform.SetParent(_landFormRoot.transform);
+            SetLayerRecursively(hexCellData.landFormModel, _landFormRoot.layer);
         }
 
-        if (landForm.transform.childCount > 0)
-            StaticBatchingUtility.Combine(landForm);
+        // 资源/地貌需要由 CommandBuffer 逐 Renderer 重绘对象遮罩。
+        // Runtime StaticBatchingUtility.Combine 会改变 Renderer 的底层网格范围，
+        // 替换材质重绘时可能把整批几何写入单个对象遮罩，造成全屏误雾化。
     }
     private void InstantiateResources(Vector3[] hexVertices)
     {
-        GameObject Resource = new GameObject("Resource");
+        _resourceRoot = new GameObject("Resource");
+        SetLayerRecursively(_resourceRoot, LayerMask.NameToLayer("FogAffectedEnvironment"));
         for (int j = 0; j < hexVertices.Length; j++)
         {
             HexCellData hexCellData = _mapDataService.GetCell(hexVertices[j]);
@@ -1063,11 +1094,36 @@ public class MapRenderer : MonoBehaviour
             hexCellData.resourceModel = Instantiate(environmentModelsProvider.GetResourcePrefab((int)hexCellData.resourceType));
             hexCellData.resourceModel.transform.position = hexCellData.RealCenterWorldCoordinate + new Vector3(0, 0, 0);
             hexCellData.resourceModel.AddComponent<ModelController>();
-            hexCellData.resourceModel.transform.SetParent(Resource.transform);
+            hexCellData.resourceModel.transform.SetParent(_resourceRoot.transform);
+            SetLayerRecursively(hexCellData.resourceModel, _resourceRoot.layer);
         }
 
-        if (Resource.transform.childCount > 0)
-            StaticBatchingUtility.Combine(Resource);
+        // 同上：选择性雾化阶段不对资源做运行时静态合批。
+    }
+
+    private void SetupEnvironmentFogEffect()
+    {
+        Camera mainCamera = Camera.main;
+        if (mainCamera == null)
+        {
+            Debug.LogWarning("MapRenderer: 找不到 Main Camera，跳过资源/地貌选择性雾化效果。");
+            return;
+        }
+
+        _environmentFogEffect = mainCamera.GetComponent<FogEnvironmentSelectiveEffect>();
+        if (_environmentFogEffect == null)
+            _environmentFogEffect = mainCamera.gameObject.AddComponent<FogEnvironmentSelectiveEffect>();
+
+        _environmentFogEffect.Initialize(_landFormRoot, _resourceRoot);
+    }
+
+    private static void SetLayerRecursively(GameObject root, int layer)
+    {
+        if (root == null || layer < 0) return;
+
+        root.layer = layer;
+        foreach (Transform child in root.transform)
+            SetLayerRecursively(child.gameObject, layer);
     }
 
     private void Awake()
@@ -1080,23 +1136,104 @@ public class MapRenderer : MonoBehaviour
         Subscribe();
     }
 
+    private void Update()
+    {
+        // 【迷雾过渡】每帧驱动过渡管理器，推进 FogAlpha
+        _fogTransition.Tick(Time.deltaTime);
+
+        // 限频刷新视觉：只在有过渡且计时器到期时更新纹理/顶点色
+        if (_fogTransition.IsDirty)
+        {
+            _fogRefreshTimer += Time.deltaTime;
+            if (_fogRefreshTimer >= FogRefreshInterval)
+            {
+                _fogRefreshTimer = 0f;
+                UpdateExplorationVisuals();
+                RebuildFogMask();
+                _fogTransition.ClearDirty();
+            }
+        }
+    }
+
     private void OnDisable()
     {
-        if (!_isSubscribed || _mapVisualEvent == null) return;
-        _mapVisualEvent.OnMapVisualChanged.RemoveListener(OnMapVisualChanged);
-        _isSubscribed = false;
+        if (_isSubscribed && _mapVisualEvent != null)
+        {
+            _mapVisualEvent.OnMapVisualChanged.RemoveListener(OnMapVisualChanged);
+            _isSubscribed = false;
+        }
+        if (_isLogisticsSubscribed && _logisticsService != null)
+        {
+            _logisticsService.LogisticsChanged -= OnLogisticsChanged;
+            _isLogisticsSubscribed = false;
+        }
     }
 
     private void Subscribe()
     {
-        if (_isSubscribed || _mapVisualEvent == null) return;
-        _mapVisualEvent.OnMapVisualChanged.AddListener(OnMapVisualChanged);
-        _isSubscribed = true;
+        if (!_isSubscribed && _mapVisualEvent != null)
+        {
+            _mapVisualEvent.OnMapVisualChanged.AddListener(OnMapVisualChanged);
+            _isSubscribed = true;
+        }
+        if (!_isLogisticsSubscribed && _logisticsService != null)
+        {
+            _logisticsService.LogisticsChanged += OnLogisticsChanged;
+            _isLogisticsSubscribed = true;
+        }
     }
 
     private void OnMapVisualChanged()
     {
-        UpdateFogMask();
+        // 【迷雾过渡】不再瞬间重建，而是更新所有 cell 的过渡目标
+        UpdateFogTransitionTargets();
+        _environmentFogEffect?.RefreshRenderers();
+    }
+
+    private void OnLogisticsChanged()
+    {
+        // 【迷雾过渡】不再瞬间重建，而是更新所有 cell 的过渡目标
+        UpdateFogTransitionTargets();
+        _environmentFogEffect?.RefreshRenderers();
+    }
+
+    /// <summary>
+    /// 遍历所有 cell，根据探索/可见状态设置过渡目标值，交给过渡管理器驱动。
+    /// </summary>
+    private void UpdateFogTransitionTargets()
+    {
+        if (_cellsInGenerateOrder == null) return;
+
+        const int PlayerViewerFactionId = 0;
+
+        foreach (var cell in _cellsInGenerateOrder)
+        {
+            if (cell == null) continue;
+
+            // 计算目标可见性（与原 RebuildFogMask 逻辑一致）
+            bool isVisible = (_logisticsService != null)
+                ? _logisticsService.IsVisibleToFaction(cell, PlayerViewerFactionId)
+                : cell.IsExplored;
+
+            // 目标值：可见 → 1.0，不可见 → 0.0
+            float targetAlpha = isVisible ? 1f : 0f;
+
+            // 首次（开局）立即快照到目标值，避免开局主城范围缓慢浮现；
+            // 之后的探索/失去可见性才走逐渐过渡。
+            if (_fogInitialized)
+                _fogTransition.RequestTransition(cell, targetAlpha);
+            else
+                _fogTransition.SnapTransition(cell, targetAlpha);
+        }
+
+        if (!_fogInitialized)
+        {
+            // 首帧快照后立即刷新一次视觉，确保开局画面正确
+            _fogInitialized = true;
+            UpdateExplorationVisuals();
+            RebuildFogMask();
+            _fogTransition.ClearDirty();
+        }
     }
 
     private void SetupFogGlobalShaderProperties(Vector3[] hexVertices)
@@ -1157,13 +1294,16 @@ public class MapRenderer : MonoBehaviour
         Shader.SetGlobalFloat("_FogPixelSize", _config != null ? _config.fogPixelSize : 0f);
         Shader.SetGlobalFloat("_FogJaggedAmount", _config != null ? _config.fogJaggedAmount : 1.0f);
         Shader.SetGlobalFloat("_FogNoiseWavelength", _config != null ? _config.fogNoiseWavelength : 2.0f);
+        Shader.SetGlobalFloat("_FogEdgeStyle", _config != null ? (float)(int)_config.fogEdgeStyle : 0f);
+        Shader.SetGlobalFloat("_FogEdgeSoftness", _config != null ? _config.fogEdgeSoftness : 0.8f);
+        Shader.SetGlobalFloat("_FogEdgeAnimSpeed", _config != null ? _config.fogEdgeAnimSpeed : 0.25f);
 
         // 【探索重构-方案三】未探索区视觉参数（去饱和+半透明雾）
         Shader.SetGlobalFloat("_FogUnexploredDesaturate", 0.5f);
         Shader.SetGlobalFloat("_FogUnexploredBlend", 0.7f);
         Shader.SetGlobalVector("_FogScrollSpeed", new Vector4(0.02f, 0.01f, 0f, 0f));
 
-        // 方案B：按同一包围盒新建探索遮罩并绑定为全局纹理（内容由 UpdateFogMask 增量盖章）。
+        // 方案B：按同一包围盒新建探索遮罩并绑定为全局纹理（内容由 RebuildFogMask 全量重建）。
         CreateFogMask(minX, minZ, sizeX, sizeZ);
         Shader.SetGlobalTexture("_FogMaskTex", _fogMaskTex);
 
@@ -1204,10 +1344,10 @@ public class MapRenderer : MonoBehaviour
         UpdateRiverExplorationVisuals();
     }
 
-    // 【探索重构-阶段6】顶点色编码简化：.r=IsExplored(0/1)，.g 废弃（固定0）
+    // 【探索重构-阶段6】【迷雾过渡】顶点色编码：.r=FogAlpha(0-1 连续值，过渡中)，.g 废弃（固定0）
     private static Color FogVertexColor(HexCellData cell)
     {
-        float r = cell.IsExplored ? 1f : 0f;
+        float r = cell.FogAlpha; // 不再是二进制，而是连续过渡值
         return new Color(r, 0f, 0f, 1f);
     }
 
@@ -1236,10 +1376,9 @@ public class MapRenderer : MonoBehaviour
         _fogMaskData = new Color32[_fogMaskW * _fogMaskH]; // 默认全 0 = 全未探索
         _fogMaskTex.SetPixels32(_fogMaskData);
         _fogMaskTex.Apply(false);
-        _fogMaskStamped.Clear();
     }
 
-    // 把一格的六边形足迹盖章进遮罩的 R 通道（已探索）。
+    // 把一格的六边形足迹盖章进遮罩的 R 通道（探索状态由 FogAlpha 驱动）。
     private void StampCellToFogMask(HexCellData cell)
     {
         if (_fogMaskData == null) return;
@@ -1253,6 +1392,9 @@ public class MapRenderer : MonoBehaviour
         int py0 = Mathf.Clamp(Mathf.FloorToInt((c.z - o - _fogMaskOrigin.y) / _fogMaskSize.y * _fogMaskH), 0, _fogMaskH - 1);
         int py1 = Mathf.Clamp(Mathf.CeilToInt ((c.z + o - _fogMaskOrigin.y) / _fogMaskSize.y * _fogMaskH), 0, _fogMaskH - 1);
 
+        // 【迷雾过渡】盖章强度由 FogAlpha 决定，0-255 连续值
+        byte intensity = (byte)Mathf.RoundToInt(cell.FogAlpha * 255f);
+
         for (int py = py0; py <= py1; py++)
         {
             float wz = _fogMaskOrigin.y + (py + 0.5f) / _fogMaskH * _fogMaskSize.y;
@@ -1265,21 +1407,24 @@ public class MapRenderer : MonoBehaviour
                     Mathf.Abs(-0.5f * dx + H * dz) <= ir)
                 {
                     int idx = py * _fogMaskW + px;
-                    _fogMaskData[idx].r = 255;
+                    _fogMaskData[idx].r = intensity;
                 }
             }
         }
     }
 
-    // 更新探索遮罩：R=已探索（单调，增量盖章）。
-    private void UpdateFogMask()
+    private void RebuildFogMask()
     {
         if (_fogMaskTex == null || _fogMaskData == null || _cellsInGenerateOrder == null) return;
 
+        // 【迷雾过渡】全清 0（每帧重建时的初始状态）
+        for (int i = 0; i < _fogMaskData.Length; i++)
+            _fogMaskData[i].r = 0;
+
+        // 【迷雾过渡】盖章所有 cell，强度由 FogAlpha 控制（不再是二进制可见性判断）
         foreach (var cell in _cellsInGenerateOrder)
         {
-            if (cell == null || !cell.IsExplored) continue;
-            if (!_fogMaskStamped.Add(cell)) continue;
+            if (cell == null) continue;
             StampCellToFogMask(cell);
         }
 
@@ -1323,5 +1468,342 @@ public class MapRenderer : MonoBehaviour
         }
 
         _waterMesh.colors = _cachedWaterColors;
+    }
+
+    private static bool RectFlat(Enums.ShadingStyle style)
+    {
+        return style == Enums.ShadingStyle.FlatAll || style == Enums.ShadingStyle.FlatRect_SmoothTri;
+    }
+
+    private static bool TriFlat(Enums.ShadingStyle style)
+    {
+        return style == Enums.ShadingStyle.FlatAll || style == Enums.ShadingStyle.SmoothRect_FlatTri;
+    }
+
+    private void PostProcessNormals(
+        Mesh mesh,
+        Enums.ShadingStyle style,
+        List<(int start, int count)> rectangleRanges,
+        List<(int start, int count)> triangleRanges)
+    {
+        if (style == Enums.ShadingStyle.FlatAll)
+            return;
+
+        Vector3[] normals = mesh.normals;
+        Vector3[] smoothNormals = BuildPositionSmoothedNormals(mesh);
+
+        switch (style)
+        {
+            case Enums.ShadingStyle.SmoothAll:
+            case Enums.ShadingStyle.ForceUpNormals:
+            case Enums.ShadingStyle.ExaggeratedNormals:
+                normals = smoothNormals;
+                break;
+            case Enums.ShadingStyle.FlatRect_SmoothTri:
+                ApplyNormalRanges(normals, smoothNormals, triangleRanges);
+                break;
+            case Enums.ShadingStyle.SmoothRect_FlatTri:
+                ApplyNormalRanges(normals, smoothNormals, rectangleRanges);
+                break;
+        }
+
+        if (style == Enums.ShadingStyle.ForceUpNormals ||
+            style == Enums.ShadingStyle.ExaggeratedNormals)
+        {
+            ApplyStylizedTransitionNormals(normals, style);
+        }
+
+        mesh.normals = normals;
+        MapController.RecalculateTangentsSafe(mesh);
+    }
+
+    private static Vector3[] BuildPositionSmoothedNormals(Mesh mesh)
+    {
+        Vector3[] vertices = mesh.vertices;
+        var sums = new Dictionary<Vector3Int, Vector3>();
+
+        for (int subMesh = 0; subMesh < mesh.subMeshCount; subMesh++)
+        {
+            int[] triangles = mesh.GetTriangles(subMesh);
+            for (int i = 0; i < triangles.Length; i += 3)
+            {
+                int a = triangles[i];
+                int b = triangles[i + 1];
+                int c = triangles[i + 2];
+                Vector3 faceNormal = Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]);
+                if (faceNormal.sqrMagnitude < 1e-10f) continue;
+
+                AccumulateNormal(sums, PositionKey(vertices[a]), faceNormal);
+                AccumulateNormal(sums, PositionKey(vertices[b]), faceNormal);
+                AccumulateNormal(sums, PositionKey(vertices[c]), faceNormal);
+            }
+        }
+
+        var result = new Vector3[vertices.Length];
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            sums.TryGetValue(PositionKey(vertices[i]), out Vector3 sum);
+            result[i] = sum.sqrMagnitude > 1e-10f ? sum.normalized : Vector3.up;
+        }
+        return result;
+    }
+
+    private static Vector3Int PositionKey(Vector3 position)
+    {
+        const float precision = 10000f;
+        return new Vector3Int(
+            Mathf.RoundToInt(position.x * precision),
+            Mathf.RoundToInt(position.y * precision),
+            Mathf.RoundToInt(position.z * precision));
+    }
+
+    private static void AccumulateNormal(
+        Dictionary<Vector3Int, Vector3> sums,
+        Vector3Int key,
+        Vector3 normal)
+    {
+        sums.TryGetValue(key, out Vector3 current);
+        sums[key] = current + normal;
+    }
+
+    private static void ApplyNormalRanges(
+        Vector3[] target,
+        Vector3[] source,
+        List<(int start, int count)> ranges)
+    {
+        foreach (var range in ranges)
+        {
+            int end = Mathf.Min(range.start + range.count, target.Length);
+            for (int i = range.start; i < end; i++)
+                target[i] = source[i];
+        }
+    }
+
+    private void ApplyStylizedTransitionNormals(Vector3[] normals, Enums.ShadingStyle style)
+    {
+        foreach (HexCellData cell in _cellsInGenerateOrder)
+        {
+            foreach (var range in cell.MeshTransitionVertexRanges)
+            {
+                int end = Mathf.Min(range.start + range.count, normals.Length);
+                for (int i = range.start; i < end; i++)
+                {
+                    if (style == Enums.ShadingStyle.ForceUpNormals)
+                    {
+                        normals[i] = Vector3.up;
+                        continue;
+                    }
+
+                    Vector3 normal = normals[i];
+                    normals[i] = new Vector3(normal.x * 2f, normal.y * 0.3f, normal.z * 2f).normalized;
+                }
+            }
+        }
+    }
+}
+
+[DisallowMultipleComponent]
+[RequireComponent(typeof(Camera))]
+public sealed class FogEnvironmentSelectiveEffect : MonoBehaviour
+{
+    private static readonly int ObjectMaskId = Shader.PropertyToID("_FogAffectedObjectMask");
+    private static readonly int SceneColorId = Shader.PropertyToID("_FogSceneColorTex");
+
+    private readonly List<Renderer> _renderers = new List<Renderer>();
+    private Camera _camera;
+    private GameObject _landFormRoot;
+    private GameObject _resourceRoot;
+    private Material _maskMaterial;
+    private Material _validationMaterial;
+    private RenderTexture _objectMask;
+    private CommandBuffer _maskCommands;
+    private int _maskWidth;
+    private int _maskHeight;
+    private bool _initialized;
+
+    public void Initialize(GameObject landFormRoot, GameObject resourceRoot)
+    {
+        _camera = GetComponent<Camera>();
+        _camera.depthTextureMode |= DepthTextureMode.Depth;
+        _landFormRoot = landFormRoot;
+        _resourceRoot = resourceRoot;
+
+        if (!CreateMaterials())
+        {
+            enabled = false;
+            return;
+        }
+
+        _initialized = true;
+        RefreshRenderers();
+    }
+
+    public void RefreshRenderers()
+    {
+        if (!_initialized) return;
+
+        _renderers.Clear();
+        AddRenderers(_landFormRoot);
+        AddRenderers(_resourceRoot);
+        EnsureMaskResources();
+        RebuildMaskCommands();
+    }
+
+    private void OnEnable()
+    {
+        _camera = GetComponent<Camera>();
+        _camera.depthTextureMode |= DepthTextureMode.Depth;
+        if (_initialized)
+            RefreshRenderers();
+    }
+
+    private void OnPreCull()
+    {
+        if (!_initialized) return;
+        EnsureMaskResources();
+    }
+
+    private void OnRenderImage(RenderTexture source, RenderTexture destination)
+    {
+        if (!_initialized || _validationMaterial == null || _objectMask == null)
+        {
+            Graphics.Blit(source, destination);
+            return;
+        }
+
+        _validationMaterial.SetTexture(ObjectMaskId, _objectMask);
+        // 不依赖 Graphics.Blit 对隐式 _MainTex 的绑定；该 Shader include 多套全局纹理后，
+        // 部分平台/编辑器路径下 _MainTex 会采到默认灰纹理。
+        _validationMaterial.SetTexture(SceneColorId, source);
+        Graphics.Blit(source, destination, _validationMaterial);
+    }
+
+    private bool CreateMaterials()
+    {
+        if (_maskMaterial == null)
+        {
+            Shader maskShader = Shader.Find("Hidden/FogEnvironmentObjectMask");
+            if (maskShader == null)
+            {
+                Debug.LogError("FogEnvironmentSelectiveEffect: 找不到 Hidden/FogEnvironmentObjectMask Shader。");
+                return false;
+            }
+            _maskMaterial = new Material(maskShader) { hideFlags = HideFlags.HideAndDontSave };
+        }
+
+        if (_validationMaterial == null)
+        {
+            Shader effectShader = Shader.Find("Hidden/FogEnvironmentSelective");
+            if (effectShader == null)
+            {
+                Debug.LogError("FogEnvironmentSelectiveEffect: 找不到 Hidden/FogEnvironmentSelective Shader。");
+                return false;
+            }
+            _validationMaterial = new Material(effectShader) { hideFlags = HideFlags.HideAndDontSave };
+        }
+
+        return true;
+    }
+
+    private void EnsureMaskResources()
+    {
+        int width = Mathf.Max(1, _camera.pixelWidth);
+        int height = Mathf.Max(1, _camera.pixelHeight);
+        if (_objectMask != null && width == _maskWidth && height == _maskHeight) return;
+
+        ReleaseMaskTexture();
+        _maskWidth = width;
+        _maskHeight = height;
+
+        // RG 存模型片元的地图 UV，B 存有效标记；不能再用单通道 R8。
+        RenderTextureFormat format = SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGBHalf)
+            ? RenderTextureFormat.ARGBHalf
+            : RenderTextureFormat.ARGB32;
+        _objectMask = new RenderTexture(width, height, 0, format, RenderTextureReadWrite.Linear)
+        {
+            name = "FogAffectedObjectMask",
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+            useMipMap = false,
+            autoGenerateMips = false
+        };
+        _objectMask.Create();
+        RebuildMaskCommands();
+    }
+
+    private void RebuildMaskCommands()
+    {
+        if (!_initialized || _objectMask == null || _maskMaterial == null) return;
+
+        RemoveMaskCommands();
+        _maskCommands = new CommandBuffer { name = "Fog Environment Object Mask" };
+        _maskCommands.SetRenderTarget(_objectMask);
+        _maskCommands.ClearRenderTarget(false, true, Color.black);
+
+        foreach (Renderer renderer in _renderers)
+        {
+            if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
+
+            int subMeshCount = GetSubMeshCount(renderer);
+            for (int subMesh = 0; subMesh < subMeshCount; subMesh++)
+                _maskCommands.DrawRenderer(renderer, _maskMaterial, subMesh, 0);
+        }
+
+        // SetRenderTarget 会持续影响后续相机步骤，必须在图像效果前恢复颜色目标；
+        // 否则 OnRenderImage 的 source 可能来自单通道对象遮罩而非场景颜色。
+        _maskCommands.SetRenderTarget(BuiltinRenderTextureType.CameraTarget);
+        _camera.AddCommandBuffer(CameraEvent.BeforeImageEffects, _maskCommands);
+    }
+
+    private void AddRenderers(GameObject root)
+    {
+        if (root == null) return;
+
+        // 环境预制体可能附带 ParticleSystemRenderer、TrailRenderer 等特效。
+        // 这些渲染器使用纯几何替换 Shader 重绘时可能生成覆盖全屏的错误遮罩，
+        // 选择性雾化只标记实际模型表面。
+        foreach (Renderer renderer in root.GetComponentsInChildren<Renderer>(true))
+        {
+            if (renderer is MeshRenderer || renderer is SkinnedMeshRenderer)
+                _renderers.Add(renderer);
+        }
+    }
+
+    private static int GetSubMeshCount(Renderer renderer)
+    {
+        if (renderer is SkinnedMeshRenderer skinned && skinned.sharedMesh != null)
+            return skinned.sharedMesh.subMeshCount;
+
+        MeshFilter filter = renderer.GetComponent<MeshFilter>();
+        return filter != null && filter.sharedMesh != null ? filter.sharedMesh.subMeshCount : 1;
+    }
+
+    private void OnDisable()
+    {
+        RemoveMaskCommands();
+        ReleaseMaskTexture();
+    }
+
+    private void OnDestroy()
+    {
+        if (_maskMaterial != null) Destroy(_maskMaterial);
+        if (_validationMaterial != null) Destroy(_validationMaterial);
+    }
+
+    private void RemoveMaskCommands()
+    {
+        if (_maskCommands == null) return;
+        if (_camera != null)
+            _camera.RemoveCommandBuffer(CameraEvent.BeforeImageEffects, _maskCommands);
+        _maskCommands.Release();
+        _maskCommands = null;
+    }
+
+    private void ReleaseMaskTexture()
+    {
+        if (_objectMask == null) return;
+        _objectMask.Release();
+        Destroy(_objectMask);
+        _objectMask = null;
     }
 }

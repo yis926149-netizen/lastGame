@@ -22,6 +22,8 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     private readonly IUnitRepository _unitRepository;
     private readonly Canvas _targetUICanvas;
     private readonly IExplorationService _explorationService;
+    private readonly GameLoop _gameLoop;
+    private readonly ILogisticsService _logisticsService;
 
     private bool _isDraggingCard;
     private HexCellData _lastDraggingHighlightCell;
@@ -35,7 +37,9 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         IUnitRepository unitRepository,
         [Inject(Id = "TargetUICanvas")] Canvas targetUICanvas,
         MapGenerator mapGenerator,
-        IExplorationService explorationService
+        IExplorationService explorationService,
+        GameLoop gameLoop,
+        [InjectOptional] ILogisticsService logisticsService
     )
     {
         _input = input;
@@ -45,6 +49,8 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         _targetUICanvas = targetUICanvas;
         _mapGenerator = mapGenerator;
         _explorationService = explorationService;
+        _gameLoop = gameLoop;
+        _logisticsService = logisticsService;
     }
 
     public void Tick()
@@ -67,6 +73,12 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     // ---------- 卡牌拖拽高亮 ----------
     private void HandleCardDragging()
     {
+        if (_gameLoop != null && _gameLoop.IsPaused)
+        {
+            CancelCardDragging();
+            return;
+        }
+
         if (_input.GetMouseButtonDown(0) && IsMouseOverCard()) _isDraggingCard = true;
         if (_input.GetMouseButtonUp(0))
             CancelCardDragging();
@@ -188,6 +200,7 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     // ---------- 探索：点击未探索格触发探索 ----------
     private void HandleTileClickForExploration()
     {
+        if (_gameLoop != null && _gameLoop.IsPaused) return;
         // 只在非拖卡状态下响应点击
         if (_isDraggingCard) return;
         if (!_input.GetMouseButtonDown(0)) return;
@@ -204,7 +217,26 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         // 未探索格才尝试探索
         if (cell.IsExplored) return;
 
+        // 必须有花费标签才能点击：邻接玩家已占领的已探索格（与 CostLabelRenderer 门控条件一致）
+        if (!HasExploredPlayerNeighbor(cell)) return;
+
         // 尝试探索
         _explorationService.TryExplore(cell);
+    }
+
+    /// <summary>
+    /// 与 CostLabelRenderer.HasExploredNeighbor(playerIndex:0) 条件完全一致：
+    /// 邻接至少一个已探索且归属玩家(index=0)的格子。
+    /// </summary>
+    private bool HasExploredPlayerNeighbor(HexCellData cell)
+    {
+        for (int i = 0; i < 6; i++)
+        {
+            var n = _mapData.GetNeighbor(cell, (Enums.HexDirection)i);
+            if (n == null || n.Player_City_Index.Key != 0) continue;
+            if (_logisticsService == null || _logisticsService.IsLogisticsConnected(n, 0))
+                return true;
+        }
+        return false;
     }
 }

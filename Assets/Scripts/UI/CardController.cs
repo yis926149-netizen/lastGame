@@ -62,7 +62,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
         _image.color = Color.white;
 
-        _image.alphaHitTestMinimumThreshold = 0.01f;
+        try { _image.alphaHitTestMinimumThreshold = 0.01f; } catch (System.Exception) { }
     }
 
     public void PlayDealAnimation(Vector3 targetPosition, System.Action onComplete, bool isNextCard = false)
@@ -128,25 +128,18 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        // 【批次 C】暂停时禁止拖牌，运行时始终可拖（移除回合阶段门控）
-        if (IsNextCard || _gameLoop.IsPaused)
+        if (IsNextCard || (_gameLoop != null && _gameLoop.IsPaused))
         {
             eventData.pointerDrag = null;
             return;
         }
         _playerInputHandler.Value.ForceDeselectUnit();
-        _isDragging = true;                        
+        _isDragging = true;
     }
 
     public void OnDrag(PointerEventData eventData)
     {
         if (IsNextCard || !_isDragging) return;
-        // 【批次 C】暂停时取消拖拽
-        if (_gameLoop.IsPaused)
-        {
-            CancelDrag();
-            return;
-        }
 
         transform.SetAsLastSibling();               
 
@@ -171,6 +164,12 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _isDragging = false;
 
         ClearHighlights();
+
+        if (_gameLoop != null && _gameLoop.IsPaused)
+        {
+            ResetToOrigin();
+            return;
+        }
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         if (Physics.Raycast(ray, out RaycastHit hit) && hit.transform.gameObject == _mapDataService.MapGameObject)

@@ -39,7 +39,9 @@ public class GameInstaller : MonoInstaller
         // 【公共建筑系统】公共建筑配置与生成器
         Container.Bind<PublicBuildingSO>().FromInstance(_publicBuildingSO).AsSingle();
         Container.Bind<IPublicBuildingDataProvider>().To<PublicBuildingDataProvider>().AsSingle();
+        Container.Bind<PublicBuildingMarkerManager>().AsSingle();
         Container.Bind<PublicBuildingGenerator>().AsSingle();
+        Container.Bind<ExplorationPillarPool>().FromComponentInHierarchy().AsSingle();
 
         // UI
 
@@ -94,9 +96,11 @@ public class GameInstaller : MonoInstaller
         Container.Bind(typeof(GoldWallet), typeof(IPlayerResourceWallet)).To<GoldWallet>().AsSingle();
         Container.Bind<IExplorationCostProvider>().To<FixedExplorationCostProvider>().AsSingle();
         Container.BindInterfacesAndSelfTo<GoldIncomeService>().AsSingle().NonLazy();   // ITickable 被动收入
+        Container.BindInterfacesAndSelfTo<SunCycleController>().AsSingle().NonLazy(); // ITickable 太阳升降循环
 
         // 【探索重构-阶段5.5】势力范围服务（新模型：主城固有范围 + 探索占领 + 公共建筑占领）
         Container.Bind<ITerritoryService>().To<TerritoryService>().AsSingle();
+        Container.Bind<ILogisticsService>().To<LogisticsService>().AsSingle();
 
         //��ͼ�¼�
         Container.BindInstance(_mapVisualEventSO).AsSingle();
@@ -227,6 +231,7 @@ public class GameInstaller : MonoInstaller
         AddMissingInScene<GameFlowManager>(missing);
         AddMissingInScene<CameraController>(missing);
         AddMissingInScene<EndGame>(missing);
+        AddMissingInScene<ExplorationPillarPool>(missing);
 
         if (missing.Count > 0)
         {

@@ -23,7 +23,7 @@ public class PlayerModelManager : MonoBehaviour
     //城市数量
     [HideInInspector]
     public int CityCount = 0;
-    private int _nextCityIndex;
+    private int _nextCityIndex = 1;
 
     //科文建筑列表
     [HideInInspector]
@@ -49,6 +49,18 @@ public class PlayerModelManager : MonoBehaviour
     [HideInInspector]
     public int AltarBuildingIndex = 0;
 
+    //军营建筑列表
+    [HideInInspector]
+    public Dictionary<int, GameObject> Index_BarracksBuilding = new Dictionary<int, GameObject>();
+    [HideInInspector]
+    public int BarracksBuildingIndex = 0;
+
+    //箭塔建筑列表
+    [HideInInspector]
+    public Dictionary<int, GameObject> Index_ArrowTowerBuilding = new Dictionary<int, GameObject>();
+    [HideInInspector]
+    public int ArrowTowerBuildingIndex = 0;
+
     //总势力范围
     //地块的六边形坐标_地块的HexCell_字典
     [HideInInspector]
@@ -61,19 +73,29 @@ public class PlayerModelManager : MonoBehaviour
 
     public void RebuildSphereOfInfluence()
     {
-        SphereOfInfluence_HexC_HexCellData.Clear();
-        foreach (var cityEntry in SingleCity_SphereOfInfluence_HexC_HexCellData)
-        {
-            var cityKey = new KeyValuePair<int, int>(0, cityEntry.Key);
-            foreach (var cellEntry in cityEntry.Value)
-            {
-                HexCellData cell = cellEntry.Value;
-                if (cell == null) continue;
+        var cells = _mapDataService.GetAllCells();
+        if (cells == null) return;
 
-                SphereOfInfluence_HexC_HexCellData[cellEntry.Key] = cell;
-                cell.Player_City_Index = cityKey;
+        SphereOfInfluence_HexC_HexCellData.Clear();
+        var newSingleCity = new Dictionary<int, Dictionary<Vector3, HexCellData>>();
+
+        foreach (var cell in cells)
+        {
+            if (cell == null || cell.Player_City_Index.Key != 0) continue;
+
+            int cityIndex = cell.Player_City_Index.Value;
+            SphereOfInfluence_HexC_HexCellData[cell.HexCoordinate] = cell;
+
+            if (!newSingleCity.TryGetValue(cityIndex, out var cityDict))
+            {
+                cityDict = new Dictionary<Vector3, HexCellData>();
+                newSingleCity[cityIndex] = cityDict;
             }
+            cityDict[cell.HexCoordinate] = cell;
         }
+
+        SingleCity_SphereOfInfluence_HexC_HexCellData = newSingleCity;
+        CityCount = newSingleCity.Count;
     }
 
 
@@ -153,7 +175,7 @@ public static class SphereOfInfluenceRules
         if (mapDataService == null || sphere == null) return;
 
         HexCellData center = mapDataService.GetCell(centerCoordinate);
-        if (center == null) return;
+        if (center == null || center.HexType == Enums.HexType.LakeOrSea || center.IsUnexplorable) return;
 
         sphere[center.HexCoordinate] = center;
         center.Player_City_Index = owner;
@@ -162,6 +184,7 @@ public static class SphereOfInfluenceRules
         {
             HexCellData neighbor = mapDataService.GetNeighbor(center, (Enums.HexDirection)i);
             if (neighbor == null || sphere.ContainsKey(neighbor.HexCoordinate)) continue;
+            if (neighbor.HexType == Enums.HexType.LakeOrSea || neighbor.IsUnexplorable) continue;
             if (neighbor.Player_City_Index.Key != -1 && neighbor.Player_City_Index.Key != owner.Key) continue;
 
             sphere[neighbor.HexCoordinate] = neighbor;

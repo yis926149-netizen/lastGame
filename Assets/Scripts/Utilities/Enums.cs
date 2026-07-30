@@ -66,6 +66,25 @@ public class Enums
         GenericFan
     }
 
+    public enum ShadingStyle
+    {
+        FlatAll,
+        SmoothAll,
+        FlatRect_SmoothTri,
+        SmoothRect_FlatTri,
+        ForceUpNormals,
+        ExaggeratedNormals
+    }
+
+    public enum FogEdgeStyle
+    {
+        Original,
+        BlurMask9,
+        WideSmooth,
+        DitheredEdge,
+        SoftPlusFogBand
+    }
+
     // 高度生成模式
     public enum HeightGenerationMode
     {
@@ -107,7 +126,7 @@ public class Enums
     //建筑类型
     public enum BulidingType
     {
-        City, AttackStatue, DefenseStatue, Altar, TechnologyAndCultural,
+        City, AttackStatue, DefenseStatue, Altar, TechnologyAndCultural, Barracks, ArrowTower,
         // 【公共建筑系统】公共建筑（多格、可争夺、伪AI阵营）
         PublicBuilding,
         NoBuilding

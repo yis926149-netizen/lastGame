@@ -11,6 +11,7 @@ public enum TalentStatId
     damage = 0,
     defense = 1,
     gold = 2,
+    buildingHp = 3,
 }
 
 [System.Serializable]

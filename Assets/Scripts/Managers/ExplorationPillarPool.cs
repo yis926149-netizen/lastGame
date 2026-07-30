@@ -4,52 +4,70 @@ using Zenject;
 
 public class ExplorationPillarPool : MonoBehaviour
 {
+	[Header("特效方案选择")]
+	[SerializeField] private ExplorationEffectStyle _effectStyle = ExplorationEffectStyle.PillarRise;
+
+	[Header("方案一：石柱升起")]
 	[SerializeField] private GameObject _pillarPrefab;
+
+	[Header("方案二：飞盘砸落")]
+	[SerializeField] private GameObject _diskPrefab;
+
+	[Header("对象池配置")]
 	[SerializeField] private int _initialPoolSize = 5;
 
 	private IExplorationService _explorationService;
-	private Queue<ExplorationPillarEffect> _pool = new Queue<ExplorationPillarEffect>();
+	private Queue<ExplorationPillarEffect> _pillarPool = new Queue<ExplorationPillarEffect>();
+	private Queue<ExplorationDiskEffect> _diskPool = new Queue<ExplorationDiskEffect>();
+	private readonly HashSet<ExplorationPillarEffect> _pooledPillars = new HashSet<ExplorationPillarEffect>();
+	private readonly HashSet<ExplorationDiskEffect> _pooledDisks = new HashSet<ExplorationDiskEffect>();
 
 	private void Awake()
 	{
-		Debug.Log($"[PillarPool] Awake: enabled={enabled}, activeInHierarchy={gameObject.activeInHierarchy}");
 	}
 
 	private void OnEnable()
 	{
-		Debug.Log($"[PillarPool] OnEnable");
 	}
 
 	[Inject]
 	public void Construct(IExplorationService explorationService)
 	{
 		_explorationService = explorationService;
-		Debug.Log($"[PillarPool] Construct: explorationService = {explorationService}");
 	}
 
 	private void Start()
 	{
-		Debug.Log($"[PillarPool] Start: _pillarPrefab = {_pillarPrefab}, _explorationService = {_explorationService}");
-
-		if (_pillarPrefab == null)
-		{
-			Debug.LogError("[PillarPool] _pillarPrefab 未赋值！请在 Inspector 中拖入 Prefab。");
-			return;
-		}
 		if (_explorationService == null)
 		{
 			Debug.LogError("[PillarPool] _explorationService 未注入！Zenject 可能未找到该组件。");
 			return;
 		}
 
-		for (int i = 0; i < _initialPoolSize; i++)
+		switch (_effectStyle)
 		{
-			InstantiateToPool();
+			case ExplorationEffectStyle.PillarRise:
+				if (_pillarPrefab == null)
+				{
+					Debug.LogError("[PillarPool] _pillarPrefab 未赋值！请在 Inspector 中拖入 Prefab。");
+					return;
+				}
+				for (int i = 0; i < _initialPoolSize; i++)
+					ReturnPillarToPool(InstantiatePillar());
+				break;
+
+			case ExplorationEffectStyle.DiskSmash:
+				if (_diskPrefab == null)
+				{
+					Debug.LogError("[PillarPool] _diskPrefab 未赋值！请在 Inspector 中拖入 Prefab。");
+					return;
+				}
+				for (int i = 0; i < _initialPoolSize; i++)
+					ReturnDiskToPool(InstantiateDisk());
+				break;
 		}
-		Debug.Log($"[PillarPool] 预热完成，池中数量: {_pool.Count}");
 
 		_explorationService.CellExplored += OnCellExplored;
-		Debug.Log("[PillarPool] 已订阅 CellExplored 事件");
 	}
 
 	private void OnDestroy()
@@ -62,44 +80,86 @@ public class ExplorationPillarPool : MonoBehaviour
 
 	private void OnCellExplored(HexCellData cell)
 	{
-		Debug.Log($"================================================");
-		Debug.Log($"[PillarPool] ★ 收到 CellExplored 事件 ★");
-		Debug.Log($"[PillarPool] Hex坐标: {cell?.HexCoordinate}");
-		Debug.Log($"[PillarPool] CenterWorld: {cell?.CenterWorldCoordinate}");
-		Debug.Log($"[PillarPool] RealCenterWorld (扰动后): {cell?.RealCenterWorldCoordinate}");
-		Debug.Log($"[PillarPool] Height: {cell?.Height}, IsExplored: {cell?.IsExplored}");
-		Debug.Log($"================================================");
 		if (cell == null) return;
-		var pillar = Get();
-		Debug.Log($"[PillarPool] 取到pillar实例: {pillar?.name}, activeSelf={pillar?.gameObject?.activeSelf}");
 
-		// 柱体动画完成后 → 执行领土拓展、收割、视觉刷新 → 然后回池
-		var capturedCell = cell;
-		pillar.Play(cell.RealCenterWorldCoordinate,
-			onDissolveStart: () =>
-			{
-				Debug.Log($"[PillarPool] 溶解开始，执行 CompleteExploration for {capturedCell.HexCoordinate}");
-				_explorationService.CompleteExploration(capturedCell);
-			},
-			onComplete: (effect) =>
-			{
-				ReturnToPool(effect);
-			});
-	}
-
-	private ExplorationPillarEffect Get()
-	{
-		if (_pool.Count > 0)
+		switch (_effectStyle)
 		{
-			return _pool.Dequeue();
+			case ExplorationEffectStyle.PillarRise:
+				PlayPillarEffect(cell);
+				break;
+
+			case ExplorationEffectStyle.DiskSmash:
+				PlayDiskEffect(cell);
+				break;
 		}
-		return InstantiateToPool();
 	}
 
-	private ExplorationPillarEffect InstantiateToPool()
+	/// <summary>仅播放发现表现，不触发探索服务的占领、收割或奖励流程。</summary>
+	public void PlayRevealEffect(HexCellData cell)
+	{
+		if (cell == null) return;
+
+		switch (_effectStyle)
+		{
+			case ExplorationEffectStyle.PillarRise:
+				if (_pillarPrefab == null) return;
+				var pillar = GetPillar();
+				pillar.Play(cell.RealCenterWorldCoordinate,
+					onDissolveStart: null,
+					onComplete: ReturnPillarToPool);
+				break;
+
+			case ExplorationEffectStyle.DiskSmash:
+				if (_diskPrefab == null) return;
+				var disk = GetDisk();
+				disk.Play(cell.RealCenterWorldCoordinate,
+					onImpact: null,
+					onComplete: ReturnDiskToPool);
+				break;
+		}
+	}
+
+	private void PlayPillarEffect(HexCellData cell)
+	{
+		var pillar = GetPillar();
+		pillar.Play(cell.RealCenterWorldCoordinate,
+			onDissolveStart: () => { _explorationService.CompleteExploration(cell); },
+			onComplete: (effect) => { ReturnPillarToPool(effect); });
+	}
+
+	private void PlayDiskEffect(HexCellData cell)
+	{
+		var disk = GetDisk();
+		disk.Play(cell.RealCenterWorldCoordinate,
+			onImpact: () => { _explorationService.CompleteExploration(cell); },
+			onComplete: (effect) => { ReturnDiskToPool(effect); });
+	}
+
+	private ExplorationPillarEffect GetPillar()
+	{
+		if (_pillarPool.Count > 0)
+		{
+			var effect = _pillarPool.Dequeue();
+			_pooledPillars.Remove(effect);
+			return effect;
+		}
+		return InstantiatePillar();
+	}
+
+	private ExplorationDiskEffect GetDisk()
+	{
+		if (_diskPool.Count > 0)
+		{
+			var effect = _diskPool.Dequeue();
+			_pooledDisks.Remove(effect);
+			return effect;
+		}
+		return InstantiateDisk();
+	}
+
+	private ExplorationPillarEffect InstantiatePillar()
 	{
 		GameObject go = Instantiate(_pillarPrefab, transform);
-		Debug.Log($"[PillarPool] 实例化: {go.name}");
 		go.SetActive(false);
 		var effect = go.GetComponent<ExplorationPillarEffect>();
 		if (effect == null)
@@ -107,15 +167,33 @@ public class ExplorationPillarPool : MonoBehaviour
 			Debug.LogWarning($"[PillarPool] Prefab 上没有 ExplorationPillarEffect，自动添加");
 			effect = go.AddComponent<ExplorationPillarEffect>();
 		}
-		_pool.Enqueue(effect);
 		return effect;
 	}
 
-	private void ReturnToPool(ExplorationPillarEffect effect)
+	private ExplorationDiskEffect InstantiateDisk()
 	{
-		if (effect == null) return;
-		Debug.Log($"[PillarPool] 返回对象池: {effect.gameObject.name}");
+		GameObject go = Instantiate(_diskPrefab, transform);
+		go.SetActive(false);
+		var effect = go.GetComponent<ExplorationDiskEffect>();
+		if (effect == null)
+		{
+			Debug.LogWarning($"[PillarPool] Prefab 上没有 ExplorationDiskEffect，自动添加");
+			effect = go.AddComponent<ExplorationDiskEffect>();
+		}
+		return effect;
+	}
+
+	private void ReturnPillarToPool(ExplorationPillarEffect effect)
+	{
+		if (effect == null || !_pooledPillars.Add(effect)) return;
 		effect.gameObject.SetActive(false);
-		_pool.Enqueue(effect);
+		_pillarPool.Enqueue(effect);
+	}
+
+	private void ReturnDiskToPool(ExplorationDiskEffect effect)
+	{
+		if (effect == null || !_pooledDisks.Add(effect)) return;
+		effect.gameObject.SetActive(false);
+		_diskPool.Enqueue(effect);
 	}
 }

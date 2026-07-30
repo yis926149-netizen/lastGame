@@ -8,11 +8,17 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "PublicBuildingDatabase", menuName = "Game/PublicBuildingDatabase")]
 public class PublicBuildingSO : ScriptableObject
 {
+    [Tooltip("所有公共建筑共用的浮标预制体（World Space Canvas，子级Image占位）")]
+    public GameObject markerPrefab;
+
     [System.Serializable]
     public class PublicBuildingConfig
     {
         [Tooltip("公共建筑预制体")]
         public GameObject prefab;
+
+        [Tooltip("未发现时浮标上显示的建筑图标")]
+        public Sprite markerIcon;
 
         [Tooltip("首次夺取所需血量")]
         public float captureHp = 100f;

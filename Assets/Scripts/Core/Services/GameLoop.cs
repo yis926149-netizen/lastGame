@@ -82,6 +82,24 @@ public class GameLoop : IInitializable, ITickable
             {
                 pb.OnDeath();
             }
+
+            pb.TickDiscovery();
+        }
+    }
+
+    /// <summary>公共建筑显形后清除所有指向旧提示位置的缓存路径。</summary>
+    public void InvalidateAllBrainPaths()
+    {
+        for (int i = _brains.Count - 1; i >= 0; i--)
+        {
+            var brain = _brains[i];
+            if (brain == null)
+            {
+                _brains.RemoveAt(i);
+                continue;
+            }
+
+            brain.InvalidatePath();
         }
     }
 

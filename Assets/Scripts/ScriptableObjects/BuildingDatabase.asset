@@ -1,5 +1,5 @@
 %YAML 1.1
-%TAG !u! tag:yousandi.cn,2023:
+%TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -19,21 +19,25 @@ MonoBehaviour:
   - {fileID: 823244081087011784, guid: 43d7ae877ce642e1b261185ccf6a9221, type: 3}
   - {fileID: 4884193936260652596, guid: 03098f173d3626d4d9823cb8057defb6, type: 3}
   - {fileID: 4379563533962267394, guid: e4e0f1ec5572a2d429c6f448b88a7dbf, type: 3}
+  - {fileID: 4884193936260652596, guid: 22ec096bc9dec884dba4754f1aad6d64, type: 3}
+  - {fileID: 4884193936260652596, guid: ab5558bfa83ee754e8cdf82d9609af8d, type: 3}
   buildingBaseHP:
-  - 10
-  - 10
-  - 10
-  - 10
-  - 10
-  - 10
-  - 10
-  - 10
-  - 10
-  - 10
-  - 10
-  - 10
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
+  - 100
   buildingCards:
   - {fileID: 21300000, guid: 71e5955f2c14cf244b8a595ad26c6181, type: 3}
   - {fileID: 21300000, guid: 97950fef61f66fb47b6afe0dd09ccb73, type: 3}
   - {fileID: 21300000, guid: bd3dcb781f9886f4d8195e4f621e9526, type: 3}
   - {fileID: 21300000, guid: b6dade240e7c8d3488f8abb906143e68, type: 3}
+  - {fileID: 21300000, guid: 8e755ba59c2c83d47878b051d54003cc, type: 3}
+  - {fileID: 21300000, guid: 714a528df5ae3a140b36ca4faa31e421, type: 3}

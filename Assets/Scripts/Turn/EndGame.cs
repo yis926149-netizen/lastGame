@@ -13,6 +13,7 @@ public class EndGame : MonoBehaviour
     [Inject] private EnemyModelManager _enemyModelManager;
     [Inject] private PlayerModelManager _playerModelManager;
     [Inject] private AudioManager _audioManager;
+    [Inject] private GameLoop _gameLoop;
 
     public bool isEndThisGame = false;
     public bool neverWin;
@@ -30,12 +31,26 @@ public class EndGame : MonoBehaviour
 
     private bool _initializationComplete;
     private bool _playerHasOwnedCity;
+    private BuildingController _playerMainCity;
+    private BuildingController _aiMainCity;
 
 
 
     void Update()
     {
         if (!_initializationComplete || isEndThisGame) return;
+
+        if (_playerMainCity != null && _aiMainCity != null)
+        {
+            Result = EvaluateMainCityHealth(
+                _playerMainCity.buildingData?.currentHp ?? 0f,
+                _aiMainCity.buildingData?.currentHp ?? 0f);
+            if (Result != EndGameResult.None)
+            {
+                BeginEndGame(Result);
+            }
+            return;
+        }
 
         if (_playerModelManager.CityCount > 0)
         {
@@ -53,9 +68,55 @@ public class EndGame : MonoBehaviour
         }
         if (Result != EndGameResult.None)
         {
-            isEndThisGame = true;
-            Invoke(nameof(EndThisGame), 1.5f);
+            BeginEndGame(Result);
         }
+    }
+
+    public void RegisterMainCity(int playerIndex, BuildingController controller)
+    {
+        if (controller == null) return;
+
+        if (playerIndex == 0)
+            _playerMainCity = controller;
+        else if (playerIndex == 1)
+            _aiMainCity = controller;
+    }
+
+    public bool TryEndFromMainCity(BuildingController controller)
+    {
+        if (!_initializationComplete || isEndThisGame || controller == null)
+            return false;
+        if (controller != _playerMainCity && controller != _aiMainCity)
+            return false;
+
+        EndGameResult result = EvaluateMainCityHealth(
+            _playerMainCity?.buildingData?.currentHp ?? 0f,
+            _aiMainCity?.buildingData?.currentHp ?? 0f);
+        if (result == EndGameResult.None) return false;
+        if (neverWin && result == EndGameResult.Victory) return false;
+
+        BeginEndGame(result);
+        return true;
+    }
+
+    public static EndGameResult EvaluateMainCityHealth(float playerHp, float aiHp)
+    {
+        bool playerDestroyed = playerHp <= 0f;
+        bool aiDestroyed = aiHp <= 0f;
+        if (playerDestroyed && aiDestroyed) return EndGameResult.Draw;
+        if (aiDestroyed) return EndGameResult.Victory;
+        if (playerDestroyed) return EndGameResult.Defeat;
+        return EndGameResult.None;
+    }
+
+    private void BeginEndGame(EndGameResult result)
+    {
+        if (isEndThisGame || result == EndGameResult.None) return;
+        if (neverWin && result == EndGameResult.Victory) return;
+
+        Result = result;
+        isEndThisGame = true;
+        Invoke(nameof(EndThisGame), 1.5f);
     }
 
     public void MarkInitializationComplete()
@@ -90,6 +151,7 @@ public class EndGame : MonoBehaviour
 
     public void EndThisGame()
     {
+        _gameLoop.SetPaused(true);
         _audioManager.StopBGM();
 
         var animation = CurrentEndAnimation;
@@ -126,6 +188,8 @@ public class EndGame : MonoBehaviour
 
     public void HideEndUI()
     {
+        _gameLoop.SetPaused(false);
+
         var animation = CurrentEndAnimation;
         if (animation != null)
         {

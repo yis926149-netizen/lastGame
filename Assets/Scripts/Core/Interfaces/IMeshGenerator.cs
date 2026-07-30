@@ -439,8 +439,9 @@ public interface IMeshGenerator
     void GetFogVertices(out List<Vector3> outerBoundary, out List<List<Vector3>> holesVector3, IMapDataService _mapDataService);
 
     ///////////////////- 迷雾的封边 -///////////////////
-    List<Vector3> GetFogCoverVertices(List<Vector3> vector3s, float increment, float uniformHeight);
+    List<Vector3> GetFogCoverVertices(List<Vector3> vector3s, float incrementX, float incrementZ, float uniformHeight);
 
     ///////////////////- 迷雾连接面片（矩形封皮内边 ↔ 地图真实轮廓 之间的环带）-///////////////////
-    void GetFogConnectorBoundaries(out List<Vector3> rectBoundary, out List<Vector3> realOutline, IMapDataService _mapDataService);
+    void GetFogConnectorBoundaries(out List<Vector3> rectBoundary, out List<Vector3> realOutline,
+        out List<Vector3> slopeOuterBoundary, IMapDataService _mapDataService);
 }

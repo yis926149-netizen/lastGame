@@ -131,11 +131,6 @@ public class CombatResolver
         float Defense = theAttacked.Defense * factionDefenseMultiplier;
         float DefenseGain = 1 + theAttacked.Resource_Minerals + theAttacked.LandFormType_BigBones + theAttacked.LandFormType_River;
 
-        if (AttackGain > 1)
-            attacker.Resource_Animals = 0;
-        if (DefenseGain > 1)
-            theAttacked.Resource_Minerals = 0;
-
         return Mathf.Max(0, AttackPower * AttackGain - Defense * DefenseGain);
     }
 }

@@ -9,12 +9,18 @@ public class MapGenerationConfigSOEditor : UnityEditor.Editor
     SerializedProperty heightNoiseAmplitude;
     SerializedProperty heightNoiseFrequency;
 
+    SerializedProperty fogEdgeStyle;
+    SerializedProperty fogEdgeAnimSpeed;
+
     void OnEnable()
     {
         heightGenerationMode = serializedObject.FindProperty("heightGenerationMode");
         heightPaletteMap   = serializedObject.FindProperty("heightPaletteMap");
         heightNoiseAmplitude  = serializedObject.FindProperty("heightNoiseAmplitude");
         heightNoiseFrequency  = serializedObject.FindProperty("heightNoiseFrequency");
+
+        fogEdgeStyle = serializedObject.FindProperty("fogEdgeStyle");
+        fogEdgeAnimSpeed = serializedObject.FindProperty("fogEdgeAnimSpeed");
     }
 
     public override void OnInspectorGUI()
@@ -22,6 +28,7 @@ public class MapGenerationConfigSOEditor : UnityEditor.Editor
         serializedObject.Update();
 
         bool isPaletteMode = heightGenerationMode.enumValueIndex == (int)Enums.HeightGenerationMode.PaletteMap;
+        bool isWideSmooth = fogEdgeStyle.enumValueIndex == (int)Enums.FogEdgeStyle.WideSmooth;
 
         SerializedProperty prop = serializedObject.GetIterator();
         prop.NextVisible(true);
@@ -33,6 +40,10 @@ public class MapGenerationConfigSOEditor : UnityEditor.Editor
                                || prop.name == "heightNoiseFrequency";
 
             if (isPaletteField && !isPaletteMode)
+                continue;
+
+            bool isWideSmoothField = prop.name == "fogEdgeAnimSpeed";
+            if (isWideSmoothField && !isWideSmooth)
                 continue;
 
             EditorGUILayout.PropertyField(prop, true);

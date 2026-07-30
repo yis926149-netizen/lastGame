@@ -46,7 +46,6 @@ public class ExplorationRewardSystem
         if (goldAmount > 0)
         {
             _goldWallet.AddGold(0, goldAmount); // PlayerIndex = 0
-            Debug.Log($"[ExplorationReward] 探索 {cell.HexCoordinate}，获得 {goldAmount} 金币");
         }
 
         // 2. 掷单位骰子，生成单位奖励
@@ -81,14 +80,11 @@ public class ExplorationRewardSystem
 
             // 生成单位
             GameObject unit = _unitSpawnService.SpawnPlayerUnit(_config.rewardUnitID, spawnPosition);
-            if (unit != null)
-            {
-                Debug.Log($"[ExplorationReward] 在 {spawnCell.HexCoordinate} 生成单位 {i + 1}/{count}");
-            }
-            else
-            {
-                Debug.LogError($"[ExplorationReward] 生成单位失败：unitID={_config.rewardUnitID}, position={spawnPosition}");
-            }
+                if (unit != null) { }
+                else
+                {
+                    Debug.LogError($"[ExplorationReward] 生成单位失败：unitID={_config.rewardUnitID}, position={spawnPosition}");
+                }
         }
     }
 

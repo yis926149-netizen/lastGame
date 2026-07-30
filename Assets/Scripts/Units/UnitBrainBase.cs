@@ -17,6 +17,7 @@ public abstract class UnitBrainBase : MonoBehaviour
     public IMapDataService MapData { get; protected set; }
     public UnitMovementSystem Movement { get; protected set; }
     public CombatResolver Combat { get; protected set; }
+    private PublicBuildingMarkerManager _publicBuildingMarkerManager;
 
     // ── 当前策略 ──────────────────────────────────────────
     protected IUnitStrategy activeStrategy;
@@ -207,6 +208,15 @@ public abstract class UnitBrainBase : MonoBehaviour
     public abstract Vector3? FindNearestEnemy();
     public abstract Vector3? FindNearestEnemyBuilding();
 
+    public Vector3? FindApproximateDirectionToHiddenBuilding()
+    {
+        if (_publicBuildingMarkerManager == null || Owner?.unitMovementController == null)
+            return null;
+
+        return _publicBuildingMarkerManager.FindNearestApproximateHex(
+            Owner.unitMovementController.CurrentHexCoordinate);
+    }
+
     // ── 移民专属 ──────────────────────────────────────────
     public virtual bool TryFoundCity() => false;
 
@@ -218,4 +228,9 @@ public abstract class UnitBrainBase : MonoBehaviour
 
     // ── 策略装配 ──────────────────────────────────────────
     public void SetStrategy(IUnitStrategy strategy) => activeStrategy = strategy;
+
+    protected void SetPublicBuildingMarkerManager(PublicBuildingMarkerManager markerManager)
+    {
+        _publicBuildingMarkerManager = markerManager;
+    }
 }

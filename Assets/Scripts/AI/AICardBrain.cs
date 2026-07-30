@@ -20,6 +20,7 @@ public class AICardBrain
     private readonly AIEntityFactory _factory;
     private readonly AIRandomProvider _rng;
     private readonly GoldWallet _goldWallet;
+    private readonly ILogisticsService _logisticsService;
 
     public AICardBrain(
         AIPlayerState aiPlayerState,
@@ -30,7 +31,8 @@ public class AICardBrain
         EnemyModelManager enemyModelManager,
         AIEntityFactory factory,
         AIRandomProvider rng,
-        GoldWallet goldWallet)
+        GoldWallet goldWallet,
+        ILogisticsService logisticsService)
     {
         _aiPlayerState = aiPlayerState;
         _cardUnlockRuleProvider = cardUnlockRuleProvider;
@@ -41,6 +43,7 @@ public class AICardBrain
         _factory = factory;
         _rng = rng;
         _goldWallet = goldWallet;
+        _logisticsService = logisticsService;
     }
 
     private System.Random Random => _rng.Random;
@@ -73,12 +76,12 @@ public class AICardBrain
     }
 
     /// <summary>每回合卡牌管线：抽卡（一次）→ 科文推进 → 出牌。</summary>
-    public void RunCardPipeline()
+    public bool RunCardPipeline()
     {
         // 与玩家类似，每回合只把“次卡”推进手牌一次
         _aiPlayerState.Card.HasDealtThisTurn = false;
         DealFromNextCardIfPossible();
-        PlayAICards();
+        return PlayAICards();
     }
 
     private void DealFromNextCardIfPossible()
@@ -97,27 +100,24 @@ public class AICardBrain
         _aiPlayerState.Card.NextCardId = GenerateCardId();
     }
 
-    private void PlayAICards()
+    private bool PlayAICards()
     {
-        if (_aiPlayerState.Card.HandCardIds.Count == 0) return;
+        if (_aiPlayerState.Card.HandCardIds.Count == 0) return false;
 
         List<int> orderedCards = _aiPlayerState.Card.HandCardIds
             .OrderByDescending(GetCardPriority)
             .ToList();
-        List<int> playedCards = new List<int>();
 
         foreach (int cardId in orderedCards)
         {
             if (TryPlaySingleCard(cardId))
             {
-                playedCards.Add(cardId);
+                _aiPlayerState.Card.HandCardIds.Remove(cardId);
+                return true;
             }
         }
 
-        foreach (int cardId in playedCards)
-        {
-            _aiPlayerState.Card.HandCardIds.Remove(cardId);
-        }
+        return false;
     }
 
     private int GetCardPriority(int cardId)
@@ -189,7 +189,8 @@ public class AICardBrain
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
         if (cell.IsHaveUnit()) return false;
-        return cell.Player_City_Index.Key == AIIndex;
+        return cell.Player_City_Index.Key == AIIndex &&
+               (_logisticsService == null || _logisticsService.IsLogisticsConnected(cell, AIIndex));
     }
 
     private bool IsValidSpawnCellForBuilding(HexCellData cell)
@@ -198,7 +199,9 @@ public class AICardBrain
         if (_movementSystem.IsDestinationReserved(cell.HexCoordinate)) return false;
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
-        return cell.Player_City_Index.Key == AIIndex;
+        if (cell.IsHaveUnit()) return false;
+        return cell.Player_City_Index.Key == AIIndex &&
+               (_logisticsService == null || _logisticsService.IsLogisticsConnected(cell, AIIndex));
     }
 
     private List<HexCellData> GetAIOwnedCells()

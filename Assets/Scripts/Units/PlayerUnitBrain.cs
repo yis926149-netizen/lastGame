@@ -34,7 +34,8 @@ public class PlayerUnitBrain : UnitBrainBase
                            PlayerModelManager playerModelManager = null,
                            MapVisualEventSO mapVisualEvent = null,
                            UnitRemovalService unitRemovalService = null,
-                           AudioManager audioManager = null)
+                           AudioManager audioManager = null,
+                           PublicBuildingMarkerManager markerManager = null)
     {
         Owner = owner;
         activeStrategy = strategy;
@@ -49,6 +50,7 @@ public class PlayerUnitBrain : UnitBrainBase
         _mapVisualEvent = mapVisualEvent;
         _unitRemovalService = unitRemovalService;
         _audioManager = audioManager;
+        SetPublicBuildingMarkerManager(markerManager);
     }
 
     // ── 目标查询 ────────────────────────────────────────────
@@ -107,6 +109,13 @@ public class PlayerUnitBrain : UnitBrainBase
             // 【探索重构-阶段6】敌方建筑始终可见，不再检查 IsVisible
             GameObject building = cell.BulidingTypeOnHex_Building.Value;
             if (building == null) continue;
+
+            var publicBuilding = building.GetComponent<PublicBuildingBase>();
+            if (publicBuilding != null &&
+                publicBuilding.CurrentDiscoveryState == PublicBuildingBase.DiscoveryState.Hidden)
+            {
+                continue;
+            }
 
             // 【公共建筑系统-决策#36】敌方建筑 + 中立公共建筑都可攻击（"先遇到先打"）
             bool isEnemy = building.CompareTag("EnemyBuilding");

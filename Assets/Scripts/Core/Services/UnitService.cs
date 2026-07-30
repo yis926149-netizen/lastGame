@@ -95,7 +95,7 @@ public class UnitRemovalService
         UnitMovementController controller = unit.GetComponent<UnitMovementController>();
         if (controller != null)
         {
-            _movementSystem.CancelMove(controller);
+            _movementSystem.ReleaseReservationByUnit(unit);
         }
 
         HexCellData occupiedCell = _mapDataService.GetCellByWorldPosition(unit.transform.position);

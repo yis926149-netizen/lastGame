@@ -25,6 +25,15 @@ public class RangedStrategy : IUnitStrategy
         List<Vector3> allPoints = new List<Vector3>(mapData.GetAllHexCoordinates());
         Vector3 startHex = mapData.WorldToHexCoordinate(brain.Owner.model.transform.position);
 
+        Vector3? directionHint = brain.FindApproximateDirectionToHiddenBuilding();
+        if (directionHint.HasValue && movement.CalculateMinMovementCostBetweenTwoHexes(
+                allPoints, startHex, directionHint.Value,
+                Enums.MovementPurpose.MoveToDestination, out _, out List<Vector3> directionPath)
+            && directionPath != null && directionPath.Count > 0)
+        {
+            return new List<Vector3> { directionPath[0] };
+        }
+
         Vector3? targetHex = brain.FindNearestEnemy() ?? brain.FindNearestEnemyBuilding();
         if (!targetHex.HasValue)
         {
@@ -109,7 +118,7 @@ public class RangedStrategy : IUnitStrategy
             }
 
             GameObject b = cell.BulidingTypeOnHex_Building.Value;
-            if (b != null && (b.CompareTag(enemyBuildingTag) || b.CompareTag("NeutralBuilding"))) return true;
+            if (IsAttackableBuilding(b, enemyBuildingTag)) return true;
         }
 
         return false;
@@ -148,9 +157,7 @@ public class RangedStrategy : IUnitStrategy
             }
 
             GameObject b = cell.BulidingTypeOnHex_Building.Value;
-            if (b != null &&
-                (b.CompareTag(enemyBuildingTag) || b.CompareTag("NeutralBuilding")) &&
-                dist < bestDist)
+            if (IsAttackableBuilding(b, enemyBuildingTag) && dist < bestDist)
             {
                 bestDist = dist;
                 bestTarget = b;
@@ -190,5 +197,18 @@ public class RangedStrategy : IUnitStrategy
     private static float HexDistance(Vector3 a, Vector3 b)
     {
         return (Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y) + Mathf.Abs(a.z - b.z)) * 0.5f;
+    }
+
+    private static bool IsAttackableBuilding(GameObject building, string enemyBuildingTag)
+    {
+        if (building == null ||
+            (!building.CompareTag(enemyBuildingTag) && !building.CompareTag("NeutralBuilding")))
+        {
+            return false;
+        }
+
+        var publicBuilding = building.GetComponent<PublicBuildingBase>();
+        return publicBuilding == null ||
+               publicBuilding.CurrentDiscoveryState == PublicBuildingBase.DiscoveryState.Revealed;
     }
 }

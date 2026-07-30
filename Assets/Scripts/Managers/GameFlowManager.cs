@@ -13,6 +13,7 @@ public class GameFlowManager : MonoBehaviour, IInitializable
     [Inject] private AudioManager _audioManager;
     [Inject] private EndGame _endGame;
     [Inject] private ITerritoryService _territoryService;
+    [Inject] private ILogisticsService _logisticsService;
     [Inject] private IBuildingDataProvider _buildingDataProvider;
     [Inject] private DiContainer _container;
     [Inject] private IUIConfigProvider _uiConfigProvider;
@@ -20,6 +21,7 @@ public class GameFlowManager : MonoBehaviour, IInitializable
     [Inject] private GoldWallet _goldWallet;
     [Inject] private EnemyModelManager _enemyModelManager;
     [Inject] private PublicBuildingGenerator _publicBuildingGenerator;
+    [Inject] private MapGenerationConfigSO _config;
 
     // ── PlayerIndex 分配器（决策#22/#27）─────────────
     private int _nextPlayerIndex = 0;
@@ -35,6 +37,7 @@ public class GameFlowManager : MonoBehaviour, IInitializable
 
     public void Initialize()
     {
+        Debug.Log("<color=lime>[GameFlowManager] ===== 游戏开局 =====</color>");
         _audioManager.PlayBGM("Theme_Mistery_But_Then_Happy_Loop");
 
         // 1. 地图生成
@@ -60,6 +63,8 @@ public class GameFlowManager : MonoBehaviour, IInitializable
         // 5. 玩家势力范围初始化
         PlayerInit();
 
+        _logisticsService.RecalculateAll();
+
         _endGame.MarkInitializationComplete();
     }
 
@@ -68,7 +73,7 @@ public class GameFlowManager : MonoBehaviour, IInitializable
         // 【探索重构-阶段7】初始化玩家金币
         _goldWallet.InitPlayer(0);
 
-        // 玩家初始化：随机一个非水、无城、位于下方半区的陆地格
+        // 玩家初始化：随机一个非水、无城、位于 Player 区域的陆地格
         System.Random random = SeedService.GetRandom("Player");
 
         var candidates = new List<HexCellData>();
@@ -77,7 +82,7 @@ public class GameFlowManager : MonoBehaviour, IInitializable
             if (cell != null &&
                 cell.HexType != Enums.HexType.LakeOrSea &&
                 cell.Player_City_Index.Equals(new KeyValuePair<int, int>(-1, -1)) &&
-                cell.HexCoordinate.z >= 2f && cell.HexCoordinate.z <= 9f)
+                _config.playerZone.Contains(cell.HexCoordinate.z))
             {
                 candidates.Add(cell);
             }
@@ -119,6 +124,7 @@ public class GameFlowManager : MonoBehaviour, IInitializable
         controller.buildingData = data;
         data.controller = controller;
         controller.bulidingType = Enums.BulidingType.City;
+        _endGame.RegisterMainCity(0, controller);
 
         // 地块绑定城市
         centerCell.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(
@@ -129,6 +135,7 @@ public class GameFlowManager : MonoBehaviour, IInitializable
         int cityIndex = 0;
         var cityKey = new KeyValuePair<int, int>(0, cityIndex);
         controller.Player_City_Index = cityKey;
+        _logisticsService.RegisterMainCity(0, centerCell);
 
         // UI 画布 + 血条
         SpawnUIWiring.WireBuildingCanvas(city, controller, Color.green, _container, _uiConfigProvider);
@@ -162,7 +169,8 @@ public class GameFlowManager : MonoBehaviour, IInitializable
     /// </summary>
     private void ClaimAndExplore(HexCellData cell)
     {
-        cell.ExploreThisHexCell();      // 标记已探索（内部方法，同程序集可调用）
-        _territoryService.Claim(cell);  // 圈入玩家势力范围
+        if (cell == null || cell.HexType == Enums.HexType.LakeOrSea) return;
+        cell.ExploreThisHexCell();
+        _territoryService.Claim(cell);
     }
 }

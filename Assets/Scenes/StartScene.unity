@@ -4830,7 +4830,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u5927\u6807\u9898"
+  m_Text: "\u4EE3\u53F7\uFF1A"
 --- !u!224 &4142382618910434705
 RectTransform:
   m_ObjectHideFlags: 0
@@ -6345,7 +6345,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u5927\u6807\u9898"
+  m_Text: "\u4EE3\u53F7\uFF1A"
 --- !u!4 &5835520473881336196
 Transform:
   m_ObjectHideFlags: 0

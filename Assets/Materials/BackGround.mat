@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: BackGround
-  m_Shader: {fileID: 4800000, guid: 8842c84d9ff79e24abe4295f91ae4a7a, type: 3}
+  m_Shader: {fileID: 4800000, guid: 4889fcee5f0084a4e8a1c45f616a86dd, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -54,8 +54,8 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _Normal2:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Texture: {fileID: 2800000, guid: 36284e2229f78fa4c83353f09d0d7035, type: 3}
+        m_Scale: {x: 2, y: 1}
         m_Offset: {x: 0, y: 0}
     - _SnowNormal:
         m_Texture: {fileID: 0}
@@ -73,16 +73,16 @@ Material:
     - _DstBlend: 10
     - _EdgeWidth: 0.05
     - _FresnelPower: 3
-    - _Glossiness: 0.5
+    - _Glossiness: 0.286
     - _GlowMax: 1
     - _GlowMin: 0
     - _HdrMultiply: 2
     - _InvertDissolveTex: 0
     - _MaxValue: 10
-    - _Metallic: 0.456
+    - _Metallic: 0.639
     - _NormalStrength: 1.32
-    - _NormalStrength1: 0.17
-    - _NormalStrength2: 0.8
+    - _NormalStrength1: 0.16
+    - _NormalStrength2: 0.76
     - _OutlineWidth: 0.25
     - _ShadowStrength: 1
     - _Smoothness: 0.195
@@ -96,7 +96,7 @@ Material:
     - _UseDissolve: 0
     - _UseSP: 0
     m_Colors:
-    - _Color: {r: 0.28261837, g: 0.5204018, b: 0.6886792, a: 1}
+    - _Color: {r: 0.05678178, g: 0.2669459, b: 0.41509432, a: 1}
     - _EdgeColor: {r: 1, g: 1, b: 1, a: 1}
     - _FlowDirection: {r: 1, g: 0, b: 0, a: 0}
     - _FlowDirection1: {r: 0.05, g: 0, b: 0, a: 1}

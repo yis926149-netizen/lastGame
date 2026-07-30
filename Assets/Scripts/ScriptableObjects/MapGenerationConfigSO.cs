@@ -4,6 +4,27 @@ using System.Collections.Generic;
 [CreateAssetMenu(fileName = "MapGenerationConfig", menuName = "Game/Map Generation Config")]
 public class MapGenerationConfigSO : ScriptableObject
 {
+    [System.Serializable]
+    public struct ZoneRange
+    {
+        [Tooltip("起始 z 行号（含）")]
+        public int zMin;
+        [Tooltip("结束 z 行号（含）")]
+        public int zMax;
+
+        public bool Contains(float z) => z >= zMin && z <= zMax;
+    }
+
+    [Header("区域划分")]
+    [Tooltip("Player 主城可放置的区域（z 坐标范围）")]
+    public ZoneRange playerZone = new ZoneRange { zMin = 2, zMax = 9 };
+
+    [Tooltip("中立区域：公共建筑可放置的区域（z 坐标范围）")]
+    public ZoneRange neutralZone = new ZoneRange { zMin = 10, zMax = 19 };
+
+    [Tooltip("AI 主城可放置的区域（z 坐标范围）")]
+    public ZoneRange aiZone = new ZoneRange { zMin = 20, zMax = 27 };
+
     [Header("地块尺寸")]
     [Tooltip("六边形地块外接圆半径（世界单位）")]
     public float OuterRadius = 3f;
@@ -113,8 +134,16 @@ public class MapGenerationConfigSO : ScriptableObject
     [Header("迷雾材质")]
     [Tooltip("战争迷雾材质")]
     public Material fogMaterial;
+    [Tooltip("地图边缘迷雾封皮向外延伸的世界单位宽度")]
+    [Min(0f)] public float fogCoverWidth = 27.5f;
+    [Tooltip("地图真实边缘下降到迷雾封皮 MinY 平面的斜坡宽度")]
+    [Min(0.01f)] public float fogConnectorSlopeWidth = 1f;
     [Tooltip("记忆区（探索过·当前无视野）叠加颜色（乘法叠加），默认白色=不染色")]
     public Color fogMemoryColor = Color.white;
+
+    [Header("法线/着色风格对比")]
+    [Tooltip("切换后重新进入 Play 模式即可对比不同渲染风格")]
+    public Enums.ShadingStyle shadingStyle = Enums.ShadingStyle.FlatAll;
 
     [Header("迷雾锯齿边界（方案B：世界探索遮罩贴图）")]
     [Tooltip("0=平滑不规则曲线（推荐）；>0=像素阶梯块，值=方块世界边长（越小越细）")]
@@ -126,4 +155,14 @@ public class MapGenerationConfigSO : ScriptableObject
     public float fogNoiseWavelength = 2.0f;
     [Tooltip("探索遮罩每 texel 的世界尺寸——越小越【贴合六边形棱】、越大越平滑圆润。想更贴边就调小")]
     public float fogMaskTexelSize = 0.8f;
+
+    [Header("迷雾边缘风格（下拉框对比）")]
+    [Tooltip("切换后重新进入 Play 模式对比不同边界柔化方案。Original=现状")]
+    public Enums.FogEdgeStyle fogEdgeStyle = Enums.FogEdgeStyle.Original;
+    [Tooltip("边缘柔化宽度（世界单位），仅非 Original 风格生效。建议 0.6~1.2")]
+    [Range(0f, 3f)]
+    public float fogEdgeSoftness = 0.8f;
+    [Tooltip("曲线边界流动速度，仅 WideSmooth 生效。0=静态；越大边界摆动越快。建议 0.1~0.4，过大会让边缘格子明显脉动")]
+    [Range(0f, 2f)]
+    public float fogEdgeAnimSpeed = 0.25f;
 }

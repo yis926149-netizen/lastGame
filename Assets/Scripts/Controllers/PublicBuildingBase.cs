@@ -14,6 +14,16 @@ using Zenject;
 public abstract class PublicBuildingBase : BuildingBase
 {
     [Inject] private GoldWallet _goldWallet;
+    [Inject] private GameLoop _gameLoop;
+    [Inject] private PublicBuildingMarkerManager _markerManager;
+    [Inject] private ExplorationPillarPool _explorationEffectPool;
+    [Inject] private ILogisticsService _logisticsService;
+
+    public enum DiscoveryState
+    {
+        Hidden,
+        Revealed
+    }
 
     /// <summary>公共建筑被占领事件（参数为占领方的 PlayerIndex）</summary>
     public static event System.Action<int> OnPublicBuildingCaptured;
@@ -37,6 +47,12 @@ public abstract class PublicBuildingBase : BuildingBase
 
     /// <summary>是否已完成首次夺取（首次夺取后 hp 切换为 defenseHp）</summary>
     private bool _hasBecomeOwned = false;
+
+    /// <summary>公共建筑是否已经被任意单位发现。</summary>
+    public DiscoveryState CurrentDiscoveryState { get; private set; } = DiscoveryState.Hidden;
+
+    private HashSet<HexCellData> _discoveryArea;
+    private readonly HashSet<HexCellData> _pendingCaptureRewards = new HashSet<HexCellData>();
 
     // ── 初始化（由 PublicBuildingGenerator 调用）──────────
     /// <summary>
@@ -94,6 +110,72 @@ public abstract class PublicBuildingBase : BuildingBase
 
         // 初始血条颜色为中立色（白色）
         UITool.TrySetSliderFillColor(uiHealthBar, Color.white);
+
+        CacheDiscoveryArea();
+    }
+
+    /// <summary>
+    /// 由 GameLoop 调用。任意单位进入建筑占位格外一环时，全局发现该公共建筑。
+    /// </summary>
+    public void TickDiscovery()
+    {
+        if (CurrentDiscoveryState == DiscoveryState.Revealed) return;
+
+        CacheDiscoveryArea();
+        foreach (var hex in _discoveryArea)
+        {
+            if (hex != null && (hex.HasOccupant() || hex.IsHaveUnit()))
+            {
+                Reveal();
+                return;
+            }
+        }
+    }
+
+    /// <summary>显示建筑并自动探索占位格及其外一环，不改变地块归属。</summary>
+    public void Reveal()
+    {
+        if (CurrentDiscoveryState == DiscoveryState.Revealed) return;
+
+        CurrentDiscoveryState = DiscoveryState.Revealed;
+        CacheDiscoveryArea();
+
+        foreach (var hex in _discoveryArea)
+        {
+            if (hex == null) continue;
+
+            _explorationEffectPool?.PlayRevealEffect(hex);
+
+            if (!hex.IsExploredBy(0))
+            {
+                _pendingCaptureRewards.Add(hex);
+                hex.ExploreBy(0);
+            }
+            if (!hex.IsExploredBy(1))
+            {
+                hex.ExploreBy(1);
+            }
+
+            hex.IsUnexplorable = false;
+            if (hex.resourceModel != null)
+                hex.resourceModel.SetActive(true);
+        }
+
+        gameObject.SetActive(true);
+        _markerManager.RemoveMarker(this);
+        _gameLoop.InvalidateAllBrainPaths();
+        _mapVisualEvent.Raise();
+
+        Debug.Log($"[PublicBuildingBase] Revealed at {RootHex?.HexCoordinate}");
+    }
+
+    private void CacheDiscoveryArea()
+    {
+        if (_discoveryArea != null) return;
+
+        _discoveryArea = GetInfluenceRingHexes();
+        foreach (var hex in OccupiedHexes)
+            _discoveryArea.Add(hex);
     }
 
     // ── 受击入口（覆写，支持多格攻击转发）────────────
@@ -156,6 +238,7 @@ public abstract class PublicBuildingBase : BuildingBase
 
         // 5. 扩展新势力范围（决策#20/#33）
         ExpandSphereOfInfluence(newOwnerPlayerIndex);
+        _logisticsService.RecalculateAll();
 
         // 6. 更新视觉（血条颜色、tag）
         UpdateVisual(newOwnerPlayerIndex);
@@ -173,11 +256,8 @@ public abstract class PublicBuildingBase : BuildingBase
     {
         if (oldPlayerIndex < 0) return;
 
-        var cityKey = new KeyValuePair<int, int>(oldPlayerIndex, 0);
-
         if (oldPlayerIndex == 0)
         {
-            // 玩家
             if (_playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData.TryGetValue(0, out var sphere))
             {
                 foreach (var hex in OccupiedHexes)
@@ -185,7 +265,6 @@ public abstract class PublicBuildingBase : BuildingBase
                     sphere.Remove(hex.HexCoordinate);
                     _playerModelManager.SphereOfInfluence_HexC_HexCellData.Remove(hex.HexCoordinate);
                 }
-                // 同时移除各占位格外圈一环
                 foreach (var hex in GetInfluenceRingHexes())
                 {
                     sphere.Remove(hex.HexCoordinate);
@@ -195,11 +274,6 @@ public abstract class PublicBuildingBase : BuildingBase
         }
         else
         {
-            // AI / 公共建筑伪AI
-            if (_enemyModelManager.Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData.TryGetValue(cityKey, out var sphere))
-            {
-                _enemyModelManager.Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData.Remove(cityKey);
-            }
             if (_enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData.TryGetValue(oldPlayerIndex, out var totalSphere))
             {
                 foreach (var hex in OccupiedHexes)
@@ -213,6 +287,15 @@ public abstract class PublicBuildingBase : BuildingBase
                     if (hex.Player_City_Index.Key == oldPlayerIndex)
                         hex.Player_City_Index = new KeyValuePair<int, int>(-1, -1);
                 }
+            }
+
+            var cityKey = new KeyValuePair<int, int>(oldPlayerIndex, 0);
+            if (_enemyModelManager.Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData.TryGetValue(cityKey, out var citySphere))
+            {
+                foreach (var hex in OccupiedHexes)
+                    citySphere.Remove(hex.HexCoordinate);
+                foreach (var hex in GetInfluenceRingHexes())
+                    citySphere.Remove(hex.HexCoordinate);
             }
         }
     }
@@ -240,45 +323,37 @@ public abstract class PublicBuildingBase : BuildingBase
 
         if (newOwnerPlayerIndex == 0)
         {
-            // 归玩家
             if (!_playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData.ContainsKey(0))
                 _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData[0] = new Dictionary<Vector3, HexCellData>();
 
             foreach (var hex in allInfluenceHexes)
             {
-                // 收割奖励（仅对之前未探索的地块）
-                if (!hex.IsExplored)
+                if (!hex.IsExploredBy(0) || _pendingCaptureRewards.Remove(hex))
                 {
                     HarvestAndReward(hex, newOwnerPlayerIndex);
                 }
 
-                // 强制覆盖（决策#20）
                 hex.Player_City_Index = owner;
-                hex.ExploreThisHexCell();
+                hex.ExploreBy(0);
                 _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData[0][hex.HexCoordinate] = hex;
                 _playerModelManager.SphereOfInfluence_HexC_HexCellData[hex.HexCoordinate] = hex;
             }
         }
         else
         {
-            // 归AI（包括公共建筑伪AI）
             if (!_enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData.ContainsKey(newOwnerPlayerIndex))
                 _enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData[newOwnerPlayerIndex] = new Dictionary<Vector3, HexCellData>();
 
-            if (!_enemyModelManager.Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData.ContainsKey(newCityKey))
-                _enemyModelManager.Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData[newCityKey] = new Dictionary<Vector3, HexCellData>();
-
             foreach (var hex in allInfluenceHexes)
             {
-                if (!hex.IsExplored)
+                if (!hex.IsExploredBy(newOwnerPlayerIndex) || _pendingCaptureRewards.Remove(hex))
                 {
                     HarvestAndReward(hex, newOwnerPlayerIndex);
                 }
 
                 hex.Player_City_Index = owner;
-                hex.ExploreThisHexCell();
+                hex.ExploreBy(newOwnerPlayerIndex);
                 _enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData[newOwnerPlayerIndex][hex.HexCoordinate] = hex;
-                _enemyModelManager.Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData[newCityKey][hex.HexCoordinate] = hex;
             }
         }
     }
@@ -366,6 +441,8 @@ public abstract class PublicBuildingBase : BuildingBase
     // ── MonoBehaviour 生命周期 ────────────────────────
     protected virtual void OnDestroy()
     {
+        _markerManager?.RemoveMarker(this);
+
         // 清空占位格引用，防止野指针
         foreach (var hex in OccupiedHexes)
         {

@@ -64,6 +64,102 @@ public class MeshGenerator : MonoBehaviour
         UpdateMesh(triangulator.Vertices, triangulator.Indices);
     }
 
+    public void GenerateSlopeMesh(List<Vector3> innerBoundary, List<Vector3> outerBoundary, Material material)
+    {
+        if (innerBoundary == null || outerBoundary == null || innerBoundary.Count < 3 ||
+            innerBoundary.Count != outerBoundary.Count)
+        {
+            Debug.LogError("斜坡内外轮廓数量不一致，无法生成 Mesh。");
+            return;
+        }
+
+        if (m_meshRenderer != null) m_meshRenderer.sharedMaterial = material;
+
+        List<Vector3> vertices = new List<Vector3>(innerBoundary.Count * 2);
+        vertices.AddRange(innerBoundary);
+        vertices.AddRange(outerBoundary);
+        List<int> triangles = new List<int>(innerBoundary.Count * 6);
+        int count = innerBoundary.Count;
+        for (int i = 0; i < count; i++)
+        {
+            int next = (i + 1) % count;
+            AddUpFacingTriangle(vertices, triangles, i, count + i, count + next);
+            AddUpFacingTriangle(vertices, triangles, i, count + next, next);
+        }
+
+        UpdateMesh(vertices, triangles);
+    }
+
+    public void GenerateConnectorMesh(List<Vector3> rectangleBoundary, List<Vector3> innerBoundary,
+        List<Vector3> slopeOuterBoundary, Material material)
+    {
+        if (rectangleBoundary == null || rectangleBoundary.Count < 3 || innerBoundary == null ||
+            slopeOuterBoundary == null || innerBoundary.Count < 3 ||
+            innerBoundary.Count != slopeOuterBoundary.Count)
+        {
+            Debug.LogError("Connector 轮廓无效，无法生成 Mesh。");
+            return;
+        }
+
+        if (m_meshRenderer != null) m_meshRenderer.sharedMaterial = material;
+
+        Triangulator fillTriangulator = new Triangulator();
+        fillTriangulator.AddBoundary(rectangleBoundary);
+        fillTriangulator.AddBoundary(slopeOuterBoundary);
+        fillTriangulator.Triangulate();
+
+        List<Vector3> vertices = new List<Vector3>(
+            fillTriangulator.Vertices.Count + innerBoundary.Count * 2);
+        List<int> triangles = new List<int>(
+            fillTriangulator.Indices.Count + innerBoundary.Count * 6);
+        vertices.AddRange(fillTriangulator.Vertices);
+        triangles.AddRange(fillTriangulator.Indices);
+
+        int innerStart = vertices.Count;
+        vertices.AddRange(innerBoundary);
+        int outerStart = vertices.Count;
+        vertices.AddRange(slopeOuterBoundary);
+        int degenerateSegmentCount = 0;
+        for (int i = 0; i < innerBoundary.Count; i++)
+        {
+            int next = (i + 1) % innerBoundary.Count;
+            Vector3 firstNormal = Vector3.Cross(
+                vertices[outerStart + i] - vertices[innerStart + i],
+                vertices[outerStart + next] - vertices[innerStart + i]);
+            Vector3 secondNormal = Vector3.Cross(
+                vertices[outerStart + next] - vertices[innerStart + i],
+                vertices[innerStart + next] - vertices[innerStart + i]);
+            if (firstNormal.sqrMagnitude < 1e-8f || secondNormal.sqrMagnitude < 1e-8f)
+                degenerateSegmentCount++;
+
+            AddUpFacingTriangle(vertices, triangles,
+                innerStart + i, outerStart + i, outerStart + next);
+            AddUpFacingTriangle(vertices, triangles,
+                innerStart + i, outerStart + next, innerStart + next);
+        }
+
+        if (degenerateSegmentCount > 0)
+            Debug.LogWarning($"FogConnector: {degenerateSegmentCount}/{innerBoundary.Count} 个坡面段包含退化三角形。");
+
+        UpdateMesh(vertices, triangles);
+    }
+
+    private static void AddUpFacingTriangle(List<Vector3> vertices, List<int> triangles, int a, int b, int c)
+    {
+        Vector3 normal = Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]);
+        triangles.Add(a);
+        if (normal.y >= 0f)
+        {
+            triangles.Add(b);
+            triangles.Add(c);
+        }
+        else
+        {
+            triangles.Add(c);
+            triangles.Add(b);
+        }
+    }
+
     private void UpdateMesh(List<Vector3> vertices, List<int> triangles)
     {
         m_mesh.Clear();

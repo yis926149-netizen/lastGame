@@ -4,10 +4,7 @@ public interface IEnvironmentModelsProvider
 {
     GameObject GetLandFormPrefab(int environmentModelId);
     GameObject GetResourcePrefab(int environmentModelId);
-    GameObject GetReapAnimalsEffect();
-    GameObject GetReapPlantsEffect();
-    GameObject GetReapMineralsEffect();
-    GameObject GetReapChestEffect();
+    GameObject GetReapEffect(Enums.ResourceType resourceType);
 }
 
 public class EnvironmentModelsProvider : IEnvironmentModelsProvider
@@ -35,8 +32,15 @@ public class EnvironmentModelsProvider : IEnvironmentModelsProvider
 
     public GameObject GetResourcePrefab(int environmentModelId) => _environmentModels.resourceModels[environmentModelId];
 
-    public GameObject GetReapAnimalsEffect() => _environmentModels.reapAnimalsEffect;
-    public GameObject GetReapPlantsEffect() => _environmentModels.reapPlantsEffect;
-    public GameObject GetReapMineralsEffect() => _environmentModels.reapMineralsEffect;
-    public GameObject GetReapChestEffect() => _environmentModels.reapChestEffect;
+    public GameObject GetReapEffect(Enums.ResourceType resourceType)
+    {
+        return resourceType switch
+        {
+            Enums.ResourceType.Animals => _environmentModels.reapAnimalsEffect,
+            Enums.ResourceType.Plants => _environmentModels.reapPlantsEffect,
+            Enums.ResourceType.Minerals => _environmentModels.reapMineralsEffect,
+            Enums.ResourceType.Chest => _environmentModels.reapChestEffect,
+            _ => null,
+        };
+    }
 }

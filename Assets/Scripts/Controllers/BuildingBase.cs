@@ -17,6 +17,7 @@ public abstract class BuildingBase : MonoBehaviour
     [Inject] protected AudioManager _audioManager;
     [Inject] protected EnemyModelManager _enemyModelManager;
     [Inject] protected PlayerModelManager _playerModelManager;
+    [Inject(Optional = true)] protected IFactionBuffService _factionBuff;
 
     // ── 公共字段 ──────────────────────────────────────
     [HideInInspector] public BuildingData buildingData;
@@ -32,6 +33,27 @@ public abstract class BuildingBase : MonoBehaviour
     // ── 死亡标记 ──────────────────────────────────────
     protected bool _isDestroyed;
     public bool IsDestroyed => _isDestroyed;
+
+    // ── 初始化 ────────────────────────────────────────
+    protected virtual void Start()
+    {
+        ApplyFactionBuildingHpBuff();
+    }
+
+    private void ApplyFactionBuildingHpBuff()
+    {
+        if (_factionBuff == null || buildingData == null) return;
+
+        int factionId = Player_City_Index.Key;
+        if (factionId < 0) return;
+
+        float mult = _factionBuff.GetStatMultiplier(factionId, "buildingHp");
+        if (Mathf.Abs(mult - 1f) < 0.001f) return;
+
+        buildingData.hp *= mult;
+        buildingData.currentHp = buildingData.hp;
+        SyncHealthBar();
+    }
 
     // ── 受击入口（统一调用点） ────────────────────────
     /// <summary>

@@ -14,7 +14,8 @@ public class TalentCardBootstrap : IInitializable
     {
         PublicBuildingBase.OnPublicBuildingCaptured += OnCaptured;
         Debug.Log("[TalentCardBootstrap] Initialized, triggering game start offer.");
-        _trigger.RequestOffer(0); // player game start
+        _trigger.RequestOffer(0);
+        _trigger.RequestOffer(1);
     }
 
     private void OnCaptured(int newOwnerPlayerIndex)

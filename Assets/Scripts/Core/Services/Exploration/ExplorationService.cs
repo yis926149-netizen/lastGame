@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -14,6 +15,8 @@ public class ExplorationService : IExplorationService
     private readonly MapVisualEventSO _mapVisualEvent;
     private readonly ITerritoryService _territoryService;
     private readonly GoldWallet _goldWallet;
+    private readonly ILogisticsService _logisticsService;
+    private readonly HashSet<HexCellData> _pendingCompletions = new HashSet<HexCellData>();
 
     public event Action<HexCellData> CellExplored;
     public event Action<HexCellData> ExplorationRewardTriggered;
@@ -24,7 +27,8 @@ public class ExplorationService : IExplorationService
         IExplorationRule rule,
         MapVisualEventSO mapVisualEvent,
         ITerritoryService territoryService,
-        GoldWallet goldWallet)
+        GoldWallet goldWallet,
+        ILogisticsService logisticsService)
     {
         _costProvider = costProvider;
         _wallet = wallet;
@@ -32,36 +36,40 @@ public class ExplorationService : IExplorationService
         _mapVisualEvent = mapVisualEvent;
         _territoryService = territoryService;
         _goldWallet = goldWallet;
+        _logisticsService = logisticsService;
     }
 
     public ExploreResult TryExplore(HexCellData targetCell)
     {
-        // 0. 水域不可探索
-        if (targetCell.HexType == Enums.HexType.LakeOrSea)
-            return ExploreResult.AlreadyExplored;
-
-        // 1. 基础校验：格子存在且未探索
         if (targetCell == null || targetCell.IsExplored)
             return ExploreResult.AlreadyExplored;
 
-        // 公共建筑系统：公共建筑占位格+周围一环不可探索
+        if (targetCell.HexType == Enums.HexType.LakeOrSea)
+            return ExploreResult.AlreadyExplored;
+
         if (targetCell.IsUnexplorable)
             return ExploreResult.Unexplorable;
 
-        // 2. 规则校验：邻接规则等
+        GameObject occupant = targetCell.GetUnit();
+        if (occupant != null && occupant.CompareTag("EnemyUnit"))
+            return ExploreResult.Unexplorable;
+
         if (!_rule.IsValid(targetCell))
             return ExploreResult.NotAdjacent;
 
-        // 3. 成本计算与资源扣费
         var cost = _costProvider.GetCost(targetCell);
         if (!_wallet.TrySpend(cost))
             return ExploreResult.InsufficientResources;
 
-        // 4. 执行探索：标记已探索
         targetCell.ExploreThisHexCell();
+        _pendingCompletions.Add(targetCell);
 
-        // 5-9. 后续逻辑（领土/收割/视觉刷新）推迟到动画结束后由 CompleteExploration 执行
-        // 触发事件：柱体特效等动画挂在此事件
+        _territoryService.Claim(targetCell);
+        _logisticsService.RecalculateAll();
+        HarvestAndReward(targetCell);
+        _mapVisualEvent?.Raise();
+        ExplorationRewardTriggered?.Invoke(targetCell);
+
         CellExplored?.Invoke(targetCell);
 
         return ExploreResult.Success;
@@ -69,17 +77,7 @@ public class ExplorationService : IExplorationService
 
     public void CompleteExploration(HexCellData targetCell)
     {
-        // 5. 圈入势力范围（探索 = 占领）
-        _territoryService.Claim(targetCell);
-
-        // 6. 收割资源：地块资源转换为金币（探索即收割）
-        HarvestAndReward(targetCell);
-
-        // 7. 触发地图视觉刷新
-        _mapVisualEvent?.Raise();
-
-        // 8. 触发探索随机奖励（金币 + 单位），由奖励系统订阅
-        ExplorationRewardTriggered?.Invoke(targetCell);
+        _pendingCompletions.Remove(targetCell);
     }
 
     /// <summary>
@@ -124,19 +122,22 @@ public class ExplorationService : IExplorationService
 public class AdjacencyExplorationRule : IExplorationRule
 {
     private readonly IMapDataService _mapDataService;
+    private readonly ILogisticsService _logisticsService;
 
-    public AdjacencyExplorationRule(IMapDataService mapDataService)
+    public AdjacencyExplorationRule(IMapDataService mapDataService, ILogisticsService logisticsService)
     {
         _mapDataService = mapDataService;
+        _logisticsService = logisticsService;
     }
 
     public bool IsValid(HexCellData targetCell)
     {
-        // 必须邻接至少一个已探索格
         for (int i = 0; i < 6; i++)
         {
             var neighbor = _mapDataService.GetNeighbor(targetCell, (Enums.HexDirection)i);
-            if (neighbor != null && neighbor.IsExplored)
+            if (neighbor == null) continue;
+            if (neighbor.Player_City_Index.Key != 0) continue;
+            if (_logisticsService == null || _logisticsService.IsLogisticsConnected(neighbor, 0))
                 return true;
         }
         return false;

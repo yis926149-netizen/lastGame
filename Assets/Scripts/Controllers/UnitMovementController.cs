@@ -19,6 +19,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     [Inject] private UIManagerPresenter _uiPresenter;
     [Inject] private AudioManager _audioManager;
     [Inject] private UnitRemovalService _unitRemovalService;
+    [Inject] private GoldWallet _goldWallet;
+    [Inject] private IEnvironmentModelsProvider _environmentModelsProvider;
 
     //与之对应的CharacterData - 在生产单位模型时外部设置的
     public CharacterData characterData;
@@ -111,6 +113,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
     // 【批次 D】动画-only 标志：为 true 时 CommenceAttack 分支不施加伤害（伤害已由 CombatResolver 结算）
     private bool _animOnly = false;
+    private GameObject _hitParticles;
 
     // ---------- IUnitMovement 接口实现 ----------
     public GameObject gameObject => base.gameObject;
@@ -146,6 +149,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
     public void MoveTo(Vector3 targetHex, Enums.MovementPurpose purpose = Enums.MovementPurpose.MoveToDestination)
     {
+        if (_isDeathScheduled) return;
         // 【实时化】移动力配额概念已废除，不再用 currentMovementPoints 作为移动许可判断。
 
         if (purpose == Enums.MovementPurpose.MoveToAttack)
@@ -170,10 +174,6 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             movementPurpose = Enums.MovementPurpose.None;
             attackedUnit = null;
             Debug.Log("[UnitMovementController] Move request rejected.");
-        }
-        else
-        {
-            Debug.Log("[UnitMovementController] Move request accepted.");
         }
     }
 
@@ -233,6 +233,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         _cachedHexCoord = _mapDataService.WorldToHexCoordinate(transform.position);
         _hexCoordCached = true;
 
+        AutoHarvestResource();
+
         _uiPresenter.RefreshCurrentUnitInfo();
 
         // 如果本次移动目的是攻击，则触发攻击逻辑
@@ -289,6 +291,9 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         {
             collider.enabled = false;
         }
+        var canvas = GetComponentInChildren<Canvas>();
+        if (canvas != null)
+            canvas.gameObject.SetActive(false);
         animator.SetBool("isDeath", true);
         _audioManager.PlaySFX("cartoon_trumpet_fail(5)");
         Invoke(nameof(RemoveUnit), 2.2f);
@@ -384,11 +389,6 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         float Defense = theAttacked.Defense;
         float DefenseGain = 1 + theAttacked.Resource_Minerals + theAttacked.LandFormType_BigBones + theAttacked.LandFormType_River;
 
-        if (AttackGain > 1)
-            attacker.Resource_Animals = 0;
-        if (DefenseGain > 1)
-            theAttacked.Resource_Minerals = 0;
-
         return Mathf.Max(0, AttackPower * AttackGain - Defense * DefenseGain);
     }
 
@@ -452,8 +452,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             // 【批次 D】攻击不再耗尽移动力（实时化无配额）。旧 currentMovementPoints = 0 删除。
 
             // 特效、音效等保持不变...
-            Transform hitParticles = transform.GetChild(transform.childCount - 1);
-            hitParticles.gameObject.SetActive(true);
+            SetHitParticlesActive(true);
 
             // 攻击音效
             switch (characterData.UnitID)
@@ -550,9 +549,21 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             isAttackingInProgress = false;
         }
 
-        Transform hitParticles = transform.GetChild(transform.childCount - 1);
-        if (hitParticles != null)
-            hitParticles.gameObject.SetActive(false);
+        SetHitParticlesActive(false);
+    }
+
+    private void SetHitParticlesActive(bool active)
+    {
+        if (_hitParticles == null)
+        {
+            Transform particles = GetComponentsInChildren<Transform>(true)
+                .FirstOrDefault(child => child != transform &&
+                                         string.Equals(child.name, "particles", StringComparison.OrdinalIgnoreCase));
+            _hitParticles = particles?.gameObject;
+        }
+
+        if (_hitParticles != null)
+            _hitParticles.SetActive(active);
     }
 
 
@@ -681,6 +692,53 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
         // 直接进入攻击动画（不冲刺）
         CommenceAttack = true;
+    }
+
+    private void AutoHarvestResource()
+    {
+        if (characterData == null || characterData.unitData == null) return;
+
+        HexCellData currentCell = _mapDataService.GetCellByWorldPosition(transform.position);
+        if (currentCell == null) return;
+
+        Enums.ResourceType resource = currentCell.GetResource();
+        if (resource == Enums.ResourceType.None) return;
+
+        currentCell.ReapResource();
+        if (currentCell.resourceModel != null)
+        {
+            Destroy(currentCell.resourceModel);
+            currentCell.resourceModel = null;
+        }
+
+        switch (resource)
+        {
+            case Enums.ResourceType.Animals:
+                characterData.Resource_Animals = 0.7f;
+                _audioManager.PlaySFX("Cymbals-008");
+                break;
+            case Enums.ResourceType.Plants:
+                characterData.Heal(0.25f * characterData.unitData.hp);
+                _audioManager.PlaySFX("heal5");
+                break;
+            case Enums.ResourceType.Minerals:
+                characterData.Resource_Minerals = 0.25f;
+                _audioManager.PlaySFX("Metallic_Weapon_Hit-020");
+                break;
+            case Enums.ResourceType.Chest:
+                if (PlayerIndex == 0 && _goldWallet != null)
+                    _goldWallet.AddGold(0, 50);
+                _audioManager.PlaySFX("Coin8");
+                break;
+        }
+
+        GameObject effectPrefab = _environmentModelsProvider.GetReapEffect(resource);
+        if (effectPrefab != null)
+        {
+            GameObject effect = Instantiate(effectPrefab);
+            effect.transform.position = currentCell.RealCenterWorldCoordinate + new Vector3(0, 0.5f, 0);
+            Destroy(effect, 4f);
+        }
     }
 
 }

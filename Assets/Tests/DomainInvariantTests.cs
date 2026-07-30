@@ -1,10 +1,59 @@
 using NUnit.Framework;
+using NSubstitute;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
 
 public class DomainInvariantTests
 {
+    private MapVisualEventSO _explorationMapVisualEvent;
+
+    [TearDown]
+    public void TearDown()
+    {
+        if (_explorationMapVisualEvent != null)
+        {
+            Object.DestroyImmediate(_explorationMapVisualEvent);
+            _explorationMapVisualEvent = null;
+        }
+    }
+
+    [Test]
+    public void CompleteExploration_DuplicateCallback_SettlesEconomyOnce()
+    {
+        var wallet = new GoldWallet();
+        wallet.InitPlayer(0);
+
+        var costProvider = Substitute.For<IExplorationCostProvider>();
+        costProvider.GetCost(Arg.Any<HexCellData>()).Returns(new ExplorationCost("Gold", 50));
+        var rule = Substitute.For<IExplorationRule>();
+        rule.IsValid(Arg.Any<HexCellData>()).Returns(true);
+        var territory = Substitute.For<ITerritoryService>();
+        var logistics = Substitute.For<ILogisticsService>();
+        _explorationMapVisualEvent = ScriptableObject.CreateInstance<MapVisualEventSO>();
+
+        var service = new ExplorationService(
+            costProvider,
+            wallet,
+            rule,
+            _explorationMapVisualEvent,
+            territory,
+            wallet,
+            logistics);
+        var cell = new HexCellData(Enums.HexType.NoRiver, 0, Vector3.zero, Vector3.zero, 1f);
+        int rewardEventCount = 0;
+        service.ExplorationRewardTriggered += _ => rewardEventCount++;
+
+        Assert.AreEqual(ExploreResult.Success, service.TryExplore(cell));
+        service.CompleteExploration(cell);
+        service.CompleteExploration(cell);
+
+        Assert.AreEqual(55, wallet.Gold);
+        Assert.AreEqual(1, rewardEventCount);
+        territory.Received(1).Claim(cell);
+        logistics.Received(1).RecalculateAll();
+    }
+
     [TestCase(0, Enums.ResourceType.Animals)]
     [TestCase(1, Enums.ResourceType.Plants)]
     [TestCase(2, Enums.ResourceType.Minerals)]
@@ -74,9 +123,9 @@ public class DomainInvariantTests
             var player = playerObject.AddComponent<PlayerModelManager>();
             var enemy = enemyObject.AddComponent<EnemyModelManager>();
 
-            Assert.AreEqual(0, player.AllocateCityIndex());
-            player.CityCount = 0;
             Assert.AreEqual(1, player.AllocateCityIndex());
+            player.CityCount = 0;
+            Assert.AreEqual(2, player.AllocateCityIndex());
 
             Assert.AreEqual(0, enemy.AllocateCityIndex(1));
             enemy.CityCount[1] = 0;
@@ -99,21 +148,22 @@ public class DomainInvariantTests
             var removedOnly = CreateCell(new Vector3(0, 0, 0));
             var overlap = CreateCell(new Vector3(1, -1, 0));
             var remainingOnly = CreateCell(new Vector3(2, -2, 0));
-
-            manager.SingleCity_SphereOfInfluence_HexC_HexCellData[0] = new System.Collections.Generic.Dictionary<Vector3, HexCellData>
-            {
-                [removedOnly.HexCoordinate] = removedOnly,
-                [overlap.HexCoordinate] = overlap
-            };
-            manager.SingleCity_SphereOfInfluence_HexC_HexCellData[1] = new System.Collections.Generic.Dictionary<Vector3, HexCellData>
-            {
-                [overlap.HexCoordinate] = overlap,
-                [remainingOnly.HexCoordinate] = remainingOnly
-            };
-
-            manager.SingleCity_SphereOfInfluence_HexC_HexCellData.Remove(0);
             removedOnly.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(-1, -1);
-            overlap.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(-1, -1);
+            overlap.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 1);
+            remainingOnly.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 1);
+
+            var mapData = Substitute.For<IMapDataService>();
+            mapData.GetAllCells().Returns(new System.Collections.Generic.List<HexCellData>
+            {
+                removedOnly,
+                overlap,
+                remainingOnly
+            });
+            var container = new Zenject.DiContainer();
+            container.Bind<IMapDataService>().FromInstance(mapData);
+            container.Bind<IMeshGenerator>().FromInstance(Substitute.For<IMeshGenerator>());
+            container.Inject(manager);
+
             manager.RebuildSphereOfInfluence();
 
             Assert.IsFalse(manager.SphereOfInfluence_HexC_HexCellData.ContainsKey(removedOnly.HexCoordinate));
@@ -222,6 +272,15 @@ public class DomainInvariantTests
         Assert.AreEqual(expected, EndGame.EvaluateResult(initialized, playerHasOwnedCity, playerCities, aiCities));
     }
 
+    [TestCase(100, 100, EndGameResult.None)]
+    [TestCase(0, 100, EndGameResult.Defeat)]
+    [TestCase(100, 0, EndGameResult.Victory)]
+    [TestCase(0, 0, EndGameResult.Draw)]
+    public void EndGameResult_UsesMainCityHealth(float playerHp, float aiHp, EndGameResult expected)
+    {
+        Assert.AreEqual(expected, EndGame.EvaluateMainCityHealth(playerHp, aiHp));
+    }
+
     private static CharacterData CreateUnit()
     {
         var unitData = new UnitData(0, "Test Unit", 3, 100, 1, 10, 3, 2);
@@ -231,5 +290,149 @@ public class DomainInvariantTests
     private static HexCellData CreateCell(Vector3 coordinate)
     {
         return new HexCellData(Enums.HexType.NoRiver, 0, coordinate, Vector3.zero, 1);
+    }
+}
+
+public class LogisticsServiceTests
+{
+    [Test]
+    public void RecalculateAll_ConnectsOnlyContinuousOwnedCells()
+    {
+        var map = new HexMapService();
+        HexCellData root = CreateLogisticsCell(Vector3.zero, 0);
+        HexCellData connected = CreateLogisticsCell(new Vector3(0, -1, 1), 0);
+        HexCellData blocked = CreateLogisticsCell(new Vector3(0, -2, 2), 1);
+        HexCellData isolated = CreateLogisticsCell(new Vector3(0, -3, 3), 0);
+        InitializeLogisticsMap(map, root, connected, blocked, isolated);
+        var service = new LogisticsService(map);
+        service.RegisterMainCity(0, root);
+
+        service.RecalculateAll();
+
+        Assert.IsTrue(service.IsLogisticsConnected(root, 0));
+        Assert.IsTrue(service.IsLogisticsConnected(connected, 0));
+        Assert.IsFalse(service.IsLogisticsConnected(blocked, 0));
+        Assert.IsFalse(service.IsLogisticsConnected(isolated, 0));
+    }
+
+    [Test]
+    public void TransferOwner_RecalculatesBothFactions()
+    {
+        var map = new HexMapService();
+        HexCellData playerRoot = CreateLogisticsCell(Vector3.zero, 0);
+        HexCellData bridge = CreateLogisticsCell(new Vector3(0, -1, 1), 1);
+        HexCellData playerRear = CreateLogisticsCell(new Vector3(0, -2, 2), 0);
+        HexCellData aiRoot = CreateLogisticsCell(new Vector3(0, -3, 3), 1);
+        InitializeLogisticsMap(map, playerRoot, bridge, playerRear, aiRoot);
+        var service = new LogisticsService(map);
+        service.RegisterMainCity(0, playerRoot);
+        service.RegisterMainCity(1, aiRoot);
+        service.RecalculateAll();
+
+        service.TransferOwner(bridge, 0);
+
+        Assert.IsTrue(service.IsLogisticsConnected(playerRear, 0));
+        Assert.IsFalse(service.IsLogisticsConnected(bridge, 1));
+    }
+
+    [Test]
+    public void IsVisibleToFaction_OwnedCellUsesOwnerSupplyForEveryViewer()
+    {
+        var map = new HexMapService();
+        HexCellData root = CreateLogisticsCell(Vector3.zero, 1);
+        InitializeLogisticsMap(map, root);
+        var service = new LogisticsService(map);
+        service.RegisterMainCity(1, root);
+        service.RecalculateAll();
+
+        Assert.IsFalse(service.IsVisibleToFaction(root, 0));
+
+        root.ExploreBy(1);
+
+        Assert.IsTrue(service.IsVisibleToFaction(root, 0));
+        Assert.IsTrue(service.IsVisibleToFaction(root, 1));
+    }
+
+    [Test]
+    public void IsVisibleToFaction_AiTerritoryBecomesHiddenForAllViewersWhenCutOff()
+    {
+        var map = new HexMapService();
+        HexCellData aiRoot = CreateLogisticsCell(Vector3.zero, 1);
+        HexCellData bridge = CreateLogisticsCell(new Vector3(0, -1, 1), 1);
+        HexCellData rear = CreateLogisticsCell(new Vector3(0, -2, 2), 1);
+        aiRoot.ExploreBy(1);
+        bridge.ExploreBy(1);
+        rear.ExploreBy(1);
+        InitializeLogisticsMap(map, aiRoot, bridge, rear);
+        var service = new LogisticsService(map);
+        service.RegisterMainCity(1, aiRoot);
+        service.RecalculateAll();
+        Assert.IsTrue(service.IsVisibleToFaction(rear, 0));
+        Assert.IsTrue(service.IsVisibleToFaction(rear, 1));
+
+        bridge.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+        service.RecalculateAll();
+
+        Assert.IsFalse(service.IsVisibleToFaction(rear, 0));
+        Assert.IsFalse(service.IsVisibleToFaction(rear, 1));
+    }
+
+    [Test]
+    public void IsVisibleToFaction_NeutralCellUsesViewerDiscoveryOnly()
+    {
+        var map = new HexMapService();
+        HexCellData neutral = CreateLogisticsCell(Vector3.zero, -1);
+        neutral.ExploreBy(1);
+        InitializeLogisticsMap(map, neutral);
+        var service = new LogisticsService(map);
+
+        Assert.IsFalse(service.IsVisibleToFaction(neutral, 0));
+        Assert.IsTrue(service.IsVisibleToFaction(neutral, 1));
+    }
+
+    [Test]
+    public void RecalculateAll_InvalidRootClearsPreviousCache()
+    {
+        var map = new HexMapService();
+        HexCellData root = CreateLogisticsCell(Vector3.zero, 0);
+        InitializeLogisticsMap(map, root);
+        var service = new LogisticsService(map);
+        service.RegisterMainCity(0, root);
+        service.RecalculateAll();
+        Assert.IsTrue(service.IsLogisticsConnected(root, 0));
+
+        root.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(1, 0);
+        service.RecalculateAll();
+
+        Assert.IsFalse(service.IsLogisticsConnected(root, 0));
+    }
+
+    private static HexCellData CreateLogisticsCell(Vector3 coordinate, int owner)
+    {
+        var cell = new HexCellData(Enums.HexType.NoRiver, 0, coordinate, Vector3.zero, 1f);
+        cell.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(owner, 0);
+        return cell;
+    }
+
+    private static void InitializeLogisticsMap(HexMapService map, params HexCellData[] cells)
+    {
+        var byCoordinate = new System.Collections.Generic.Dictionary<Vector3, HexCellData>();
+        var byOrder = new System.Collections.Generic.Dictionary<int, HexCellData>();
+        for (int index = 0; index < cells.Length; index++)
+        {
+            byCoordinate[cells[index].HexCoordinate] = cells[index];
+            byOrder[index] = cells[index];
+        }
+
+        map.Initialize(
+            byCoordinate,
+            byOrder,
+            new System.Collections.Generic.List<Vector3>(),
+            new System.Collections.Generic.Dictionary<Vector3, Vector3>(),
+            null,
+            new Vector3[0],
+            null,
+            null,
+            null);
     }
 }

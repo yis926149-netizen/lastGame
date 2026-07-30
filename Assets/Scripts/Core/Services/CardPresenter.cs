@@ -18,11 +18,13 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
     [Inject] private IUnitRepository _unitRepository;
     [Inject] private AudioManager _audioManager;
     [Inject] private UnitMovementSystem _movementSystem;
+    [Inject(Optional = true)] private ILogisticsService _logisticsService;
     [Inject] private UnitRemovalService _unitRemovalService;
     [Inject] private CombatResolver _combatResolver;
     [Inject] private GameLoop _gameLoop;
     [Inject] private ITerritoryService _territoryService;
     [Inject] private GoldWallet _goldWallet;  // 【探索重构-阶段5.5】部署合法性检查
+    [Inject] private PublicBuildingMarkerManager _publicBuildingMarkerManager;
 
     private ICardView _nextCardView;
     private List<ICardView> _cardViews = new List<ICardView>();
@@ -32,10 +34,10 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
 
     public void Initialize()
     {
-        _handRoot = GameObject.Find("Canvas")?.transform;
+        _handRoot = GameObject.Find("Canvas/card")?.transform;
         if (_handRoot == null)
         {
-            throw new System.InvalidOperationException("[CardPresenter] Initialization failed: Canvas was not found.");
+            throw new System.InvalidOperationException("[CardPresenter] Initialization failed: Canvas/card was not found.");
         }
 
         GameObject placeholder = _uiConfig.NextCardPlaceholder;
@@ -52,9 +54,24 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
                 "[CardPresenter] Initialization failed: NextCardPlaceholder has no RectTransform.");
         }
 
-        // 准备初始 5 张卡的数据
-        //Debug.Log("[CardPresenter] 开始准备初始 5 张卡牌数据");
-        for (int i = 0; i < 5; i++)
+        // 【临时测试】3张随机 + 1张箭塔 + 1张随机
+        int arrowTowerBuildingID = 5;
+        int arrowTowerCardID = (int)_unitData.GetUnitIconCount() + arrowTowerBuildingID;
+        for (int i = 0; i < 3; i++)
+        {
+            int cardID = _cardService.GenerateNextCardID();
+            bool isUnit = cardID < _unitData.GetUnitIconCount();
+            Sprite cardSprite = isUnit
+                ? _unitData.GetCard(cardID)
+                : _buildingData.GetBuildingCards(cardID - (int)_unitData.GetUnitIconCount());
+            var cardData = new CardData { ID = cardID, CardSprite = cardSprite, IsUnit = isUnit };
+            _initialDealQueue.Enqueue(cardData);
+        }
+        {
+            Sprite arrowTowerSprite = _buildingData.GetBuildingCards(arrowTowerBuildingID);
+            var arrowTowerCard = new CardData { ID = arrowTowerCardID, CardSprite = arrowTowerSprite, IsUnit = false };
+            _initialDealQueue.Enqueue(arrowTowerCard);
+        }
         {
             int cardID = _cardService.GenerateNextCardID();
             bool isUnit = cardID < _unitData.GetUnitIconCount();
@@ -224,8 +241,10 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
     /// </summary>
     public bool HandleCardDragEnd(ICardView view, HexCellData targetCell, Vector3 releaseWorldPos)
     {
-        // 【批次 C】实时化后：暂停时不可放卡（IsPaused），运行时始终可放（无回合阶段限制）
-        if (_gameLoop.IsPaused || !IsReleaseValid(view.CardID, targetCell))
+        if (_gameLoop != null && _gameLoop.IsPaused)
+            return false;
+
+        if (!IsReleaseValid(view.CardID, targetCell))
             return false;
 
         bool spawned = view.CardID < _unitData.GetUnitIconCount()
@@ -251,10 +270,11 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
         if (cell == null || _movementSystem.IsDestinationReserved(cell.HexCoordinate)) return false;
         // 【探索重构-阶段7】部署需在势力范围内 + 有足够金币
         if (!_territoryService.IsInPlayerTerritory(cell)) return false;
+        if (_logisticsService != null && !_logisticsService.IsLogisticsConnected(cell, 0)) return false;
         if (_goldWallet.Gold < _goldWallet.CardCost) return false;
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
-        if (cardID < _unitData.GetUnitIconCount() && cell.IsHaveUnit()) return false;
+        if (cell.IsHaveUnit()) return false;
         return true;
     }
 
@@ -347,7 +367,8 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
             playerModelManager: _playerModelManager,
             mapVisualEvent: _mapVisualEvent,
             unitRemovalService: _unitRemovalService,
-            audioManager: _audioManager);
+            audioManager: _audioManager,
+            markerManager: _publicBuildingMarkerManager);
         _gameLoop.Register(brain);
 
         if(_audioManager != null)
@@ -375,9 +396,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
                              prefabCanvas.transform.childCount >= 1 &&
                              prefabCanvas.transform.GetChild(0).childCount >= 1 &&
                              prefabCanvas.transform.GetChild(0).GetComponent<Slider>() != null;
-        bool hasCitySphere = h != null &&
-                             _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData.ContainsKey(h.Player_City_Index.Value);
-        if (h == null || prefab == null || parent == null || !hasBuildingUi || !hasCitySphere)
+        if (h == null || prefab == null || parent == null || !hasBuildingUi)
         {
             Debug.LogError($"[CardPresenter] Building card {buildingID} cannot be deployed because its prefab hierarchy is incomplete.");
             return false;
@@ -431,6 +450,16 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
                 _audioManager?.PlaySFX("LevelUP6");
                 _playerModelManager.Index_TechnologyAndCulturalBuilding.Add(_playerModelManager.TechnologyAndCulturalBuildingIndex++, g);
                 break;
+            case Enums.BulidingType.Barracks:
+                _audioManager?.PlaySFX("Chimes_Harp-012");
+                _playerModelManager.Index_BarracksBuilding.Add(_playerModelManager.BarracksBuildingIndex++, g);
+                SetupBarracksSpawner(g);
+                break;
+            case Enums.BulidingType.ArrowTower:
+                _audioManager?.PlaySFX("Chimes_Harp-012");
+                _playerModelManager.Index_ArrowTowerBuilding.Add(_playerModelManager.ArrowTowerBuildingIndex++, g);
+                SetupArrowTowerShooter(g);
+                break;
         }
 
         if (bulidingTypeInt == 0 || bulidingTypeInt == 1)
@@ -439,6 +468,18 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
         buildingController.Player_City_Index = h.Player_City_Index;
 
         return true;
+    }
+
+    private void SetupBarracksSpawner(GameObject buildingObj)
+    {
+        var spawner = buildingObj.AddComponent<BarracksSpawner>();
+        _container.Inject(spawner);
+    }
+
+    private void SetupArrowTowerShooter(GameObject buildingObj)
+    {
+        var shooter = buildingObj.GetComponent<ArrowTowerShooter>() ?? buildingObj.AddComponent<ArrowTowerShooter>();
+        _container.Inject(shooter);
     }
 
     /// <summary>

@@ -23,10 +23,14 @@ public class CameraController : MonoBehaviour, ITickable
     private float _maxX = 50f;
     private float _minZ = -50f;
     private float _maxZ = 50f;
+    private float _boundsPlaneY;
+    private readonly Vector3[] _frustumCorners = new Vector3[4];
 
     [Header("�������������")]
+    [Tooltip("相机目标位置的世界 Y 坐标下限")]
     public float minZoomDistance = 20f;
-    public float maxZoomDistance = 50f;
+    [Tooltip("相机目标位置的世界 Y 坐标上限")]
+    public float maxZoomDistance = 75f;
     public float zoomSpeed = 0.1f;
     public float smoothZoomTime = 0.1f;
 
@@ -114,11 +118,13 @@ public class CameraController : MonoBehaviour, ITickable
         float currentHeight = _mainCamera.transform.position.y;
         Vector3 offset = new Vector3(0, currentHeight, -currentHeight * 0.5f);
         Vector3 cameraTargetPos = spawnPos + offset;
+        cameraTargetPos.y = Mathf.Clamp(cameraTargetPos.y, minZoomDistance, maxZoomDistance);
 
         _targetCameraPosition = cameraTargetPos;
         _mainCamera.transform.position = cameraTargetPos;
-        _mainCamera.transform.LookAt(spawnPos);
         _targetCameraRotation = _mainCamera.transform.rotation;
+        ClampTargetToBounds(ref _targetCameraPosition);
+        _mainCamera.transform.position = _targetCameraPosition;
     }
 
     // ==================== һ���ָ�Ĭ��ֵ ====================
@@ -127,7 +133,7 @@ public class CameraController : MonoBehaviour, ITickable
         moveSpeed = 5f;
         smoothMoveTime = 0.1f;
         minZoomDistance = 20f;
-        maxZoomDistance = 50f;
+        maxZoomDistance = 75f;
         zoomSpeed = 35f;
         smoothZoomTime = 0.1f;
 
@@ -144,7 +150,15 @@ public class CameraController : MonoBehaviour, ITickable
         if (_mainCamera == null) return;
 
         if (!_boundsInitialized)
+        {
             TryInitializeBounds();
+            if (_boundsInitialized)
+            {
+                ClampTargetToBounds(ref _targetCameraPosition);
+                _mainCamera.transform.position = _targetCameraPosition;
+                transform.position = _targetCameraPosition;
+            }
+        }
 
         if (_isReturningToStart)
         {
@@ -162,23 +176,32 @@ public class CameraController : MonoBehaviour, ITickable
     {
         var allCells = _mapData.GetAllCells();
         if (allCells == null || allCells.Count == 0) return;
-        int xCount = _config.xNumber;
-        if (xCount <= 0 || allCells.Count < xCount) return;
+        _minX = float.PositiveInfinity;
+        _maxX = float.NegativeInfinity;
+        _minZ = float.PositiveInfinity;
+        _maxZ = float.NegativeInfinity;
+        _boundsPlaneY = float.PositiveInfinity;
 
-        var lowerLeftCell = allCells[0];
-        var lowerRightCell = allCells[xCount - 1];
-        var topLeftCell = allCells[allCells.Count - xCount];
+        foreach (var cell in allCells)
+        {
+            if (cell == null) continue;
 
-        if (lowerLeftCell == null || lowerRightCell == null || topLeftCell == null) return;
+            Vector3 center = cell.RealCenterWorldCoordinate;
+            _minX = Mathf.Min(_minX, center.x);
+            _maxX = Mathf.Max(_maxX, center.x);
+            _minZ = Mathf.Min(_minZ, center.z);
+            _maxZ = Mathf.Max(_maxZ, center.z);
+            _boundsPlaneY = Mathf.Min(_boundsPlaneY, center.y);
+        }
 
-        Vector3 lowerLeft = lowerLeftCell.RealCenterWorldCoordinate;
-        Vector3 lowerRight = lowerRightCell.RealCenterWorldCoordinate;
-        Vector3 topLeft = topLeftCell.RealCenterWorldCoordinate;
+        if (float.IsInfinity(_minX)) return;
 
-        _minX = lowerLeft.x + 13f;
-        _maxX = lowerRight.x - 13f;
-        _minZ = lowerLeft.z - 5f;
-        _maxZ = topLeft.z - 20f;
+        float edgePaddingX = _config.OuterRadius + _config.fogCoverWidth;
+        float edgePaddingZ = _config.OuterRadius + _config.fogCoverWidth * 0.5f;
+        _minX -= edgePaddingX;
+        _maxX += edgePaddingX;
+        _minZ -= edgePaddingZ;
+        _maxZ += edgePaddingZ;
 
         _boundsInitialized = true;
         //Debug.Log("CameraController �߽��ʼ���ɹ�");
@@ -200,9 +223,7 @@ public class CameraController : MonoBehaviour, ITickable
 
                 Vector3 moveDirection = (forward * vertical + right * horizontal).normalized;
                 _targetCameraPosition += moveDirection * moveSpeed * Time.deltaTime;
-
-                _targetCameraPosition.x = Mathf.Clamp(_targetCameraPosition.x, _minX, _maxX);
-                _targetCameraPosition.z = Mathf.Clamp(_targetCameraPosition.z, _minZ, _maxZ);
+                ClampTargetToBounds(ref _targetCameraPosition);
             }
         }
     }
@@ -213,14 +234,16 @@ public class CameraController : MonoBehaviour, ITickable
         if (scrollDelta == 0) return;
 
         Vector3 zoomMove = scrollDelta * _mainCamera.transform.forward * (zoomSpeed / 60f);
-        Vector3 newTarget = _targetCameraPosition + zoomMove;
+        float targetY = Mathf.Clamp(
+            _targetCameraPosition.y + zoomMove.y,
+            minZoomDistance,
+            maxZoomDistance);
 
-        float newHeight = newTarget.y;
-        if (newHeight >= minZoomDistance && newHeight <= maxZoomDistance)
-        {
-            ClampTargetToBounds(ref newTarget);
-            _targetCameraPosition = newTarget;
-        }
+        if (Mathf.Approximately(zoomMove.y, 0f)) return;
+
+        zoomMove *= (targetY - _targetCameraPosition.y) / zoomMove.y;
+        _targetCameraPosition += zoomMove;
+        ClampTargetToBounds(ref _targetCameraPosition);
     }
 
     // ====================== ��ת�߼�������ϸ��־�� ======================
@@ -284,6 +307,7 @@ public class CameraController : MonoBehaviour, ITickable
             offsetFromCenter = Quaternion.Euler(0, rotateAmount, 0) * offsetFromCenter;
             _targetCameraPosition = _currentRotationCenter + offsetFromCenter;
             _targetCameraRotation = Quaternion.LookRotation(_currentRotationCenter - _targetCameraPosition);
+            ClampTargetToBounds(ref _targetCameraPosition);
 
             //Debug.Log($"[Camera Rotation Debug] ��ת��Ӧ�� | rotateAmount={rotateAmount:F3} | λ�ñ仯 | Y��ת: {oldRotY:F1}�� �� {_targetCameraRotation.eulerAngles.y:F1}��");
         }
@@ -345,6 +369,7 @@ public class CameraController : MonoBehaviour, ITickable
         offsetFromCenter = Quaternion.Euler(0, rotateAngle, 0) * offsetFromCenter;
         _targetCameraPosition = _currentRotationCenter + offsetFromCenter;
         _targetCameraRotation = Quaternion.LookRotation(_currentRotationCenter - _targetCameraPosition);
+        ClampTargetToBounds(ref _targetCameraPosition);
 
         if (t >= 1f || Mathf.Abs(_currentReturnAngle - _targetReturnAngle) < 0.1f)
         {
@@ -414,9 +439,43 @@ public class CameraController : MonoBehaviour, ITickable
 
     private void ClampTargetToBounds(ref Vector3 position)
     {
-        if (!_boundsInitialized) return;
+        if (!_boundsInitialized || _mainCamera == null) return;
 
-        position.x = Mathf.Clamp(position.x, _minX, _maxX);
-        position.z = Mathf.Clamp(position.z, _minZ, _maxZ);
+        _mainCamera.CalculateFrustumCorners(
+            new Rect(0f, 0f, 1f, 1f),
+            1f,
+            Camera.MonoOrStereoscopicEye.Mono,
+            _frustumCorners);
+
+        float minOffsetX = float.PositiveInfinity;
+        float maxOffsetX = float.NegativeInfinity;
+        float minOffsetZ = float.PositiveInfinity;
+        float maxOffsetZ = float.NegativeInfinity;
+
+        foreach (Vector3 corner in _frustumCorners)
+        {
+            Vector3 direction = _targetCameraRotation * corner.normalized;
+            if (direction.y >= -0.001f) return;
+
+            float distance = (_boundsPlaneY - position.y) / direction.y;
+            Vector3 offset = direction * distance;
+            minOffsetX = Mathf.Min(minOffsetX, offset.x);
+            maxOffsetX = Mathf.Max(maxOffsetX, offset.x);
+            minOffsetZ = Mathf.Min(minOffsetZ, offset.z);
+            maxOffsetZ = Mathf.Max(maxOffsetZ, offset.z);
+        }
+
+        position.x = ClampViewAxis(position.x, _minX, _maxX, minOffsetX, maxOffsetX);
+        position.z = ClampViewAxis(position.z, _minZ, _maxZ, minOffsetZ, maxOffsetZ);
+    }
+
+    private static float ClampViewAxis(float position, float mapMin, float mapMax, float viewMinOffset, float viewMaxOffset)
+    {
+        float allowedMin = mapMin - viewMinOffset;
+        float allowedMax = mapMax - viewMaxOffset;
+
+        return allowedMin <= allowedMax
+            ? Mathf.Clamp(position, allowedMin, allowedMax)
+            : (allowedMin + allowedMax) * 0.5f;
     }
 }

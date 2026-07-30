@@ -25,13 +25,11 @@ Shader "Custom/River" {
         //Shadows Off  // 核心：Shader层面禁用阴影投射
 
         CGPROGRAM
-        // 关键3：移除可能的阴影编译指令（仅保留alpha和基础光照）
-        #pragma surface surf Standard alpha noforwardadd nolightmap nodirlightmap vertex:vert
-        // noforwardadd：禁用附加光照（减少计算，避免阴影残留）
-        // nolightmap/nodirlightmap：禁用光照贴图（透明物体无需光照贴图）
+        #pragma surface surf Standard alpha noforwardadd nolightmap nodirlightmap vertex:vert finalcolor:fogFinal
         #pragma target 3.0
 
-        // 声明变量（不变）
+        #include "FogBlend.cginc"
+
         sampler2D _MainTex;
         float4 _Color;
         float _Metallic;
@@ -41,14 +39,14 @@ Shader "Custom/River" {
 
         struct Input {
             float2 uv_MainTex;
-            // 【探索重构-阶段1】explored/visible 顶点色已不再用于显隐控制，保留字段避免编译警告
+            float2 fogCoord;
+            float  vertexColor_R;
         };
 
-        // 【探索重构-阶段1】_FogMemoryDim 已移除（记忆区概念不存在）
-
-        // 顶点函数：顶点色不再用于探索显隐
         void vert(inout appdata_full v, out Input o) {
             UNITY_INITIALIZE_OUTPUT(Input, o);
+            o.vertexColor_R = v.color.r;
+            FogBlend_vert(v.vertex, o.fogCoord);
         }
 
         void surf (Input IN, inout SurfaceOutputStandard o) {
@@ -72,11 +70,14 @@ Shader "Custom/River" {
             // 当_Color.Alpha=0时，finalColor.a=0，实现完全透明
 
             // 表面属性赋值
-            // 【探索重构-阶段1】始终正常显示，不再按探索状态压暗或消除 Alpha
             o.Albedo = finalColor.rgb;
             o.Metallic = _Metallic;
             o.Smoothness = _Glossiness;
             o.Alpha = finalColor.a;
+        }
+
+        void fogFinal(Input IN, SurfaceOutputStandard o, inout fixed4 color) {
+            FogBlend_final(IN.vertexColor_R, 0.0, half3(0,0,0), color, IN.fogCoord);
         }
         ENDCG
     }

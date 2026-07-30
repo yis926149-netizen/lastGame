@@ -8,17 +8,19 @@ public class UnitMovementSystem : ITickable
     private readonly IMapDataService _mapDataService;
     private readonly MapVisualEventSO _mapVisualEvent;  // 用于触发视觉更新
     private readonly GameLoop _gameLoop;                // 用于暂停检查（批次 C）
+    private readonly ILogisticsService _logisticsService; // 用于占领后重算后勤
 
     // 正在移动的单位列表
     private List<MovingUnit> _movingUnits = new List<MovingUnit>();
     private readonly Dictionary<Vector3, IUnitMovement> _reservedDestinations = new Dictionary<Vector3, IUnitMovement>();
     private List<Vector3> _cachedAllPoints;
 
-    public UnitMovementSystem(IMapDataService mapDataService, MapVisualEventSO mapVisualEvent, GameLoop gameLoop)
+    public UnitMovementSystem(IMapDataService mapDataService, MapVisualEventSO mapVisualEvent, GameLoop gameLoop, [InjectOptional] ILogisticsService logisticsService = null)
     {
         _mapDataService = mapDataService;
         _mapVisualEvent = mapVisualEvent;
         _gameLoop = gameLoop;
+        _logisticsService = logisticsService;
     }
 
     public IReadOnlyList<Vector3> AllHexCoordinates
@@ -180,6 +182,7 @@ public class UnitMovementSystem : ITickable
             if (finished)
             {
                 CommitDestination(mu);
+                TryCaptureEnemyCell(mu);
                 _movingUnits.RemoveAt(i);
                 mu.Unit.OnMoveFinished();
             }
@@ -241,6 +244,35 @@ public class UnitMovementSystem : ITickable
         ReleaseReservation(movingUnit);
     }
 
+    private void TryCaptureEnemyCell(MovingUnit movingUnit)
+    {
+        if (_logisticsService == null) return;
+
+        HexCellData destinationCell = _mapDataService.GetCell(movingUnit.DestinationHex);
+        if (destinationCell == null) return;
+
+        int cellOwner = destinationCell.Player_City_Index.Key;
+        if (cellOwner < 0) return;
+
+        GameObject unit = movingUnit.Unit.gameObject;
+        if (unit == null) return;
+        var controller = unit.GetComponent<UnitMovementController>();
+        if (controller == null) return;
+
+        int attackerFaction = controller.PlayerIndex;
+        if (cellOwner == attackerFaction) return;
+
+        var buildingEntry = destinationCell.BulidingTypeOnHex_Building;
+        if (buildingEntry.Key != Enums.BulidingType.NoBuilding && buildingEntry.Value != null)
+        {
+            var buildingBase = buildingEntry.Value.GetComponent<BuildingBase>();
+            if (buildingBase != null && buildingBase.Player_City_Index.Key == cellOwner)
+                return;
+        }
+
+        _logisticsService.TransferOwner(destinationCell, attackerFaction);
+    }
+
     private void RestoreStartCell(MovingUnit movingUnit)
     {
         HexCellData startCell = _mapDataService.GetCell(movingUnit.StartHex);
@@ -258,6 +290,20 @@ public class UnitMovementSystem : ITickable
         if (_reservedDestinations.TryGetValue(movingUnit.DestinationHex, out var unit) && unit == movingUnit.Unit)
         {
             _reservedDestinations.Remove(movingUnit.DestinationHex);
+        }
+    }
+
+    public void ReleaseReservationByUnit(GameObject unit)
+    {
+        if (unit == null) return;
+        for (int i = _movingUnits.Count - 1; i >= 0; i--)
+        {
+            if (_movingUnits[i].Unit.gameObject == unit)
+            {
+                var mu = _movingUnits[i];
+                ReleaseReservation(mu);
+                _movingUnits.RemoveAt(i);
+            }
         }
     }
 

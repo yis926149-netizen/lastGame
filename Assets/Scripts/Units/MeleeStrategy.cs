@@ -23,6 +23,15 @@ public class MeleeStrategy : IUnitStrategy
         List<Vector3> allPoints = new List<Vector3>(mapData.GetAllHexCoordinates());
         Vector3 startHex = mapData.WorldToHexCoordinate(brain.Owner.model.transform.position);
 
+        Vector3? directionHint = brain.FindApproximateDirectionToHiddenBuilding();
+        if (directionHint.HasValue && movement.CalculateMinMovementCostBetweenTwoHexes(
+                allPoints, startHex, directionHint.Value,
+                Enums.MovementPurpose.MoveToDestination, out _, out List<Vector3> directionPath)
+            && directionPath != null && directionPath.Count > 0)
+        {
+            return new List<Vector3> { directionPath[0] };
+        }
+
         Vector3? targetHex = brain.FindNearestEnemy() ?? brain.FindNearestEnemyBuilding();
 
         if (targetHex.HasValue)
@@ -125,6 +134,13 @@ public class MeleeStrategy : IUnitStrategy
         if (buildingInCell != null &&
             (buildingInCell.CompareTag(enemyBuildingTag) || buildingInCell.CompareTag("NeutralBuilding")))
         {
+            var publicBuilding = buildingInCell.GetComponent<PublicBuildingBase>();
+            if (publicBuilding != null &&
+                publicBuilding.CurrentDiscoveryState == PublicBuildingBase.DiscoveryState.Hidden)
+            {
+                return (null, null);
+            }
+
             return (buildingInCell, buildingInCell.tag);
         }
 

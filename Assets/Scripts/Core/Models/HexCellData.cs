@@ -216,10 +216,18 @@ public class HexCellData
     //该地块归属
     public KeyValuePair<int, int> Player_City_Index = new KeyValuePair<int, int>(-1, -1);
 
-    //该地块是否被玩家探索
-    public bool IsExplored { get; private set; }
+    //该地块是否被探索（位掩码：bit 0=玩家, bit 1=AI）
+    //保留旧属性兼容现有调用方，默认查询阵营0（玩家）
+    private int _exploredMask;
+    public bool IsExplored => IsExploredBy(0);
+    public bool IsExploredBy(int factionId) => (_exploredMask & (1 << factionId)) != 0;
+    public void ExploreBy(int factionId) => _exploredMask |= (1 << factionId);
 
     // 【探索重构-阶段6】IsVisible 已移除。地图全可见，只保留 IsExplored（是否已探索/占领）。
+
+    // 【迷雾过渡】迷雾透明度：0=完全迷雾遮挡，1=完全清晰显示。逐帧过渡到目标值。
+    public float FogAlpha { get; set; }
+    public float FogAlphaTarget { get; set; }
 
     // 【公共建筑系统-决策#42】该地块是否不可探索（公共建筑占位格+周围一环）
     // 这些地块只能通过占领公共建筑获得，不能通过探索系统主动探索
@@ -293,7 +301,9 @@ public class HexCellData
         this.CenterWorldCoordinate = CenterWorldCoordinate;
         this.Height = Height;
         //测试迷雾
-        IsExplored = false;
+        _exploredMask = 0;
+        FogAlpha = 0f;
+        FogAlphaTarget = 0f;
 
         //Debug.Log("IsExplored：" + IsExplored);
         //测试用
@@ -311,7 +321,7 @@ public class HexCellData
     // 【探索重构-阶段3】访问权改为 internal，强制通过 IExplorationService.TryExplore 调用
     internal void ExploreThisHexCell()
     {
-        IsExplored = true;
+        ExploreBy(0);
 
         // 【探索重构-阶段2】movementCost 不再随探索状态改变：
         //  - 构造时已按实际地形计算（普通1/森林2/水域MaxValue）

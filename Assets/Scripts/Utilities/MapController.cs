@@ -544,6 +544,13 @@ public class MapController : MonoBehaviour
         }
     }
 
+    public static void RecalculateTangentsSafe(Mesh mesh)
+    {
+        if (mesh == null) return;
+        mesh.RecalculateTangents();
+        SanitizeNormalsAndTangents(mesh);
+    }
+
     private static bool IsInvalid(float value)
     {
         return float.IsNaN(value) || float.IsInfinity(value);

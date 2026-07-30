@@ -12,7 +12,7 @@ public class CardUnlockRuleProvider : ICardUnlockRuleProvider
 {
     private static readonly int[] BaseUnitIds = { 0, 1 };
     private static readonly int[] TechUnitIds = { 2, 3, 4, 9, 10, 11, 6, 5, 7, 8 };
-    private static readonly int[] BaseBuildingIds = { 3 };
+        private static readonly int[] BaseBuildingIds = { 3, 4, 5 };
     private static readonly int[] CultureBuildingIds = { 2, 0, 1 };
 
     [Inject] private IUnitDataProvider _unitData;
@@ -28,8 +28,9 @@ public class CardUnlockRuleProvider : ICardUnlockRuleProvider
         int buildingCount = _buildingData.GetBuildingCardsCount();
         ValidateCardDatabase(unitCount, buildingCount);
 
-        AddValidUnitIds(unlockedIds, BaseUnitIds, unitCount);
-        AddValidUnitIds(unlockedIds, TechUnitIds, unitCount);
+        // 【临时测试】禁用单位卡，只抽建筑卡
+        // AddValidUnitIds(unlockedIds, BaseUnitIds, unitCount);
+        // AddValidUnitIds(unlockedIds, TechUnitIds, unitCount);
         AddValidBuildingIds(unlockedIds, BaseBuildingIds, unitCount, buildingCount);
         AddValidBuildingIds(unlockedIds, CultureBuildingIds, unitCount, buildingCount);
 

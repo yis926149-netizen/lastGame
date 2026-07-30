@@ -48,7 +48,9 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
     private GameObject _playerSphere;
     private List<GameObject> _enemySpheres = new List<GameObject>();
 
-    // ── 复用缓冲，避免每次刷新分配 ────────────────────────
+    // ── 势力颜色 ──────────────────────────────────────────
+    private static readonly Color PlayerColor = new Color(1f, 0.84f, 0f);     // 金黄色
+    private static readonly Color EnemyColor   = new Color(0.5f, 0f, 0.5f);    // 紫色
     private readonly List<BoundarySegment> _segBuffer = new List<BoundarySegment>();
     private readonly List<Vector3> _cornerBuffer = new List<Vector3>();
 
@@ -100,7 +102,7 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
         if (_playerModelManager.SphereOfInfluence_HexC_HexCellData.Count > 0)
         {
             var cells = _playerModelManager.SphereOfInfluence_HexC_HexCellData.Values.ToList();
-            BuildModelsForSphere(cells, cells);
+            BuildModelsForSphere(cells, cells, PlayerColor);
         }
 
         // 敌方势力：【探索重构-阶段1】始终显示完整势力范围，不再按 IsVisible 裁切
@@ -108,7 +110,7 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
         {
             var fullSphere = kv.Value.Values.Where(c => c != null).ToList();
             if (fullSphere.Count == 0) continue;
-            BuildModelsForSphere(fullSphere, fullSphere);
+            BuildModelsForSphere(fullSphere, fullSphere, EnemyColor);
         }
 
         // 停用多余实例
@@ -116,23 +118,24 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
         DeactivateExtra(_towerPool, _activeTowerCount);
     }
 
-    private void BuildModelsForSphere(List<HexCellData> hexCells, ICollection<HexCellData> membershipCells)
+    private void BuildModelsForSphere(List<HexCellData> hexCells, ICollection<HexCellData> membershipCells, Color factionColor)
     {
         _meshGenerator.ExtractSphereOfInfluenceBoundary(
             hexCells, membershipCells, _mapDataService, _segBuffer, _cornerBuffer);
 
         // 城墙
         foreach (var seg in _segBuffer)
-            PlaceWall(seg);
+            PlaceWall(seg, factionColor);
 
         // 城墩
         foreach (var corner in _cornerBuffer)
-            PlaceTower(corner);
+            PlaceTower(corner, factionColor);
     }
 
-    private void PlaceWall(BoundarySegment seg)
+    private void PlaceWall(BoundarySegment seg, Color factionColor)
     {
         GameObject wall = GetPooled(_wallPool, _wallPrefab, ref _activeWallCount);
+        ApplyModelColor(wall, factionColor);
 
         Vector3 start = seg.Start;
         Vector3 end = seg.End;
@@ -178,9 +181,10 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
         }
     }
 
-    private void PlaceTower(Vector3 corner)
+    private void PlaceTower(Vector3 corner, Color factionColor)
     {
         GameObject tower = GetPooled(_towerPool, _towerPrefab, ref _activeTowerCount);
+        ApplyModelColor(tower, factionColor);
         tower.transform.position = corner;
         tower.transform.rotation = Quaternion.identity;
         tower.transform.localScale = TowerBaseScale;
@@ -228,6 +232,16 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
         }
     }
 
+    private static void ApplyModelColor(GameObject model, Color color)
+    {
+        if (model == null) return;
+        var renderer = model.GetComponentInChildren<Renderer>();
+        if (renderer != null && renderer.material != null)
+        {
+            renderer.material.SetColor("_Color", color);
+        }
+    }
+
     // ══════════════════════════════════════════════════════
     //  旧面片渲染（预制体未指定时回退）
     // ══════════════════════════════════════════════════════
@@ -242,7 +256,7 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
         if (_playerModelManager.SphereOfInfluence_HexC_HexCellData.Count > 0)
         {
             var cells = _playerModelManager.SphereOfInfluence_HexC_HexCellData.Values.ToList();
-            _playerSphere = CreateSphereMesh(cells, cells, Color.blue, "PlayerSphereOfInfluence");
+            _playerSphere = CreateSphereMesh(cells, cells, PlayerColor, "PlayerSphereOfInfluence");
         }
 
         foreach (var kv in _enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData)
@@ -250,7 +264,7 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
             var fullSphere = kv.Value.Values.Where(c => c != null).ToList();
             // 【探索重构-阶段1】始终显示完整势力范围
             if (fullSphere.Count == 0) continue;
-            Color color = GetEnemyColor(kv.Key);
+            Color color = EnemyColor;
             GameObject go = CreateSphereMesh(fullSphere, fullSphere, color, $"EnemySphereOfInfluence_{kv.Key}");
             _enemySpheres.Add(go);
         }
@@ -304,6 +318,6 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
 
     private Color GetEnemyColor(int enemyIndex)
     {
-        return Color.gray;
+        return EnemyColor;
     }
 }

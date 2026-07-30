@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Zenject;
 
 //****************************************
 //创建人：易生
@@ -9,6 +10,8 @@ using UnityEngine;
 
 public class EnemyModelManager : MonoBehaviour
 {
+    [Inject] private IMapDataService _mapDataService;
+
     //总势力范围
     //人机编号_总势力范围(地块的六边形坐标_地块的HexCell)
     [HideInInspector]
@@ -60,18 +63,39 @@ public class EnemyModelManager : MonoBehaviour
         }
         totalSphere.Clear();
 
-        foreach (var cityEntry in Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData)
+        var newSingleCity = new Dictionary<KeyValuePair<int, int>, Dictionary<Vector3, HexCellData>>();
+
+        var cells = _mapDataService.GetAllCells();
+        if (cells != null)
         {
-            if (cityEntry.Key.Key != aiIndex) continue;
-
-            foreach (var cellEntry in cityEntry.Value)
+            foreach (var cell in cells)
             {
-                HexCellData cell = cellEntry.Value;
-                if (cell == null) continue;
+                if (cell == null || cell.Player_City_Index.Key != aiIndex) continue;
 
-                totalSphere[cellEntry.Key] = cell;
-                cell.Player_City_Index = cityEntry.Key;
+                totalSphere[cell.HexCoordinate] = cell;
+
+                var cityKey = cell.Player_City_Index;
+                if (!newSingleCity.TryGetValue(cityKey, out var cityDict))
+                {
+                    cityDict = new Dictionary<Vector3, HexCellData>();
+                    newSingleCity[cityKey] = cityDict;
+                }
+                cityDict[cell.HexCoordinate] = cell;
             }
         }
+
+        var keysToRemove = new List<KeyValuePair<int, int>>();
+        foreach (var kv in Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData)
+            if (kv.Key.Key == aiIndex)
+                keysToRemove.Add(kv.Key);
+        foreach (var key in keysToRemove)
+            Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData.Remove(key);
+
+        foreach (var kv in newSingleCity)
+            Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData[kv.Key] = kv.Value;
+
+        if (!CityCount.ContainsKey(aiIndex))
+            CityCount[aiIndex] = 0;
+        CityCount[aiIndex] = newSingleCity.Count;
     }
 }

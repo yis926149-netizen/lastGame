@@ -15,9 +15,9 @@ MonoBehaviour:
   talentId: 1
   typeIcon: {fileID: 21300000, guid: 42df461fb2934ca488d9d21c3210bf15, type: 3}
   mainIcon: {fileID: 21300000, guid: 1e12d1d01ae1867429e004fbc10231b4, type: 3}
-  talentName: defense
-  description: "\u63D0\u5347\u6574\u4F53\u9632\u5FA1\u529B"
+  talentName: buildingHp
+  description: "\u5EFA\u7B51\u751F\u547D\u503C+25%"
   effect:
     type: 0
-    statId: 1
-    value: 1.32
+    statId: 3
+    value: 1.25

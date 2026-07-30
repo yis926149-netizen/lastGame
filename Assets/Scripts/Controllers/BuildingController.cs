@@ -13,13 +13,25 @@ using Zenject;
 
 public class BuildingController : BuildingBase
 {
+    [Inject] private GameLoop _gameLoop;
+    [Inject] private EndGame _endGame;
+    [Inject(Optional = true)] private ILogisticsService _logisticsService;
+
     //城市易主锁（防止重复触发）
     public bool isCityChangeOwner = false;
 
     void Update()
     {
+        if (_gameLoop != null && _gameLoop.IsPaused) return;
+
         if (CheckDeath() && !isCityChangeOwner)
         {
+            if (bulidingType == Enums.BulidingType.City &&
+                _endGame != null &&
+                _endGame.TryEndFromMainCity(this))
+            {
+                return;
+            }
             OnDeath();
         }
     }
@@ -188,6 +200,8 @@ public class BuildingController : BuildingBase
         RemoveEntriesByValue(_playerModelManager.Index_DefenseBuilding, target);
         RemoveEntriesByValue(_playerModelManager.Index_AltarBuilding, target);
         RemoveEntriesByValue(_playerModelManager.Index_TechnologyAndCulturalBuilding, target);
+        RemoveEntriesByValue(_playerModelManager.Index_BarracksBuilding, target);
+        RemoveEntriesByValue(_playerModelManager.Index_ArrowTowerBuilding, target);
     }
 
     private bool RemoveEntriesByValue(Dictionary<int, GameObject> dict, GameObject target)
@@ -300,7 +314,29 @@ public class BuildingController : BuildingBase
         RemoveFromPlayerBuildingIndexes(gameObject);
         _mapVisualEvent.Raise();
 
+        TryCaptureAfterBuildingDestroyed(h);
+
         //删除该建筑
         Destroy(gameObject);      
+    }
+
+    private void TryCaptureAfterBuildingDestroyed(HexCellData cell)
+    {
+        if (_logisticsService == null || cell == null) return;
+
+        int cellOwner = cell.Player_City_Index.Key;
+        if (cellOwner < 0) return;
+
+        if (!cell.IsHaveUnit()) return;
+        GameObject unit = cell.GetUnit();
+        if (unit == null) return;
+
+        var controller = unit.GetComponent<UnitMovementController>();
+        if (controller == null) return;
+
+        int attackerFaction = controller.PlayerIndex;
+        if (cellOwner == attackerFaction) return;
+
+        _logisticsService.TransferOwner(cell, attackerFaction);
     }
 }

@@ -22,6 +22,7 @@ public class AIUnitBrain : UnitBrainBase
                            CombatResolver combatResolver = null,
                            AIEntityFactory factory = null,
                            UnitRemovalService unitRemovalService = null,
+                           PublicBuildingMarkerManager markerManager = null,
                            int aiIndex = 1)
     {
         Owner = owner;
@@ -32,6 +33,7 @@ public class AIUnitBrain : UnitBrainBase
         _unitRepository = unitRepository;
         _factory = factory;
         _unitRemovalService = unitRemovalService;
+        SetPublicBuildingMarkerManager(markerManager);
         _aiIndex = aiIndex;
     }
 
@@ -90,6 +92,13 @@ public class AIUnitBrain : UnitBrainBase
 
             GameObject building = bCell.BulidingTypeOnHex_Building.Value;
             if (building == null) continue;
+
+            var publicBuilding = building.GetComponent<PublicBuildingBase>();
+            if (publicBuilding != null &&
+                publicBuilding.CurrentDiscoveryState == PublicBuildingBase.DiscoveryState.Hidden)
+            {
+                continue;
+            }
 
             // 【公共建筑系统-决策#36】敌方建筑 + 中立公共建筑都可攻击（"先遇到先打"）
             bool isEnemy = building.CompareTag("PlayerBuilding");

@@ -7,6 +7,8 @@ using UnityEngine;
 public interface IPublicBuildingDataProvider
 {
     GameObject GetPrefab(int buildingId);
+    GameObject GetMarkerPrefab();
+    Sprite GetMarkerIcon(int buildingId);
     float GetCaptureHp(int buildingId);
     float GetDefenseHp(int buildingId);
     Enums.HexDirection[] GetSubHexDirections(int buildingId);
@@ -27,6 +29,18 @@ public class PublicBuildingDataProvider : IPublicBuildingDataProvider
         if (_database.buildings == null || buildingId < 0 || buildingId >= _database.buildings.Length)
             return null;
         return _database.buildings[buildingId].prefab;
+    }
+
+    public GameObject GetMarkerPrefab()
+    {
+        return _database.markerPrefab;
+    }
+
+    public Sprite GetMarkerIcon(int buildingId)
+    {
+        if (_database.buildings == null || buildingId < 0 || buildingId >= _database.buildings.Length)
+            return null;
+        return _database.buildings[buildingId].markerIcon;
     }
 
     public float GetCaptureHp(int buildingId)

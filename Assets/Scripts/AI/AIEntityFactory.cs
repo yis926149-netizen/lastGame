@@ -27,6 +27,9 @@ public class AIEntityFactory
     private readonly UnitMovementSystem _movementSystem;
     private readonly UnitRemovalService _unitRemovalService;
     private readonly CombatResolver _combatResolver;
+    private readonly PublicBuildingMarkerManager _publicBuildingMarkerManager;
+    private readonly EndGame _endGame;
+    private readonly ILogisticsService _logisticsService;
 
     // 城市预制体：由 AIManager 从其 Inspector 序列化字段传入（场景引用无法直接注入到普通类）。
     public GameObject CityPrefab { get; set; }
@@ -44,7 +47,10 @@ public class AIEntityFactory
         GameLoop gameLoop,
         UnitMovementSystem movementSystem,
         UnitRemovalService unitRemovalService,
-        CombatResolver combatResolver)
+        CombatResolver combatResolver,
+        PublicBuildingMarkerManager publicBuildingMarkerManager,
+        EndGame endGame,
+        ILogisticsService logisticsService)
     {
         _mapDataService = mapDataService;
         _container = container;
@@ -60,6 +66,9 @@ public class AIEntityFactory
         _movementSystem = movementSystem;
         _unitRemovalService = unitRemovalService;
         _combatResolver = combatResolver;
+        _publicBuildingMarkerManager = publicBuildingMarkerManager;
+        _endGame = endGame;
+        _logisticsService = logisticsService;
     }
 
     /// <summary>AI 建城</summary>
@@ -80,6 +89,7 @@ public class AIEntityFactory
         buildingData.controller = buildingController;
 
         buildingController.bulidingType = Enums.BulidingType.City;
+        _endGame.RegisterMainCity(AIIndex, buildingController);
         h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(Enums.BulidingType.City, g);
         h.movementCost = float.MaxValue;
 
@@ -88,6 +98,7 @@ public class AIEntityFactory
         var cityKey = new KeyValuePair<int, int>(AIIndex, cityIndex);
 
         buildingController.Player_City_Index = cityKey;
+        _logisticsService.RegisterMainCity(AIIndex, h);
 
         // 为该城市创建单独的势力范围字典
         if (!_enemyModelManager.Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData.ContainsKey(cityKey))
@@ -138,6 +149,17 @@ public class AIEntityFactory
         g.transform.position = position;
         g.tag = "EnemyUnit";
 
+        // 调试：检查 Animator 组件
+        var animator = g.GetComponent<Animator>();
+        if (animator == null)
+        {
+            UnityEngine.Debug.LogWarning($"[AIEntityFactory] Unit {UnitIndex} at {position} has NO Animator component!");
+        }
+        else
+        {
+            UnityEngine.Debug.Log($"[AIEntityFactory] Unit {UnitIndex} Animator: enabled={animator.enabled}, controller={animator.runtimeAnimatorController?.name ?? "NULL"}");
+        }
+
         g.AddComponent<UnitMovementController>();
         _container.InjectGameObject(g);
 
@@ -186,7 +208,8 @@ public class AIEntityFactory
             _movementSystem,
             combatResolver: _combatResolver,
             factory: this,
-            unitRemovalService: _unitRemovalService);
+            unitRemovalService: _unitRemovalService,
+            markerManager: _publicBuildingMarkerManager);
         _gameLoop.Register(brain);
 
         // 【探索重构-阶段1】AI单位始终可见，不再隐藏
@@ -230,6 +253,18 @@ public class AIEntityFactory
 
         // 单位UI画布 + 血条（共享样板；canvas 为空则中止，保留原行为）
         if (!SpawnUIWiring.WireBuildingCanvas(g, buildingController, Color.red, _container, _uiConfigProvider)) { return; }
+
+        if (buildingController.bulidingType == Enums.BulidingType.Barracks)
+        {
+            var spawner = g.AddComponent<BarracksSpawner>();
+            _container.Inject(spawner);
+        }
+
+        if (buildingController.bulidingType == Enums.BulidingType.ArrowTower)
+        {
+            var shooter = g.GetComponent<ArrowTowerShooter>() ?? g.AddComponent<ArrowTowerShooter>();
+            _container.Inject(shooter);
+        }
 
         // 【探索重构-阶段1】AI建筑始终可见，不再隐藏
     }

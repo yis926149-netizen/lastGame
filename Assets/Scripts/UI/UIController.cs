@@ -11,7 +11,6 @@ using Zenject;
 public class UIController : MonoBehaviour
 {
     // 注入服务
-    [Inject] private IEnvironmentModelsProvider environmentModelsProvider;
     [Inject] private IUnitDataProvider unitDataProvider;
     [Inject] private IBuildingDataProvider buildingDataProvider;
     [Inject] private IUIConfigProvider uiConfigProvider;
@@ -92,12 +91,6 @@ public class UIController : MonoBehaviour
         if (UIType == "SkipButton")
         {
             UITool.AddButtonClickEvent(transform.GetComponent<Button>(), UnitInfoPanelSkipButton);
-        }
-
-        // 单位信息面板 - 收割资源按钮
-        if (UIType == "ReapButton")
-        {
-            UITool.AddButtonClickEvent(transform.GetComponent<Button>(), UnitInfoPanelReapButton);
         }
 
         // 单位模型图标
@@ -437,101 +430,6 @@ public class UIController : MonoBehaviour
             if (ind != null) Destroy(ind);
         }
         _tempEnemyIndicators.Clear();
-    }
-
-    // ---------- 收割资源 ----------
-    public void UnitInfoPanelReapButton()
-    {
-        // 【批次 C】移除回合阶段门控，实时化后始终允许
-        GameObject selectedUnit = _uiPresenter.CurrentSelectedUnit;
-        if (selectedUnit == null) return;
-
-        if (!_unitRepository.TryGetPlayerUnit(selectedUnit, out var characterData))
-        {
-            Debug.LogWarning("选中的单位不在玩家单位仓库中");
-            return;
-        }
-
-        HexCellData h = _mapDataService.GetCellByWorldPosition(characterData.model.transform.position);
-
-        Enums.ResourceType resource = h.GetResource();
-        if (resource == Enums.ResourceType.None)
-        {
-            Debug.Log("该地块无资源");
-            return;
-        }
-
-        h.ReapResource();
-        Destroy(h.resourceModel);
-        h.resourceModel = null;
-
-        switch (resource)
-        {
-            case Enums.ResourceType.Animals:
-                _audioManager.PlaySFX("Cymbals-008");
-                ReapResource_Animals(characterData);
-                break;
-            case Enums.ResourceType.Plants:
-                _audioManager.PlaySFX("heal5");
-                ReapResource_Plants(characterData);
-                break;
-            case Enums.ResourceType.Minerals:
-                _audioManager.PlaySFX("Metallic_Weapon_Hit-020");
-                ReapResource_Minerals(characterData);
-                break;
-            case Enums.ResourceType.Chest:
-                _audioManager.PlaySFX("Coin8");
-                ReapResource_Chest(characterData);
-                break;
-        }
-    }
-
-    private void ReapResource_Animals(CharacterData Reaper)
-    {
-        Reaper.Resource_Animals = 0.7f;
-        ReapResource(environmentModelsProvider.GetReapAnimalsEffect());
-    }
-
-    private void ReapResource_Plants(CharacterData Reaper)
-    {
-        Reaper.Heal(0.25f * Reaper.unitData.hp);
-        ReapResource(environmentModelsProvider.GetReapPlantsEffect());
-    }
-
-    private void ReapResource_Minerals(CharacterData Reaper)
-    {
-        Reaper.Resource_Minerals = 0.25f;
-        ReapResource(environmentModelsProvider.GetReapMineralsEffect());
-    }
-
-    private void ReapResource_Chest(CharacterData Reaper)
-    {
-        // 科技/文化系统已移除：宝箱不再提供科技/文化点数，仅保留收割特效。
-        // 后续如需为宝箱设计新的奖励效果，在此处填充。
-        ReapResource(environmentModelsProvider.GetReapChestEffect());
-    }
-
-    private void ReapResource(GameObject resourcePrefab)
-    {
-        GameObject selectedUnit = _uiPresenter.CurrentSelectedUnit;
-        if (selectedUnit == null) return;
-
-        if (!_unitRepository.TryGetPlayerUnit(selectedUnit, out var characterData))
-        {
-            Debug.LogWarning("选中的单位不在玩家单位仓库中");
-            return;
-        }
-
-        Vector3 v = _mapDataService.GetCellByWorldPosition(characterData.model.transform.position).RealCenterWorldCoordinate;
-        GameObject g = Instantiate(resourcePrefab);
-        g.transform.position = v + new Vector3(0, 0.5f, 0);
-        StartCoroutine(DestroyAfterDelay(4.0f, g));
-    }
-
-    IEnumerator DestroyAfterDelay(float delay, GameObject obj)
-    {
-        yield return new WaitForSeconds(delay);
-        Destroy(obj);
     }
 
     // ---------- 结束界面按钮 ----------

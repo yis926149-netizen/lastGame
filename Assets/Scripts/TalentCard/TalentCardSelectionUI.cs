@@ -20,6 +20,9 @@ public class TalentCardSelectionUI : MonoBehaviour
     [Header("横排布局")]
     [SerializeField] private float _cardWidth = 452f;
     [SerializeField] private float _cardSpacing = 40f;
+    [Header("B2: 竖屏适配")]
+    [Tooltip("竖屏下卡牌宽度缩放系数")]
+    [SerializeField] private float _portraitWidthScale = 0.65f;
 
     [Header("入场动画")]
     [Tooltip("每张卡错开间隔（秒）")]
@@ -140,7 +143,12 @@ public class TalentCardSelectionUI : MonoBehaviour
 
     private void BuildSlots()
     {
-        float step   = _cardWidth + _cardSpacing;
+        // B2: 竖屏适配 - 根据屏幕宽高比缩小卡牌尺寸
+        float aspectRatio = (float)Screen.width / Screen.height;
+        float cardWidthActual = aspectRatio < 1f ? _cardWidth * _portraitWidthScale : _cardWidth;
+        float cardSpacingActual = aspectRatio < 1f ? _cardSpacing * _portraitWidthScale : _cardSpacing;
+
+        float step   = cardWidthActual + cardSpacingActual;
         float startX = -(step);
 
         for (int i = 0; i < 3; i++)
@@ -154,6 +162,11 @@ public class TalentCardSelectionUI : MonoBehaviour
                 rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
                 rt.pivot = new Vector2(0.5f, 0.5f);
                 rt.anchoredPosition = new Vector2(startX + i * step, 0f);
+                // B2: 竖屏适配 - 缩放卡牌预制体本身
+                if (aspectRatio < 1f)
+                {
+                    rt.localScale = Vector3.one * _portraitWidthScale;
+                }
             }
 
             var nameText = go.transform.Find("name")?.GetComponent<Text>();

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using DG.Tweening;
 using UnityEngine;
 using UnityEngine.UI;
+using Zenject;
 
 /// <summary>
 /// 探索费用标签渲染器：在未探索且可探索（邻接已探索区）的地块上方显示费用。
@@ -19,13 +20,16 @@ public class CostLabelRenderer : MonoBehaviour
     private Canvas _parentCanvas;
     private RectTransform _canvasRect;
     private Transform _labelContainer;
+    private RectTransform _containerRect;  // 用于坐标映射，与 label 的实际父级一致
 
     private readonly Dictionary<Vector3, GameObject> _activeLabels = new Dictionary<Vector3, GameObject>();
     private readonly Dictionary<Vector3, Vector3> _labelWorldPositions = new Dictionary<Vector3, Vector3>();
     private readonly Dictionary<GameObject, Vector3> _labelBaseScales = new Dictionary<GameObject, Vector3>();
     private readonly Stack<GameObject> _pool = new Stack<GameObject>();
 
-    public void Initialize(IMapDataService mapData, GoldWallet goldWallet, GameObject labelPrefab, Canvas parentCanvas, IExplorationService explorationService, MapVisualEventSO mapVisualEvent)
+    private ILogisticsService _logisticsService;
+
+    public void Initialize(IMapDataService mapData, GoldWallet goldWallet, GameObject labelPrefab, Canvas parentCanvas, IExplorationService explorationService, MapVisualEventSO mapVisualEvent, ILogisticsService logisticsService = null)
     {
         _mapData = mapData;
         _goldWallet = goldWallet;
@@ -34,15 +38,23 @@ public class CostLabelRenderer : MonoBehaviour
         _canvasRect = parentCanvas != null ? parentCanvas.GetComponent<RectTransform>() : null;
         _explorationService = explorationService;
         _mapVisualEvent = mapVisualEvent;
+        _logisticsService = logisticsService;
 
         _labelContainer = parentCanvas?.transform.Find("CostLabelContainer");
         if (_labelContainer == null && parentCanvas != null)
         {
             var go = new GameObject("CostLabelContainer", typeof(RectTransform));
             go.transform.SetParent(parentCanvas.transform, false);
+            // 让容器完全撑满 Canvas，保证坐标空间与 Canvas 一致
+            var crt = go.GetComponent<RectTransform>();
+            crt.anchorMin = Vector2.zero;
+            crt.anchorMax = Vector2.one;
+            crt.offsetMin = Vector2.zero;
+            crt.offsetMax = Vector2.zero;
             go.transform.SetAsFirstSibling();
             _labelContainer = go.transform;
         }
+        _containerRect = _labelContainer?.GetComponent<RectTransform>();
 
         _camera = Camera.main;
 
@@ -50,6 +62,10 @@ public class CostLabelRenderer : MonoBehaviour
             _mapVisualEvent.OnMapVisualChanged.AddListener(RefreshLabels);
         if (_goldWallet != null)
             _goldWallet.OnGoldChanged += OnGoldChanged;
+        if (_explorationService != null)
+            _explorationService.CellExplored += OnCellExplored;
+        if (_logisticsService != null)
+            _logisticsService.LogisticsChanged += OnLogisticsChanged;
 
         Debug.Log($"[CostLabelRenderer] Initialized. Canvas: {parentCanvas?.name}");
         RefreshLabels();
@@ -61,6 +77,10 @@ public class CostLabelRenderer : MonoBehaviour
             _mapVisualEvent.OnMapVisualChanged.RemoveListener(RefreshLabels);
         if (_goldWallet != null)
             _goldWallet.OnGoldChanged -= OnGoldChanged;
+        if (_explorationService != null)
+            _explorationService.CellExplored -= OnCellExplored;
+        if (_logisticsService != null)
+            _logisticsService.LogisticsChanged -= OnLogisticsChanged;
         foreach (var kv in _activeLabels)
             if (kv.Value != null) Destroy(kv.Value);
         while (_pool.Count > 0)
@@ -82,10 +102,20 @@ public class CostLabelRenderer : MonoBehaviour
         }
     }
 
+    private void OnCellExplored(HexCellData cell)
+    {
+        RefreshLabels();
+    }
+
+    private void OnLogisticsChanged()
+    {
+        RefreshLabels();
+    }
+
     private void LateUpdate()
     {
         if (_camera == null) _camera = Camera.main;
-        if (_camera == null || _parentCanvas == null || _canvasRect == null) return;
+        if (_camera == null || _parentCanvas == null || _containerRect == null) return;
 
         foreach (var kv in _activeLabels)
         {
@@ -105,9 +135,11 @@ public class CostLabelRenderer : MonoBehaviour
             }
             else
             {
+                // 必须用 label 的直接父级 RectTransform 做转换，而非 Canvas 本身
+                // 否则容器尺寸与 Canvas 不一致时坐标系错位，label 位置错乱
                 Vector2 localPos;
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    _canvasRect, screenPos,
+                    _containerRect, screenPos,
                     _parentCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : _camera,
                     out localPos);
                 rt.anchoredPosition = localPos;
@@ -154,10 +186,10 @@ public class CostLabelRenderer : MonoBehaviour
             if (cg == null) cg = label.AddComponent<CanvasGroup>();
             cg.alpha = canAfford ? 1f : 0.35f;
 
-            // Button 点击探索
             var button = label.GetComponent<Button>();
             if (button == null) button = label.AddComponent<Button>();
             button.onClick.RemoveAllListeners();
+            button.interactable = canAfford;
 
             if (canAfford)
             {
@@ -195,6 +227,8 @@ public class CostLabelRenderer : MonoBehaviour
                 var btn = label.GetComponent<Button>();
                 if (btn != null) btn.onClick.RemoveAllListeners();
                 label.transform.DOKill();
+                if (_labelBaseScales.TryGetValue(label, out var storedScale))
+                    label.transform.localScale = storedScale;
                 _labelBaseScales.Remove(label);
                 label.SetActive(false);
                 _pool.Push(label);
@@ -209,7 +243,8 @@ public class CostLabelRenderer : MonoBehaviour
         for (int i = 0; i < 6; i++)
         {
             var n = _mapData.GetNeighbor(cell, (Enums.HexDirection)i);
-            if (n != null && n.IsExplored && n.Player_City_Index.Key == playerIndex)
+            if (n == null || n.Player_City_Index.Key != playerIndex) continue;
+            if (_logisticsService == null || _logisticsService.IsLogisticsConnected(n, playerIndex))
                 return true;
         }
         return false;

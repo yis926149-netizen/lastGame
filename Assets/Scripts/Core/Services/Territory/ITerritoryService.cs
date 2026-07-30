@@ -18,3 +18,21 @@ public interface ITerritoryService
     /// <returns>是否在势力范围内</returns>
     bool IsInPlayerTerritory(HexCellData cell);
 }
+
+public interface ILogisticsService
+{
+    event System.Action LogisticsChanged;
+
+    int Version { get; }
+
+    void RegisterMainCity(int factionId, HexCellData rootCell);
+    void SetOwner(HexCellData cell, int factionId);
+    void TransferOwner(HexCellData cell, int factionId);
+    void ClearOwner(HexCellData cell);
+    void RecalculateAll();
+
+    bool IsOwnedBy(HexCellData cell, int factionId);
+    bool IsLogisticsConnected(HexCellData cell, int factionId);
+    bool IsExploredByFaction(HexCellData cell, int factionId);
+    bool IsVisibleToFaction(HexCellData cell, int viewerFactionId);
+}

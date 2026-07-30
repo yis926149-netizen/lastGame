@@ -5276,120 +5276,115 @@ T2_8、P2_4、T2_9✔
     /// 连接面片 = 矩形（外）与真实轮廓（洞）之间的锯齿环带，用于闭合
     /// “不规则地图边缘 ↔ 矩形封皮内边”之间的缝隙。
     /// </summary>
-    public void GetFogConnectorBoundaries(out List<Vector3> rectBoundary, out List<Vector3> realOutline, IMapDataService _mapDataService)
+    public void GetFogConnectorBoundaries(out List<Vector3> rectBoundary, out List<Vector3> realOutline,
+        out List<Vector3> slopeOuterBoundary, IMapDataService _mapDataService)
     {
         realOutline = BuildMapRealOutline(_mapDataService);
-        //先用原始（未内缩）轮廓算矩形，保证连接面片外缘矩形与封皮(FogCover)内边矩形完全一致，不在封皮侧留缝。
         rectBoundary = BuildRectBoundary(realOutline);
-        //再把洞轮廓向地图中心内缩一小段，让连接面片压到地形边缘之下形成重叠，
-        //消除“连接面片洞边 = 地形边”完全重合导致的 Z-fighting 细缝/闪烁。
-        InsetOutlineTowardCenter(realOutline, 1.0f);
+        slopeOuterBoundary = BuildSlopeOuterBoundary(realOutline, rectBoundary, _config.fogConnectorSlopeWidth);
     }
 
-    // 将闭合轮廓在 XZ 平面上朝其几何中心内缩 inset 距离（Y 不变）。
-    private static void InsetOutlineTowardCenter(List<Vector3> outline, float inset)
+    private static void AddOpenEdgePoints(List<Vector3> outline, HexCellData cell, int direction)
     {
-        if (outline == null || outline.Count < 3) return;
-
-        Vector3 center = Vector3.zero;
-        foreach (Vector3 v in outline) center += v;
-        center /= outline.Count;
-
-        for (int i = 0; i < outline.Count; i++)
+        switch (direction)
         {
-            Vector3 v = outline[i];
-            Vector3 dir = new Vector3(center.x - v.x, 0f, center.z - v.z);
-            float mag = dir.magnitude;
-            if (mag > 1e-4f)
-            {
-                dir /= mag;
-                v.x += dir.x * inset;
-                v.z += dir.z * inset;
-                outline[i] = v;
-            }
+            case 0: outline.AddRange(new[] { cell.SolidAreaVertices[1], cell.SolidAreaVertices[7], cell.SolidAreaVertices[8], cell.SolidAreaVertices[2] }); break;
+            case 1: outline.AddRange(new[] { cell.SolidAreaVertices[2], cell.SolidAreaVertices[9], cell.SolidAreaVertices[10], cell.SolidAreaVertices[3] }); break;
+            case 2: outline.AddRange(new[] { cell.SolidAreaVertices[3], cell.SolidAreaVertices[11], cell.SolidAreaVertices[12], cell.SolidAreaVertices[4] }); break;
+            case 3: outline.AddRange(new[] { cell.SolidAreaVertices[4], cell.SolidAreaVertices[13], cell.SolidAreaVertices[14], cell.SolidAreaVertices[5] }); break;
+            case 4: outline.AddRange(new[] { cell.SolidAreaVertices[5], cell.SolidAreaVertices[15], cell.SolidAreaVertices[16], cell.SolidAreaVertices[6] }); break;
+            default: outline.AddRange(new[] { cell.SolidAreaVertices[6], cell.SolidAreaVertices[17], cell.SolidAreaVertices[18], cell.SolidAreaVertices[1] }); break;
         }
     }
 
-    // 地图真实不规则轮廓：收集所有边缘地块的“开放边”（邻居为空的方向）作为线段，
-    // 再按共享端点把这些线段拼接成一条有序闭环。相比逐地块按边序号收集，
-    // 拼接法不依赖遍历方向，不会在多开放边/非连续开放边的地块处产生跨地块内部的错误连线，
-    // 从而彻底避免自交导致 LibTessDotNet 丢三角面（个别处漏面/缝隙）。
+    // SolidAreaRatio 会让相邻地块的实体边之间保留过渡区域，因此跨地块端点并不重合。
+    // 按地图外围地块的确定顺序收集开放边，并由相邻点显式跨过这些过渡区域形成闭环。
     private List<Vector3> BuildMapRealOutline(IMapDataService _mapDataService)
     {
-        List<HexCellData> outerBoundaryHex = new List<HexCellData>();
         int xNum = _config.xNumber;
         int zNum = _config.zNumber;
-        Dictionary<int, HexCellData> d = _mapDataService.GetOrderToCell();
-        for (int i = 1; i < zNum; i++)
-            outerBoundaryHex.Add(d[xNum * i]);
-        for (int i = d.Values.Count - (xNum - 1); i < d.Values.Count; i++)
-            outerBoundaryHex.Add(d[i]);
-        for (int i = zNum - 1; i > 0; i--)
-            outerBoundaryHex.Add(d[xNum * i - 1]);
-        for (int i = (xNum - 1) - 1; i >= 0; i--)
-            outerBoundaryHex.Add(d[i]);
+        Dictionary<int, HexCellData> cellsByOrder = _mapDataService.GetOrderToCell();
+        List<HexCellData> boundaryCells = new List<HexCellData>();
+        for (int i = 1; i < zNum; i++) boundaryCells.Add(cellsByOrder[xNum * i]);
+        for (int i = cellsByOrder.Count - (xNum - 1); i < cellsByOrder.Count; i++)
+            boundaryCells.Add(cellsByOrder[i]);
+        for (int i = zNum - 1; i > 0; i--) boundaryCells.Add(cellsByOrder[xNum * i - 1]);
+        for (int i = xNum - 2; i >= 0; i--) boundaryCells.Add(cellsByOrder[i]);
 
         List<Vector3> outline = new List<Vector3>();
-        foreach (HexCellData hex in outerBoundaryHex)
+        foreach (HexCellData cell in boundaryCells)
         {
-            List<int> ints = new List<int>();
-            for (int j = 0; j < 6; j++)
+            List<int> openDirections = new List<int>();
+            for (int direction = 0; direction < 6; direction++)
             {
-                if (_mapDataService.GetNeighbor(hex, (Enums.HexDirection)j) != null) continue;
-                ints.Add(j);
+                if (_mapDataService.GetNeighbor(cell, (Enums.HexDirection)direction) == null)
+                    openDirections.Add(direction);
             }
-            if (ints.Count == 0) continue;
-            ints.Sort();
-            int outlierIndex = -1;
-            for (int j = 0; j < ints.Count - 1; j++)
+            openDirections.Sort();
+            int split = -1;
+            for (int i = 0; i < openDirections.Count - 1; i++)
             {
-                if (ints[j + 1] - ints[j] != 1)
+                if (openDirections[i + 1] - openDirections[i] > 1)
                 {
-                    outlierIndex = j + 1;
+                    split = i + 1;
                     break;
                 }
             }
-            if (outlierIndex != -1 && outlierIndex < ints.Count)
+            if (split > 0)
             {
-                List<int> newInts = ints.GetRange(outlierIndex, ints.Count - outlierIndex);
-                newInts.AddRange(ints.GetRange(0, outlierIndex));
-                ints = newInts;
+                List<int> reordered = openDirections.GetRange(split, openDirections.Count - split);
+                reordered.AddRange(openDirections.GetRange(0, split));
+                openDirections = reordered;
             }
 
-            List<int> Points = new List<int>();
-            foreach (int index in ints)
-            {
-                switch (index)
-                {
-                    case 0: Points.AddRange(new[] { 1, 2 }); break;
-                    case 1: Points.AddRange(new[] { 2, 3 }); break;
-                    case 2: Points.AddRange(new[] { 3, 4 }); break;
-                    case 3: Points.AddRange(new[] { 4, 5 }); break;
-                    case 4: Points.AddRange(new[] { 5, 6 }); break;
-                    case 5: Points.AddRange(new[] { 6, 1 }); break;
-                }
-            }
-            List<int> uniquePoints = new List<int>();
-            foreach (int p in Points)
-                if (!uniquePoints.Contains(p)) uniquePoints.Add(p);
-
-            foreach (int p in uniquePoints)
-                outline.Add(hex.SolidAreaVertices[p]);
+            foreach (int direction in openDirections) AddOpenEdgePoints(outline, cell, direction);
         }
 
-        for (int i = outline.Count - 1; i >= 1; i--)
+        for (int i = outline.Count - 1; i > 0; i--)
         {
-            if ((outline[i] - outline[i - 1]).sqrMagnitude < 1e-6f)
-                outline.RemoveAt(i);
+            if ((outline[i] - outline[i - 1]).sqrMagnitude < 1e-6f) outline.RemoveAt(i);
         }
         return outline;
+    }
+
+    private static List<Vector3> BuildSlopeOuterBoundary(List<Vector3> inner, List<Vector3> rectangle, float slopeWidth)
+    {
+        List<Vector3> outer = new List<Vector3>();
+        if (inner == null || inner.Count < 3 || rectangle == null || rectangle.Count < 4) return outer;
+
+        float minX = rectangle.Min(v => v.x);
+        float maxX = rectangle.Max(v => v.x);
+        float minZ = rectangle.Min(v => v.z);
+        float maxZ = rectangle.Max(v => v.z);
+        float minY = rectangle[0].y;
+        Vector2 center = Vector2.zero;
+        foreach (Vector3 point in inner) center += new Vector2(point.x, point.z);
+        center /= inner.Count;
+
+        foreach (Vector3 point in inner)
+        {
+            Vector2 start = new Vector2(point.x, point.z);
+            Vector2 direction = start - center;
+            float tx = direction.x > 0f ? (maxX - center.x) / direction.x
+                : direction.x < 0f ? (minX - center.x) / direction.x : float.PositiveInfinity;
+            float tz = direction.y > 0f ? (maxZ - center.y) / direction.y
+                : direction.y < 0f ? (minZ - center.y) / direction.y : float.PositiveInfinity;
+            float t = Mathf.Min(tx, tz);
+            Vector2 rectanglePoint = center + direction * t;
+            float distance = Vector2.Distance(start, rectanglePoint);
+            float amount = distance > 0.0001f ? Mathf.Min(1f, slopeWidth / distance) : 1f;
+            Vector2 xz = Vector2.Lerp(start, rectanglePoint, amount);
+            outer.Add(new Vector3(xz.x, minY, xz.y));
+        }
+
+        return outer;
     }
     // 真实轮廓的包围盒矩形（与 GetFogVertices 输出的 RectPoints 同一算法，保证与封皮内边重合）
     private static List<Vector3> BuildRectBoundary(List<Vector3> outline)
     {
         float minX = float.MaxValue, maxX = float.MinValue;
         float minZ = float.MaxValue, maxZ = float.MinValue;
-        float MaxY = float.MinValue;
+        float MinY = float.MaxValue;
         const float additionalValue_X = 1f;
         const float additionalValue_Z = 1f;
 
@@ -5399,15 +5394,15 @@ T2_8、P2_4、T2_9✔
             if (v.x > maxX) maxX = v.x;
             if (v.z < minZ) minZ = v.z;
             if (v.z > maxZ) maxZ = v.z;
-            if (v.y > MaxY) MaxY = v.y;
+            if (v.y < MinY) MinY = v.y;
         }
 
         return new List<Vector3>
         {
-            new Vector3(minX - additionalValue_X, MaxY, maxZ + additionalValue_Z), // 左上
-            new Vector3(maxX + additionalValue_X, MaxY, maxZ + additionalValue_Z), // 右上
-            new Vector3(maxX + additionalValue_X, MaxY, minZ - additionalValue_Z), // 右下
-            new Vector3(minX - additionalValue_X, MaxY, minZ - additionalValue_Z), // 左下
+            new Vector3(minX - additionalValue_X, MinY, maxZ + additionalValue_Z), // 左上
+            new Vector3(maxX + additionalValue_X, MinY, maxZ + additionalValue_Z), // 右上
+            new Vector3(maxX + additionalValue_X, MinY, minZ - additionalValue_Z), // 右下
+            new Vector3(minX - additionalValue_X, MinY, minZ - additionalValue_Z), // 左下
         };
     }
 
@@ -5542,8 +5537,6 @@ T2_8、P2_4、T2_9✔
         float minZ = float.MaxValue;
         float maxZ = float.MinValue;
         float MinY = float.MaxValue;
-        float MaxY = float.MinValue;
-        float Y = 0;
 
         //float additionalValue_X = 12;
         //float additionalValue_Z = 12;
@@ -5558,16 +5551,14 @@ T2_8、P2_4、T2_9✔
             if (v.z < minZ) minZ = v.z;
             if (v.z > maxZ) maxZ = v.z;
             if (v.y < MinY) MinY = v.y; // 获取最小的 Y 值
-            if (v.y > MaxY) MaxY = v.y; // 获取最大的 Y 值
         }
-        Y = (MaxY + MinY) / 2;
         // 3. 构建矩形顶点
         // 假设顺序为：左上 -> 右上 -> 右下 -> 左下 (顺时针)
         List<Vector3> RectPoints = new List<Vector3>();
-        RectPoints.Add(new Vector3(minX - additionalValue_X, MaxY, maxZ + additionalValue_Z)); // 左上
-        RectPoints.Add(new Vector3(maxX + additionalValue_X, MaxY, maxZ + additionalValue_Z)); // 右上
-        RectPoints.Add(new Vector3(maxX + additionalValue_X, MaxY, minZ - additionalValue_Z)); // 右下
-        RectPoints.Add(new Vector3(minX - additionalValue_X, MaxY, minZ - additionalValue_Z)); // 左下
+        RectPoints.Add(new Vector3(minX - additionalValue_X, MinY, maxZ + additionalValue_Z)); // 左上
+        RectPoints.Add(new Vector3(maxX + additionalValue_X, MinY, maxZ + additionalValue_Z)); // 右上
+        RectPoints.Add(new Vector3(maxX + additionalValue_X, MinY, minZ - additionalValue_Z)); // 右下
+        RectPoints.Add(new Vector3(minX - additionalValue_X, MinY, minZ - additionalValue_Z)); // 左下
 
 
         outerBoundary = RectPoints;
@@ -6097,7 +6088,7 @@ T2_8、P2_4、T2_9✔
     }
 
     /////////////////////////////////////////////////////////////////////- 迷雾的封皮 -/////////////////////////////////////////////////////////////////////
-    public List<Vector3> GetFogCoverVertices(List<Vector3> vector3s, float increment, float uniformHeight)
+    public List<Vector3> GetFogCoverVertices(List<Vector3> vector3s, float incrementX, float incrementZ, float uniformHeight)
     {
         if (vector3s == null || vector3s.Count < 3)
         {
@@ -6110,15 +6101,15 @@ T2_8、P2_4、T2_9✔
         foreach (var v in vector3s) center += v;
         center /= vector3s.Count;
 
-        // 2. 扩充顶点，Y 统一使用传入的平均高度
+        // 2. 扩充顶点，X 和 Z 方向使用不同的 increment，Y 统一使用传入的高度
         List<Vector3> expandedPoints = new List<Vector3>();
         foreach (var v in vector3s)
         {
             Vector3 dir = v - center;
             Vector3 offset = new Vector3(
-                Mathf.Sign(dir.x) * increment,
+                Mathf.Sign(dir.x) * incrementX,
                 0,
-                Mathf.Sign(dir.z) * increment
+                Mathf.Sign(dir.z) * incrementZ
             );
             Vector3 expanded = v + offset;
             expanded.y = uniformHeight;
