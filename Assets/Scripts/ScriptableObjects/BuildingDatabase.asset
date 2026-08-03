@@ -12,35 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 273566997b24a7e498371055c9aacd34, type: 3}
   m_Name: BuildingDatabase
   m_EditorClassIdentifier: 
-  CityModel:
-  - {fileID: 5495051104158391801, guid: 4ef6012c6f4d2744380ca3799c6c61dd, type: 3}
-  buildingModels:
-  - {fileID: 1916690556067689675, guid: 554dba63f7c641ea9aedde47b6f03cf3, type: 3}
-  - {fileID: 823244081087011784, guid: 43d7ae877ce642e1b261185ccf6a9221, type: 3}
-  - {fileID: 4884193936260652596, guid: 03098f173d3626d4d9823cb8057defb6, type: 3}
-  - {fileID: 4379563533962267394, guid: e4e0f1ec5572a2d429c6f448b88a7dbf, type: 3}
-  - {fileID: 4884193936260652596, guid: 22ec096bc9dec884dba4754f1aad6d64, type: 3}
-  - {fileID: 4884193936260652596, guid: ab5558bfa83ee754e8cdf82d9609af8d, type: 3}
-  buildingBaseHP:
-  - 100
-  - 100
-  - 100
-  - 100
-  - 100
-  - 100
-  - 100
-  - 100
-  - 100
-  - 100
-  - 100
-  - 100
-  buildingCards:
-  - {fileID: 21300000, guid: 71e5955f2c14cf244b8a595ad26c6181, type: 3}
-  - {fileID: 21300000, guid: 97950fef61f66fb47b6afe0dd09ccb73, type: 3}
-  - {fileID: 21300000, guid: bd3dcb781f9886f4d8195e4f621e9526, type: 3}
-  - {fileID: 21300000, guid: b6dade240e7c8d3488f8abb906143e68, type: 3}
-  - {fileID: 21300000, guid: 8e755ba59c2c83d47878b051d54003cc, type: 3}
-  - {fileID: 21300000, guid: 714a528df5ae3a140b36ca4faa31e421, type: 3}
   buildings:
   - {fileID: 11400000, guid: 4742d4e0f6d85c24ea156ce28653aef7, type: 2}
   - {fileID: 11400000, guid: f927694f061845644bf21c6d7fe0b0a8, type: 2}

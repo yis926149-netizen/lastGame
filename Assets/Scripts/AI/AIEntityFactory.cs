@@ -221,14 +221,6 @@ public class AIEntityFactory
         GenerateBuildingInternal(config, config != null ? config.buildingId : 0, position);
     }
 
-    /// <summary>AI 建筑生成（旧卡 ID 入口：内部解析 BuildingConfig 后委托对象化实现）。</summary>
-    public void GenerateBuilding(int CardIndex, Vector3 position)
-    {
-        int bulidingTypeInt = CardIndex - (int)_unitDataProvider.GetUnitIconCount();
-        BuildingConfigSO config = _buildingDataProvider.TryGetBuildingConfig(bulidingTypeInt, out var bc) ? bc : null;
-        GenerateBuildingInternal(config, bulidingTypeInt, position);
-    }
-
     private void GenerateBuildingInternal(BuildingConfigSO config, int bulidingTypeInt, Vector3 position)
     {
         Vector3 v = _mapDataService.WorldToHexCoordinate(position);

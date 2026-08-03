@@ -12,6 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8f7a65825dd065b42b64700a2ec746d3, type: 3}
   m_Name: ExplorationRewardConfigSO
   m_EditorClassIdentifier: 
-  goldTiers: 00000000050000000a0000000f0000001400000019000000
-  unitCountTiers: 000000000000000000000000000000000100000001000000
-  rewardUnitID: 10
+  noneRewardWeight: 0
+  goldRewardWeight: 100
+  militaryRewardWeight: 0
+  tacticalRewardWeight: 0
+  goldTiers: 05000000050000000a0000000f0000001400000019000000
+  unitCountTiers: 000000000000000000000000010000000100000002000000
+  rewardUnits:
+  - {fileID: 11400000, guid: 035520bc5ead6ef47b285e744299ad1f, type: 2}
+  - {fileID: 11400000, guid: 0fcdc9842d793b14a87c0d0539786001, type: 2}
+  tacticalCardDatabase: {fileID: 11400000, guid: 71a67a3257b36b047bc6280d46aa59f0, type: 2}

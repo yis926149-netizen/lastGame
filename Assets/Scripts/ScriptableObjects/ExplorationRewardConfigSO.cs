@@ -39,10 +39,7 @@ public class ExplorationRewardConfigSO : ScriptableObject
     [Tooltip("单位数量档位数组，等概率随机选择一档。")]
     public int[] unitCountTiers = new int[] { 1, 2, 3, 4, 5 };
 
-    [Tooltip("奖励可生成的单位 ID 数组（UnitDatabase 索引），生成每个单位时随机选取。")]
-    public int[] rewardUnitIDs = new int[] { 2 };
-
-    [Tooltip("奖励可生成的单位配置（对象化改造后使用，迁移期间与 rewardUnitIDs 并存）。")]
+    [Tooltip("奖励可生成的单位配置（生成每个单位时随机选取）。")]
     public UnitConfigSO[] rewardUnits;
 
     [Header("第二次随机：战术卡牌（战术卡牌奖励）")]
@@ -76,13 +73,6 @@ public class ExplorationRewardConfigSO : ScriptableObject
     {
         if (unitCountTiers == null || unitCountTiers.Length == 0) return 0;
         return unitCountTiers[Random.Range(0, unitCountTiers.Length)];
-    }
-
-    /// <summary>第二次掷骰（军事）：从奖励单位数组中随机返回一个 unitID。</summary>
-    public int RollUnitID()
-    {
-        if (rewardUnitIDs == null || rewardUnitIDs.Length == 0) return 2;
-        return rewardUnitIDs[Random.Range(0, rewardUnitIDs.Length)];
     }
 
     /// <summary>第二次掷骰（军事）：从奖励单位配置数组中随机返回一个配置；空数组返回 null（不再回退魔法 ID）。</summary>

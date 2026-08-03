@@ -6,7 +6,6 @@ public interface IUnitDataProvider
     GameObject GetUnitPrefab(int unitId);
     UnitData GetUnitData(int unitId);
     Sprite GetUnitIcon(int unitId);
-    float GetUnitIconCount();
     Sprite GetSkillIcon(int unitId);
 
     Sprite GetCard(int unitId);
@@ -51,36 +50,10 @@ public class UnitDataProvider : IUnitDataProvider
         return config != null;
     }
 
-    // 旧 int 查询 API：优先走 config，config 缺失时回退旧平行列表（过渡期兼容）。
-    public GameObject GetUnitPrefab(int unitId)
-    {
-        UnitConfigSO config = FindConfig(unitId);
-        return config != null ? config.unitModel : _unitDatabase.unitModels[unitId];
-    }
-
-    public UnitData GetUnitData(int unitId)
-    {
-        UnitConfigSO config = FindConfig(unitId);
-        return config != null ? config.unitData : _unitDatabase.unitDatas[unitId];
-    }
-
-    public Sprite GetUnitIcon(int unitId)
-    {
-        UnitConfigSO config = FindConfig(unitId);
-        return config != null ? config.unitIcon : _unitDatabase.unitIcons[unitId];
-    }
-
-    public float GetUnitIconCount() => _unitDatabase.unitIcons.Count;
-
-    public Sprite GetSkillIcon(int unitId)
-    {
-        UnitConfigSO config = FindConfig(unitId);
-        return config != null ? config.skillIcon : _unitDatabase.skillIcons[unitId];
-    }
-
-    public Sprite GetCard(int unitId)
-    {
-        UnitConfigSO config = FindConfig(unitId);
-        return config != null ? config.cardSprite : _unitDatabase.Cards[unitId];
-    }
+    // 旧 int 查询 API：按显式 ID 查 config 后读取字段。
+    public GameObject GetUnitPrefab(int unitId) => GetUnitConfig(unitId).unitModel;
+    public UnitData GetUnitData(int unitId) => GetUnitConfig(unitId).unitData;
+    public Sprite GetUnitIcon(int unitId) => GetUnitConfig(unitId).unitIcon;
+    public Sprite GetSkillIcon(int unitId) => GetUnitConfig(unitId).skillIcon;
+    public Sprite GetCard(int unitId) => GetUnitConfig(unitId).cardSprite;
 }
