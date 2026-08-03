@@ -4,7 +4,7 @@ using UnityEngine.UI;
 using Zenject;
 using DG.Tweening;
 
-public class CardPresenter : IInitializable, IPlayerUnitSpawnService
+public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropHandler
 {
     [Inject] private ICardService _cardService;
     [Inject] private IMapDataService _mapDataService;
@@ -265,6 +265,10 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
         return true;
     }
 
+    public void OnCardDragBegin(ICardView view) { }
+
+    public void OnCardDragCancel(ICardView view) { }
+
     private bool IsReleaseValid(int cardID, HexCellData cell)
     {
         if (cell == null || _movementSystem.IsDestinationReserved(cell.HexCoordinate)) return false;
@@ -356,7 +360,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
         var brain = g.AddComponent<PlayerUnitBrain>();
         brain.Initialize(
             characterData,
-            UnitStrategyFactory.Create(unitID),
+            UnitStrategyFactory.Create(_unitData.TryGetUnitConfig(unitID, out var unitConfig) ? unitConfig : null),
             _mapDataService,
             _unitRepository,
             _movementSystem,
@@ -389,6 +393,9 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
         Vector3 v = _mapDataService.WorldToHexCoordinate(position);
         HexCellData h = _mapDataService.GetCell(v);
 
+        BuildingConfigSO config = _buildingData.TryGetBuildingConfig(buildingID, out var bc) ? bc : null;
+        Enums.BulidingType buildingType = config != null ? config.buildingType : (Enums.BulidingType)(buildingID + 1);
+
         GameObject prefab = _buildingData.GetBuildingPrefab(buildingID);
         Transform parent = GameObject.Find("PlayerBuilding")?.transform;
         Canvas prefabCanvas = prefab != null ? prefab.GetComponentInChildren<Canvas>() : null;
@@ -411,12 +418,12 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
         _container.Inject(buildingController);
 
         BuildingData buildingData = new BuildingData(
-            (Enums.BulidingType)(buildingID + 1),
+            buildingType,
             _buildingData,
             buildingID);
         buildingController.buildingData = buildingData;
         buildingData.controller = buildingController;
-        buildingController.bulidingType = (Enums.BulidingType)(buildingID + 1);
+        buildingController.bulidingType = buildingType;
 
         // Finish runtime UI before committing map, ownership, and progression state.
         // 共享样板 SpawnUIWiring；玩家建筑血条为绿色（canvas 已由上方 hasBuildingUi 预校验非空）。
@@ -427,8 +434,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
         // 【探索重构-阶段5】部署不再自动探索周围地块
         _mapVisualEvent.Raise();
 
-        int bulidingTypeInt = buildingID;
-        h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>((Enums.BulidingType)(bulidingTypeInt + 1), g);
+        h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(buildingType, g);
 
         // 建筑类型特殊处理
         switch (buildingController.bulidingType)
@@ -453,7 +459,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
             case Enums.BulidingType.Barracks:
                 _audioManager?.PlaySFX("Chimes_Harp-012");
                 _playerModelManager.Index_BarracksBuilding.Add(_playerModelManager.BarracksBuildingIndex++, g);
-                SetupBarracksSpawner(g);
+                SetupBarracksSpawner(g, config);
                 break;
             case Enums.BulidingType.ArrowTower:
                 _audioManager?.PlaySFX("Chimes_Harp-012");
@@ -462,7 +468,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
                 break;
         }
 
-        if (bulidingTypeInt == 0 || bulidingTypeInt == 1)
+        if (config != null ? config.blocksMovement : (buildingID == 0 || buildingID == 1))
             h.movementCost = float.MaxValue;
 
         buildingController.Player_City_Index = h.Player_City_Index;
@@ -470,10 +476,14 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService
         return true;
     }
 
-    private void SetupBarracksSpawner(GameObject buildingObj)
+    private void SetupBarracksSpawner(GameObject buildingObj, BuildingConfigSO config)
     {
         var spawner = buildingObj.AddComponent<BarracksSpawner>();
         _container.Inject(spawner);
+        if (config != null && config.producedUnit != null)
+        {
+            spawner.Initialize(config.producedUnit);
+        }
     }
 
     private void SetupArrowTowerShooter(GameObject buildingObj)

@@ -23,9 +23,13 @@ public class BarracksSpawner : MonoBehaviour
 
     [SerializeField] private float _spawnInterval = 15f;
     [SerializeField] private int _spawnUnitID = 1;
+    private UnitConfigSO _producedUnit;   // 由建筑配置注入（BuildingConfigSO.producedUnit），优先于 _spawnUnitID
     private float _timer;
     private bool _isPlayer;
     private Slider _productionProgressBar;
+
+    /// <summary>由建筑生成器显式注入产出单位配置（动态 AddComponent 后调用，不能依赖 Inspector）。</summary>
+    public void Initialize(UnitConfigSO producedUnit) => _producedUnit = producedUnit;
 
     private void Awake()
     {
@@ -43,14 +47,11 @@ public class BarracksSpawner : MonoBehaviour
     {
         if (_gameLoop == null || _gameLoop.IsPaused) return;
 
-        if (_logisticsService != null)
+        // 【断供方案-阶段2】统一走门控：断供即失能（暂停生产、保留进度）
+        BuildingBase building = GetComponent<BuildingBase>();
+        if (building != null && !building.IsFunctional)
         {
-            var hexCoord = _mapDataService.WorldToHexCoordinate(transform.position);
-            var centerHex = _mapDataService.GetCell(hexCoord);
-            if (centerHex != null && !_logisticsService.IsLogisticsConnected(centerHex, _isPlayer ? 0 : 1))
-            {
-                return;
-            }
+            return;
         }
 
         if (_timer < _spawnInterval)
@@ -92,7 +93,12 @@ public class BarracksSpawner : MonoBehaviour
 
     private HexCellData FindAdjacentEmptyHex(HexCellData center)
     {
-        int factionId = _isPlayer ? 0 : 1;
+        // 【断供方案-阶段2】阵营从建筑归属派生（吞并后自动跟随新主），不再用 Awake 快照
+        BuildingBase building = GetComponent<BuildingBase>();
+        int factionId = building != null && building.Player_City_Index.Key >= 0
+            ? building.Player_City_Index.Key
+            : (_isPlayer ? 0 : 1);
+
         for (int i = 0; i < 6; i++)
         {
             HexCellData neighbor = _mapDataService.GetNeighbor(center, (Enums.HexDirection)i);
@@ -109,7 +115,11 @@ public class BarracksSpawner : MonoBehaviour
 
     private bool SpawnPlayerUnit(Vector3 position)
     {
-        GameObject prefab = _unitData.GetUnitPrefab(_spawnUnitID);
+        UnitConfigSO unitConfig = _producedUnit != null
+            ? _producedUnit
+            : (_unitData.TryGetUnitConfig(_spawnUnitID, out var cfg) ? cfg : null);
+
+        GameObject prefab = unitConfig != null ? unitConfig.unitModel : _unitData.GetUnitPrefab(_spawnUnitID);
         Transform parent = GameObject.Find("PlayerUnit")?.transform;
         Canvas prefabCanvas = prefab != null ? prefab.GetComponentInChildren<Canvas>() : null;
         bool hasUnitUi = prefabCanvas != null &&
@@ -117,6 +127,8 @@ public class BarracksSpawner : MonoBehaviour
                          prefabCanvas.transform.GetChild(1).childCount >= 3 &&
                          prefabCanvas.transform.GetChild(1).GetComponent<Slider>() != null;
         if (prefab == null || parent == null || !hasUnitUi) return false;
+
+        int unitID = unitConfig != null ? unitConfig.Id : _spawnUnitID;
 
         GameObject g = Object.Instantiate(prefab);
         g.transform.SetParent(parent, false);
@@ -127,24 +139,27 @@ public class BarracksSpawner : MonoBehaviour
         _container.InjectGameObject(g);
 
         CharacterData characterData = new CharacterData(
-            _spawnUnitID,
+            unitID,
             g,
             g.GetComponent<UnitMovementController>(),
-            _unitData.GetUnitData(_spawnUnitID));
+            unitConfig != null ? unitConfig.unitData : _unitData.GetUnitData(_spawnUnitID));
 
         g.GetComponent<UnitMovementController>().characterData = characterData;
         g.GetComponent<UnitMovementController>().PlayerIndex = 0;
 
         CharacterData.InfoPanelData infoPanelData = new CharacterData.InfoPanelData();
-        infoPanelData.sprite = _unitData.GetCard(characterData.UnitID);
+        infoPanelData.sprite = unitConfig != null ? unitConfig.cardSprite : _unitData.GetCard(characterData.UnitID);
         infoPanelData.name = characterData.unitData.unitName;
-        infoPanelData.skillIcon = _unitData.GetSkillIcon(characterData.UnitID);
+        infoPanelData.skillIcon = unitConfig != null ? unitConfig.skillIcon : _unitData.GetSkillIcon(characterData.UnitID);
         infoPanelData.InfoDatas = new List<KeyValuePair<KeyValuePair<Sprite, string>, float>>();
 
         KeyValuePair<Sprite, string> Movement = new KeyValuePair<Sprite, string>(_uiConfig.GetMovementPointsIcon(), "剩余移动力");
         KeyValuePair<Sprite, string> MeleeAttack = new KeyValuePair<Sprite, string>(_uiConfig.GetMeleeAttackPointsIcon(), "攻击力");
 
-        if (characterData.UnitID == 0)
+        bool isSettler = unitConfig != null
+            ? unitConfig.strategyType == UnitStrategyType.Settler
+            : characterData.UnitID == 0;
+        if (isSettler)
         {
             infoPanelData.InfoDatas.Add(new KeyValuePair<KeyValuePair<Sprite, string>, float>(Movement, characterData.unitData.MovementPoints));
         }
@@ -165,7 +180,7 @@ public class BarracksSpawner : MonoBehaviour
         var brain = g.AddComponent<PlayerUnitBrain>();
         brain.Initialize(
             characterData,
-            UnitStrategyFactory.Create(_spawnUnitID),
+            UnitStrategyFactory.Create(unitConfig),
             _mapDataService,
             _unitRepository,
             _movementSystem,

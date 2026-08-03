@@ -18,4 +18,4 @@ MonoBehaviour:
   buildingModel: {fileID: 4884193936260652596, guid: 22ec096bc9dec884dba4754f1aad6d64, type: 3}
   baseHP: 100
   blocksMovement: 0
-  producedUnit: {fileID: 0}
+  producedUnit: {fileID: 11400000, guid: b4188906433971a48b15099bd93f5b5a, type: 2}

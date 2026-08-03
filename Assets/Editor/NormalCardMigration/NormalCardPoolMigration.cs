@@ -54,7 +54,7 @@ public static class NormalCardPoolMigration
         var unitConfigs = MigrateUnits(unitDb, report);
 
         // ---------- 建筑迁移 ----------
-        var buildingConfigs = MigrateBuildings(buildingDb, report);
+        var buildingConfigs = MigrateBuildings(buildingDb, unitConfigs, report);
 
         // ---------- 数据库原地更新（保留 GUID） ----------
         unitDb.units = unitConfigs;
@@ -217,7 +217,10 @@ public static class NormalCardPoolMigration
 
     // ===================== 建筑迁移 =====================
 
-    private static List<BuildingConfigSO> MigrateBuildings(BuildingDatabaseSO buildingDb, StringBuilder report)
+    private static List<BuildingConfigSO> MigrateBuildings(
+        BuildingDatabaseSO buildingDb,
+        List<UnitConfigSO> unitConfigs,
+        StringBuilder report)
     {
         if (!Directory.Exists(BuildingConfigDir))
             AssetDatabase.CreateFolder("Assets/Scripts/ScriptableObjects", "BuildingConfigs");
@@ -240,9 +243,12 @@ public static class NormalCardPoolMigration
             config.cardSprite = buildingDb.buildingCards[i];
             config.blocksMovement = (i == 0 || i == 1);
 
+            // 兵营产出单位：与旧 BarracksSpawner._spawnUnitID = 1 保持一致（单位 1：愤怒蘑菇）。
+            config.producedUnit = i == 4 && unitConfigs.Count > 1 ? unitConfigs[1] : null;
+
             EditorUtility.SetDirty(config);
             result.Add(config);
-            report.AppendLine($"[Building] {i}: type={config.buildingType} hp={config.baseHP} blocks={config.blocksMovement}");
+            report.AppendLine($"[Building] {i}: type={config.buildingType} hp={config.baseHP} blocks={config.blocksMovement} producedUnit={(config.producedUnit != null ? config.producedUnit.unitData.unitName : "null")}");
         }
         return result;
     }

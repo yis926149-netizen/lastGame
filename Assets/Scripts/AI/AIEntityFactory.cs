@@ -202,7 +202,7 @@ public class AIEntityFactory
         var brain = g.AddComponent<AIUnitBrain>();
         brain.Initialize(
             characterData,
-            UnitStrategyFactory.Create(UnitIndex),
+            UnitStrategyFactory.Create(_unitDataProvider.TryGetUnitConfig(UnitIndex, out var unitConfig) ? unitConfig : null),
             _mapDataService,
             _unitRepository,
             _movementSystem,
@@ -215,14 +215,16 @@ public class AIEntityFactory
         // 【探索重构-阶段1】AI单位始终可见，不再隐藏
     }
 
-    /// <summary>AI 建筑生成</summary>
+    /// <summary>AI 建筑生成（入参暂保留旧卡 ID 兼容 AICardBrain，内部解析 BuildingConfig 消费新字段）。</summary>
     public void GenerateBuilding(int CardIndex, Vector3 position)
     {
         Vector3 v = _mapDataService.WorldToHexCoordinate(position);
         HexCellData h = _mapDataService.GetCellByWorldPosition(position);
 
         int bulidingTypeInt = CardIndex - (int)_unitDataProvider.GetUnitIconCount();
-        GameObject g = Object.Instantiate(_buildingDataProvider.GetBuildingPrefab(bulidingTypeInt));
+        BuildingConfigSO config = _buildingDataProvider.TryGetBuildingConfig(bulidingTypeInt, out var bc) ? bc : null;
+
+        GameObject g = Object.Instantiate(config != null ? config.buildingModel : _buildingDataProvider.GetBuildingPrefab(bulidingTypeInt));
         g.transform.SetParent(GameObject.Find("EnemyBuilding").transform, false);
         g.transform.position = position;
         g.tag = "EnemyBuilding";
@@ -230,17 +232,18 @@ public class AIEntityFactory
         BuildingController buildingController = g.AddComponent<BuildingController>();
         _container.Inject(buildingController);
 
+        Enums.BulidingType buildingType = config != null ? config.buildingType : (Enums.BulidingType)(bulidingTypeInt + 1);
         BuildingData buildingData = new BuildingData(
-            (Enums.BulidingType)(bulidingTypeInt + 1),
+            buildingType,
             _buildingDataProvider,
             bulidingTypeInt);
         buildingController.buildingData = buildingData;
         buildingData.controller = buildingController;
 
-        buildingController.bulidingType = (Enums.BulidingType)(bulidingTypeInt + 1);
-        h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>((Enums.BulidingType)(bulidingTypeInt + 1), g);
+        buildingController.bulidingType = buildingType;
+        h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(buildingType, g);
 
-        if (bulidingTypeInt == 0 || bulidingTypeInt == 1)
+        if (config != null ? config.blocksMovement : (bulidingTypeInt == 0 || bulidingTypeInt == 1))
         {
             h.movementCost = float.MaxValue;
         }
@@ -258,6 +261,10 @@ public class AIEntityFactory
         {
             var spawner = g.AddComponent<BarracksSpawner>();
             _container.Inject(spawner);
+            if (config != null && config.producedUnit != null)
+            {
+                spawner.Initialize(config.producedUnit);
+            }
         }
 
         if (buildingController.bulidingType == Enums.BulidingType.ArrowTower)

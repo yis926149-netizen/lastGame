@@ -28,6 +28,7 @@ public class UIController : MonoBehaviour
     [Inject] private EndGame _endGame;
     [Inject] private AudioManager _audioManager;
     [Inject] private GoldWallet _goldWallet; // 【探索重构-阶段7】
+    [Inject] private GoldIncomeService _goldIncomeService;
     [Inject] private IFactionBuffService _factionBuff; // 天赋 Buff 服务
 
     // 摄像机
@@ -164,6 +165,8 @@ public class UIController : MonoBehaviour
             if (incomeText != null)
             {
                 RefreshIncomeText(incomeText);
+                // 金矿占领会改变真实被动收入；金币每秒结算后同步刷新显示。
+                _goldWallet.OnGoldChanged += (_) => RefreshIncomeText(incomeText);
                 if (_factionBuff != null)
                     _factionBuff.OnBuffsChanged += () => RefreshIncomeText(incomeText);
             }
@@ -251,11 +254,20 @@ public class UIController : MonoBehaviour
             return;
         }
 
-        if (characterData.UnitID == 0)
+        // 单位类型判断对象化：优先读 UnitConfig.strategyType，缺失时回退旧 ID 魔法数（过渡期兼容）。
+        UnitStrategyType strategyType = unitDataProvider.TryGetUnitConfig(characterData.UnitID, out var unitConfig)
+            ? unitConfig.strategyType
+            : (characterData.UnitID == 0
+                ? UnitStrategyType.Settler
+                : (characterData.UnitID == 3 || characterData.UnitID == 5 || characterData.UnitID == 9
+                    ? UnitStrategyType.Ranged
+                    : UnitStrategyType.Melee));
+
+        if (strategyType == UnitStrategyType.Settler)
         {
             CityBuilderSkill();
         }
-        else if (characterData.UnitID == 3 || characterData.UnitID == 5 || characterData.UnitID == 9)
+        else if (strategyType == UnitStrategyType.Ranged)
         {
             Debug.Log("点击了远程攻击按钮");
             EnterRangedAttackMode(characterData.model);
@@ -292,8 +304,14 @@ public class UIController : MonoBehaviour
         // 【批次 C】移除回合阶段门控
         if (controller == null || !controller.CanBeSelected) return;
 
-        int attackRange = controller.characterData?.unitData?.BasicAttackRange ?? 0;
-        if (attackRange <= 1) return;
+        int baseRange = controller.characterData?.unitData?.BasicAttackRange ?? 0;
+        if (baseRange <= 1) return;
+
+        int attackRange = baseRange;
+        Vector3 attackerHex = _mapDataService.WorldToHexCoordinate(attacker.transform.position);
+        HexCellData attackerCell = _mapDataService.GetCell(attackerHex);
+        if (attackerCell != null && WaterLevelConfig.ClassifyHeight(attackerCell.Height) == 2)
+            attackRange = baseRange + 1;
 
         Vector3 startHex = _mapDataService.WorldToHexCoordinate(attacker.transform.position);
         List<Vector3> reachableHexes = _mapDataService.GetAllCells()
@@ -467,7 +485,9 @@ public class UIController : MonoBehaviour
     private void RefreshIncomeText(Text incomeText)
     {
         if (incomeText == null) return;
-        float multiplier = _factionBuff != null ? _factionBuff.GetStatMultiplier(0, "gold") : 1f;
-        incomeText.text = Mathf.RoundToInt(_goldWallet.PassiveIncomePerTick * multiplier).ToString();
+        int income = _goldIncomeService != null
+            ? _goldIncomeService.GetIncomePerTick(0)
+            : _goldWallet.PassiveIncomePerTick;
+        incomeText.text = income.ToString();
     }
 }

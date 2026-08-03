@@ -19,8 +19,10 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     [Inject] private UIManagerPresenter _uiPresenter;
     [Inject] private AudioManager _audioManager;
     [Inject] private UnitRemovalService _unitRemovalService;
-    [Inject] private GoldWallet _goldWallet;
-    [Inject] private IEnvironmentModelsProvider _environmentModelsProvider;
+    // 【地图资源配置化】资源统一消费服务（替代原拾取 switch + 特效 provider）
+    [Inject] private MapResourceCollectionService _resourceCollectionService;
+    // 【普通卡池对象化】按 UnitID 查单位配置（攻击音效配置化）
+    [Inject] private IUnitDataProvider _unitData;
 
     //与之对应的CharacterData - 在生产单位模型时外部设置的
     public CharacterData characterData;
@@ -196,11 +198,16 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         if (!CanBeSelected || characterData.unitData.BasicAttackRange <= 1) return false;
 
         Vector3 currentHex = CurrentHexCoordinate;
+        int effectiveRange = characterData.unitData.BasicAttackRange;
+        HexCellData selfCell = _mapDataService.GetCell(currentHex);
+        if (selfCell != null && WaterLevelConfig.ClassifyHeight(selfCell.Height) == 2)
+            effectiveRange = characterData.unitData.BasicAttackRange + 1;
+
         Vector3 targetHex = _mapDataService.WorldToHexCoordinate(target.transform.position);
         float distance = (Mathf.Abs(currentHex.x - targetHex.x) +
                           Mathf.Abs(currentHex.y - targetHex.y) +
                           Mathf.Abs(currentHex.z - targetHex.z)) * 0.5f;
-        if (distance > characterData.unitData.BasicAttackRange) return false;
+        if (distance > effectiveRange) return false;
 
         var targetUnit = target.GetComponent<UnitMovementController>();
         if (targetUnit != null && (targetUnit.characterData == null || targetUnit.characterData.currentHp <= 0)) return false;
@@ -359,10 +366,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         HexCellData h = _mapDataService.GetCellByWorldPosition(theAttacked.model.transform.position);
         HexCellData attackerHex = _mapDataService.GetCellByWorldPosition(attacker.model.transform.position);
 
-        if (h.landFormType != Enums.LandFormType.BigBones)
-            theAttacked.LandFormType_BigBones = 0;
-        else
-            theAttacked.LandFormType_BigBones = 0.3f;
+        // 【地图地貌配置化】与 CombatResolver 共用同一地貌效果规则（原 BigBones 缓存字段已删除）
+        float landFormDefenseBonus = LandFormEffectRule.GetDefenseBonus(h.landForm);
 
         if (!h.hasRiver)
             theAttacked.LandFormType_River = 0;
@@ -387,7 +392,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         float AttackPower = attacker.currentAttackValue;
         float AttackGain = 1 + attacker.Resource_Animals + AttackStatueGain + TerrainElevation;
         float Defense = theAttacked.Defense;
-        float DefenseGain = 1 + theAttacked.Resource_Minerals + theAttacked.LandFormType_BigBones + theAttacked.LandFormType_River;
+        float DefenseGain = 1 + theAttacked.Resource_Minerals + landFormDefenseBonus + theAttacked.LandFormType_River;
 
         return Mathf.Max(0, AttackPower * AttackGain - Defense * DefenseGain);
     }
@@ -454,53 +459,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             // 特效、音效等保持不变...
             SetHitParticlesActive(true);
 
-            // 攻击音效
-            switch (characterData.UnitID)
-            {
-                case 1:
-                case 2:
-                    _audioManager.PlaySFX("Blunt5");
-                    Invoke("attackAudio_1_2", 0.5f);
-                    Invoke("attackAudio_1_2", 1f);
-                    break;
-                case 3: _audioManager.PlaySFX("Indicator4"); break;
-                case 4:
-                    _audioManager.PlaySFX("Weapon_Whoosh 09");
-                    Invoke("attackAudio_4", 0.6f);
-                    Invoke("attackAudio_4", 1.0f);
-                    break;
-                case 5:
-                    _audioManager.PlaySFX("Machine_Gun-008");
-                    Invoke("attackAudio_5", 0.6f);
-                    Invoke("attackAudio_5", 1.0f);
-                    break;
-                case 6:
-                    _audioManager.PlaySFX("Weapon_Whoosh 09");
-                    Invoke("attackAudio_4", 0.5f);
-                    Invoke("attackAudio_4", 1.1f);
-                    _audioManager.PlaySFX("Short_Sword_Hit 03");
-                    break;
-                case 7:
-                case 8:
-                    _audioManager.PlaySFX("Creature_02_05");
-                    Invoke("attackAudio_7", 0.5f);
-                    break;
-                case 9:
-                    _audioManager.PlaySFX("Toilet_Flush-006");
-                    Invoke("attackAudio_9", 0.5f);
-                    break;
-                case 10:
-                    _audioManager.PlaySFX("Big_Explosion-004");
-                    Invoke("attackAudio_10", 0.4f);
-                    Invoke("attackAudio_10", 0.9f);
-                    break;
-                case 11:
-                    _audioManager.PlaySFX("Weapon_Whoosh 09");
-                    Invoke("attackAudio_4", 0.5f);
-                    Invoke("attackAudio_4", 1.0f);
-                    _audioManager.PlaySFX("Short_Sword_Hit 03");
-                    break;
-            }
+            // 攻击音效（对象化：读取 UnitConfig.attackSfx，config 缺失时回退旧 switch）
+            PlayAttackSfx();
 
             // 延迟停止动画和启动返回
             Invoke(nameof(StopAttackAnimation), 1.5f);
@@ -526,6 +486,94 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
                 isAttackingInProgress = true;
             }
         }
+    }
+
+    /// <summary>攻击音效（对象化：读取 UnitConfig.attackSfx；config 缺失时回退旧 UnitID switch）。</summary>
+    private void PlayAttackSfx()
+    {
+        if (characterData == null || _audioManager == null) return;
+
+        AttackSfxConfig sfx = null;
+        if (_unitData != null && _unitData.TryGetUnitConfig(characterData.UnitID, out var config))
+        {
+            sfx = config.attackSfx;
+        }
+
+        if (sfx != null)
+        {
+            if (!string.IsNullOrEmpty(sfx.primarySfx))
+                _audioManager.PlaySFX(sfx.primarySfx);
+            if (sfx.delayedSfx != null)
+            {
+                foreach (AttackSfxEntry entry in sfx.delayedSfx)
+                {
+                    if (entry == null || string.IsNullOrEmpty(entry.sfxName)) continue;
+                    if (entry.delay <= 0f)
+                    {
+                        _audioManager.PlaySFX(entry.sfxName);
+                    }
+                    else
+                    {
+                        StartCoroutine(PlayDelayedSfx(entry.sfxName, entry.delay));
+                    }
+                }
+            }
+            return;
+        }
+
+        // 回退：旧 switch（config 缺失的过渡期兼容）
+        switch (characterData.UnitID)
+        {
+            case 1:
+            case 2:
+                _audioManager.PlaySFX("Blunt5");
+                Invoke("attackAudio_1_2", 0.5f);
+                Invoke("attackAudio_1_2", 1f);
+                break;
+            case 3: _audioManager.PlaySFX("Indicator4"); break;
+            case 4:
+                _audioManager.PlaySFX("Weapon_Whoosh 09");
+                Invoke("attackAudio_4", 0.6f);
+                Invoke("attackAudio_4", 1.0f);
+                break;
+            case 5:
+                _audioManager.PlaySFX("Machine_Gun-008");
+                Invoke("attackAudio_5", 0.6f);
+                Invoke("attackAudio_5", 1.0f);
+                break;
+            case 6:
+                _audioManager.PlaySFX("Weapon_Whoosh 09");
+                Invoke("attackAudio_4", 0.5f);
+                Invoke("attackAudio_4", 1.1f);
+                _audioManager.PlaySFX("Short_Sword_Hit 03");
+                break;
+            case 7:
+            case 8:
+                _audioManager.PlaySFX("Creature_02_05");
+                Invoke("attackAudio_7", 0.5f);
+                break;
+            case 9:
+                _audioManager.PlaySFX("Toilet_Flush-006");
+                Invoke("attackAudio_9", 0.5f);
+                break;
+            case 10:
+                _audioManager.PlaySFX("Big_Explosion-004");
+                Invoke("attackAudio_10", 0.4f);
+                Invoke("attackAudio_10", 0.9f);
+                break;
+            case 11:
+                _audioManager.PlaySFX("Weapon_Whoosh 09");
+                Invoke("attackAudio_4", 0.5f);
+                Invoke("attackAudio_4", 1.0f);
+                _audioManager.PlaySFX("Short_Sword_Hit 03");
+                break;
+        }
+    }
+
+    private System.Collections.IEnumerator PlayDelayedSfx(string sfxName, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (_audioManager != null) _audioManager.PlaySFX(sfxName);
     }
 
     private void attackAudio_1_2() => _audioManager.PlaySFX("Blunt5");
@@ -701,44 +749,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         HexCellData currentCell = _mapDataService.GetCellByWorldPosition(transform.position);
         if (currentCell == null) return;
 
-        Enums.ResourceType resource = currentCell.GetResource();
-        if (resource == Enums.ResourceType.None) return;
-
-        currentCell.ReapResource();
-        if (currentCell.resourceModel != null)
-        {
-            Destroy(currentCell.resourceModel);
-            currentCell.resourceModel = null;
-        }
-
-        switch (resource)
-        {
-            case Enums.ResourceType.Animals:
-                characterData.Resource_Animals = 0.7f;
-                _audioManager.PlaySFX("Cymbals-008");
-                break;
-            case Enums.ResourceType.Plants:
-                characterData.Heal(0.25f * characterData.unitData.hp);
-                _audioManager.PlaySFX("heal5");
-                break;
-            case Enums.ResourceType.Minerals:
-                characterData.Resource_Minerals = 0.25f;
-                _audioManager.PlaySFX("Metallic_Weapon_Hit-020");
-                break;
-            case Enums.ResourceType.Chest:
-                if (PlayerIndex == 0 && _goldWallet != null)
-                    _goldWallet.AddGold(0, 50);
-                _audioManager.PlaySFX("Coin8");
-                break;
-        }
-
-        GameObject effectPrefab = _environmentModelsProvider.GetReapEffect(resource);
-        if (effectPrefab != null)
-        {
-            GameObject effect = Instantiate(effectPrefab);
-            effect.transform.position = currentCell.RealCenterWorldCoordinate + new Vector3(0, 0.5f, 0);
-            Destroy(effect, 4f);
-        }
+        // 【地图资源配置化】拾取效果/特效/音效统一由 MapResourceCollectionService 按 MapResourceSO 配置执行
+        _resourceCollectionService.TryCollectForUnit(currentCell, characterData, PlayerIndex);
     }
 
 }
