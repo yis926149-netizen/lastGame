@@ -5,13 +5,14 @@
 ## 项目概览
 
 - **程序化地图**：生成六边形地块、地形、河流与资源。
-- **探索系统**：全图始终可见，未探索地块通过 Shader 去饱和与半透明雾叠加呈现。玩家主动支付金币点击探索格，同时占领并收割资源。
+- **探索与后勤系统**：玩家主动支付金币点击探索格，同时占领并收割资源。后勤系统（`LogisticsService`）以主城为根对双方领地做 BFS 连通判断：断供地块对双方重新覆盖迷雾（地面与建筑一起），恢复供应后自动揭雾；迷雾遮罩由 FogMask 全量可逆重建驱动。详见 [后勤系统设计方案.md](游戏系统/后勤系统设计方案.md)。
 - **实时游戏循环**：`GameLoop` 每帧驱动所有单位自动决策，玩家随时可通过卡牌部署单位，并可暂停/继续游戏。
 - **单位自动化**：每种单位有独立的兵种策略——近战、远程——由 `UnitBrainBase` 统一调度，逐格移动、探测敌人、自动攻击。
-- **卡牌系统**：拖拽卡牌向地图放置单位或建筑，是玩家唯一的交互方式。
+- **卡牌系统**：拖拽卡牌向地图放置单位或建筑，是玩家唯一的交互方式。普通卡池由 `NormalCardPoolSO` 配置化驱动（单位/建筑卡均为 ScriptableObject 引用，开局纯随机抽卡 + 首张移民卡保底），增删卡只需编辑资产，无需改代码，详见 [普通卡池对象化改造方案.md](普通卡池对象化改造方案.md)。
 - **城市与建筑**：玩家开局拥有一个主城及周围一环势力范围。通过探索地块或占领公共建筑扩张势力范围。可部署祭坛、攻防雕像等建筑。不再支持建新城。
+- **断供与吞并**：断供地块上的建筑全部失能（箭塔停火、兵营暂停生产），不再被自动索敌；敌方单位踩上失能建筑格可随格占领（建筑易主、不摧毁）；断供区域与敌方后勤网络共边相邻时整区域吞并（含建筑与公共建筑外一环）。详见 [断供迷雾与建筑失能吞并设计方案.md](游戏系统/断供迷雾与建筑失能吞并设计方案.md)。
 - **公共建筑**：地图中立区域随机生成多格公共建筑，双方争夺——首次击破归属攻击方，之后易主不回中立。占领后势力范围自动扩张并收割资源。开局隐藏，通过浮标示意位置；任意单位进入建筑占位格外一环后全局发现，触发石柱/飞盘特效揭示建筑模型和相关地块。
-- **战斗**：`CombatResolver` 瞬间结算伤害，`PlayAttackAnim` 负责外观表现；攻速由 `UnitData.AttackInterval` 控制，移动速度由 `UnitData.MovementPoints` 控制。
+- **战斗**：`CombatResolver` 瞬间结算伤害，`PlayAttackAnim` 负责外观表现；攻速由 `UnitData.AttackInterval` 控制，移动速度由 `UnitData.MovementPoints` 控制；攻击音效由 `UnitConfigSO.attackSfx` 配置驱动。
 - **AI 对手**：AI 单位由 `AIUnitBrain` 持续驱动，全知索敌。
 - **天赋卡牌系统**：游戏开始时和占领公共建筑后，玩家从 3 张随机天赋卡中选择 1 张，获得整局永久 Buff（攻击力 / 防御力 / 金币获取）。AI 达到同样条件时后台自动随机选卡。选卡时游戏自动暂停并伴有入场动画、选中特效和屏幕震动。
 
@@ -90,12 +91,15 @@ Assets/
 │   │       ├── DataProviders/      # SO 数据提供者
 │   │       ├── Exploration/        # 探索系统服务与接口
 │   │       ├── Resource/           # 金币钱包与被动收入
-│   │       └── Territory/          # 势力范围服务
+│   │       └── Territory/          # 势力范围与后勤服务（TerritoryService/LogisticsService/AnnexationService）
 │   ├── Data/                       # 六边形地块数据（地形、地貌、资源、建筑）映射
 │   ├── Infrastructure/Installers/  # Zenject 依赖绑定入口
 │   ├── Managers/                   # 地图生成/渲染、阵营管理、公共建筑生成、迷雾、势力范围渲染、探索特效
 │   ├── Scenes/StartScene/          # 开始场景 UI 控制器与场景管理
-│   ├── ScriptableObjects/          # 单位、建筑、公共建筑、地图、UI、地貌回血、天赋卡池配置
+│   ├── ScriptableObjects/          # 单位/建筑配置、普通卡池、公共建筑、地图、UI、地貌回血、天赋卡池配置
+│   │   ├── UnitConfigs/            # 单位卡配置资产（UnitConfig-0~11）
+│   │   ├── BuildingConfigs/        # 建筑卡配置资产（BuildingConfig-0~5）
+│   │   ├── NormalCardPool.asset    # 普通卡池（随机池 18 张 + 移民卡保底）
 │   │   └── TalentCard/             # 天赋卡 SO 实例
 │   ├── TalentCard/                 # 天赋卡牌系统：Buff、数据、触发、UI、AI 自动选卡
 │   │   ├── Buffs/                  # Buff 基类与实现
@@ -139,7 +143,7 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `IMapDataService` | 六边形坐标、地块数据和邻接查询 |
 | `IUnitService` / `IUnitRepository` | 单位查询、管理与存储 |
 | `IUnitMovement` | 移动和路径查询 |
-| `ICardService` | 手牌、卡槽和卡牌生成 |
+| `ICardService` | 手牌、卡槽和卡牌生成（`GenerateNextCard()` 返回普通卡配置对象） |
 | `GameLoop` | 实时主循环：驱动单位决策、公共建筑死亡检测、管理暂停、积累游戏时间 |
 | `CombatResolver` | 瞬间伤害结算（单位对单位 / 单位对建筑 / 多格公共建筑攻击转发） |
 | `UnitMovementSystem` | 逐格移动动画与预留管理 |
@@ -155,11 +159,15 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `IExplorationRule` | 探索合法性判断 |
 | `IExplorationCostProvider` | 探索费用提供者 |
 | `IPlayerResourceWallet` | 玩家资源钱包接口 |
-| `ExplorationRewardSystem` | 探索奖励系统：监听探索完成事件，掷骰发放金币和单位奖励 |
+| `ExplorationRewardSystem` | 探索奖励系统：监听探索完成事件，掷骰发放金币和单位奖励（单位奖励由 `UnitConfigSO[]` 配置） |
 | `ITerritoryService` | 势力范围占领与查询 |
+| `ILogisticsService` | 后勤服务：主城注册、按阵营 BFS 供应缓存（`IsLogisticsConnected`）、迷雾判定（`IsVisibleToFaction`）、重算事件与领地字典重建 |
+| `AnnexationService` | 区域吞并：断供区与敌方后勤网络相邻即整体易主（批量归属写入、主城/中立公共建筑豁免、单次 `LogisticsChanged`） |
+| `BuildingSupplyGate` | 建筑失能门控：`IsFunctional`（所在格归属 == 建筑阵营 && 后勤畅通），断供即失能，`LogisticsChanged` 驱动刷新 |
+| `BuildingTransferService` | 建筑易主迁移：归属真相源/tag/视觉/HP/索引字典同步，公共建筑走 `OnCaptured` 全量（含外一环） |
 | `GoldWallet` | 玩家/AI 金币钱包，支持被动收入 |
 | `GoldIncomeService` | 每秒被动金币收入（ITickable） |
-| `BuildingBase` | 建筑基类：血量、受击、血条、伤害公式 |
+| `BuildingBase` | 建筑基类：血量、受击、血条、伤害公式、失能门控挂载、血条可见性同步（断供隐藏） |
 | `BuildingController` | 普通建筑控制器（城市、雕像、祭坛等），继承 BuildingBase |
 | `PublicBuildingBase` | 公共建筑基类：两阶段 HP、多格管理、易主、势力范围扩展，继承 BuildingBase |
 | `PublicBuildingGenerator` | 公共建筑随机生成器（地图生成后、势力范围初始化前） |
@@ -167,7 +175,7 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `PublicBuildingMarkerView` | 公共建筑浮标视觉组件：呼吸动画、图标设置、始终面向相机 |
 | `ExplorationPillarPool` | 探索特效对象池：石柱升起/飞盘砸落表现；`PlayRevealEffect()` 无业务副作用的公共建筑发现特效 |
 | `CostLabelRenderer` | 探索费用标签：Screen Space 渲染、Button 点击探索、金币不足压暗 |
-| `FogManager` | 迷雾遮罩管理：FogMask 纹理更新与 Shader 参数传递 |
+| `FogManager` | 迷雾封皮/连接面片网格生成（迷雾遮罩 `_FogMaskTex` 与 Shader 参数见 `MapRenderer`） |
 | `SphereOfInfluenceRenderer` | 势力范围可视化渲染 |
 | `IInputService` | 鼠标、键盘、射线和 UI 遮挡判断 |
 | `IMeshGenerator` | 地形、河流、迷雾等网格数据生成 |
@@ -184,11 +192,11 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `AICardTicker` | AI 卡牌定时器：每 5 秒驱动一次 AI 抽卡管线 |
 | `CameraController` | 镜头控制：平移/缩放/旋转/边界限制，内置屏幕震动 `Shake()` |
 
-## 探索系统
+## 探索与后勤系统
 
-探索不再依赖视野或战争迷雾——**全图始终可见**，但未探索地块无法用于部署单位或建造建筑。
+探索仍是玩家主动的领地扩张手段，但地图不再"全图始终可见"——迷雾由**后勤供应**动态驱动，可逆覆盖：
 
-- **视觉**：未探索地块通过 Shader 去饱和 + 半透明雾叠加呈现（[FogBlend.cginc](Assets/Shader/FogBlend.cginc)），与已探索地块形成视觉区分。
+- **视觉**：迷雾遮罩（`_FogMaskTex`）由 [MapRenderer](Assets/Scripts/Managers/MapRenderer.cs) 全量重建（先清空 R 通道再按 `FogAlpha` 盖章），配合 [FogBlend.cginc](Assets/Shader/FogBlend.cginc) 去饱和 + 半透明雾叠加。已归属格按"归属方探索 + 后勤畅通"判断（双方观察一致）；中立格按观察方永久发现状态判断；断供后迷雾重新覆盖（含该格建筑模型），恢复供应后平滑揭雾（`FogTransitionManager` 过渡动画）。
 - **探索方式**：
   - 玩家点击势力范围相邻未探索格上的费用标签，支付金币即可探索（标记已探索 + 圈入势力范围 + 收割资源）。
   - 占领公共建筑后，其势力范围自动标记为已探索并收割资源。
@@ -196,6 +204,18 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 - **不可探索区域**：公共建筑占位格及其周围一环地块标记为不可探索——不显示费用标签，无法通过探索系统获得，只能通过占领公共建筑获取势力范围。
 - **费用与收入**：基础探索费用来自 `ExplorationCost`，金币不足时标签压暗且不可点击。被动金币收入由 `GoldIncomeService` 每秒提供。地块收割奖励为 5 基础 + 资源加成。
 - **探索奖励**：探索完成时触发 `ExplorationRewardSystem`，独立掷骰发放随机金币和单位奖励（配置见 `ExplorationRewardConfigSO`），详见 [游戏系统/探索奖励随机机制设计讨论.md](游戏系统/探索奖励随机机制设计讨论.md)。
+
+## 断供迷雾与建筑失能吞并
+
+在后勤系统之上追加三条规则（决策记录见 [断供迷雾与建筑失能吞并设计方案.md](游戏系统/断供迷雾与建筑失能吞并设计方案.md)）：
+
+- **断供迷雾覆盖建筑**：断供地块的迷雾覆盖范围延伸至建筑模型（`FogEnvironmentSelectiveEffect` 纳入 `PlayerBuilding`/`EnemyBuilding` 根节点），血条等建筑 UI 随之隐藏（隐藏整个建筑 Canvas）。
+- **建筑断供失能**：所有建筑统一受 `BuildingSupplyGate` 门控——箭塔停火、兵营暂停（保留进度）；失能建筑不再是自动索敌目标（双方 `FindNearestEnemyBuilding` 过滤），但仍可被贴近攻击摧毁。
+- **单位擦除层**：单位是透明队列（不在相机深度纹理中），雾化对象（金矿/资源/建筑）的深度裁剪看不到单位，会连带盖住单位——`FogEnvironmentUnitErase` 擦除 pass 把"可见单位"像素从雾化遮罩中清除，单位永不雾化（决策 8），移动中实时生效；单位血条/图标是世界空间 Canvas（同样不写深度），由 `FogEnvironmentUnitUIErase` 按屏幕矩形擦除，单位 UI 同样不被迷雾遮挡。
+- **占领与区域吞并**：
+  - 逐格占领：单位踩上敌方地块即占领（`UnitMovementSystem.TryCaptureEnemyCell` / 建筑摧毁后 `BuildingController.TryCaptureAfterBuildingDestroyed`）；失能建筑不阻挡占领，随格易主（`BuildingTransferService`，HP 回满）。
+  - 区域吞并：`AnnexationService` 在每次后勤重算后扫描断供区域，与敌方后勤网络共边相邻即整区域易主（含建筑与公共建筑外一环），整个流程只触发一次 `LogisticsChanged`。
+  - 豁免：主城格永不吞并；中立公共建筑格（伪阵营 Key ≥ 2）豁免占领与吞并；吞并格以 `(f, 0)` 并入吞并方主城单城字典（P0 约定）。
 
 ## 公共建筑系统
 
@@ -209,6 +229,7 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 - **单位趋向**：双方单位通过 `UnitBrainBase.FindApproximateDirectionToHiddenBuilding()` 自动朝最近浮标方向单步移动，发现后路径失效并重新决策。
 - **势力范围**：发现不改变归属；占领后所有占位格各自向外扩展一环，地块自动探索并收割资源（已发现但未收割的资源在占领时补偿收割）。
 - **不可探索**：公共建筑占位格及其周围一环在生成时标记为不可探索——不显示探索费用标签，玩家和 AI 均无法主动探索。这些地块只能通过发现后占领公共建筑获取。发现前资源模型同步隐藏。
+- **与后勤/吞并**：公共建筑区域断供时失能停摆；区域吞并时整体易主（含外一环，走 `OnCaptured` 全量）。中立公共建筑格（伪阵营 Key ≥ 2）豁免逐格占领与区域吞并；可见性按观察方永久发现状态判断（发现后对双方可见）。
 
 ## AI 模块
 
@@ -218,7 +239,7 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 | --- | --- |
 | `AIManager` | 协调者：开局初始化、城市预制体传递、AI 禁用控制 |
 | `AIEntityFactory` | 敌方城市/单位/建筑的实例化与势力范围扩展 |
-| `AICardBrain` | AI 抽卡状态、卡牌管线与出牌落点决策 |
+| `AICardBrain` | AI 抽卡状态、卡牌管线与出牌落点决策（手牌直接持有普通卡配置对象） |
 | `AICardTicker` | AI 卡牌定时器：每 5 秒驱动一次 AI 抽卡管线（`ITickable`） |
 | `AIAutoExplorer` | AI 自动探索器：定时免费探索邻接己方领地的未探索地块（`ITickable`） |
 | `AIUnitBrain` | AI 单位的实时行为 Brain：全知索敌、逐格决策（位于 `Assets/Scripts/Units/`） |
@@ -230,14 +251,14 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 
 测试程序集仅面向 Unity Editor，现有测试位于 [Assets/Tests/](Assets/Tests/)，覆盖：
 
-- 卡牌服务（`CardServiceTests`）
-- 卡牌解锁规则（`CardUnlockRuleProviderTests`）
+- 卡牌服务（`CardServiceTests`：首张保底移民、后续抽卡属于卡池、卡槽占用与释放）
+- 卡牌解锁规则（`CardUnlockRuleProviderTests`：卡池内容即解锁内容、保底卡配置）
 - 六边形地图服务（`HexMapServiceTests`）
 - 单位移动系统（`UnitMovementSystemTests`）
 - 单位数据仓库（`UnitRepositoryTests`）
 - 单位移除服务（`UnitRemovalServiceTests`）
 - 游戏安装器（`GameInstallerTests`）
-- 领域不变量（`DomainInvariantTests`）
+- 领域不变量（`DomainInvariantTests`，含后勤连通、迷雾可见性、区域吞并、单次事件）
 - 输入摄像机配置（`InputCameraConfigurationTests`）
 - 地图控制器网格（`MapControllerMeshTests`）
 - 三角形过渡网格（`TriangleTransitionMeshTests`）
@@ -314,6 +335,29 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 - 修复团结引擎（Tuanjie）→ Unity 迁移遗留的 `.meta` GUID 格式问题：部分 Base64 GUID 无法被 Unity 场景识别，导致 `GameFlowManager`、`MapRenderer`、`MapGenerator`、`GlobalServicesInstaller` 丢失组件引用
 - 修复 `ProjectContext` AudioManager 共用 AudioSource 的 SFX 配置警告
 - `.claude/debugging-playbook.md` 建立，沉淀 Zenject 初始化顺序、预校验缺失组件、资产 GUID 迁移等可复用经验
+
+2026-08-02 后勤系统与断供迷雾/建筑失能吞并（详见 [后勤系统设计方案.md](游戏系统/后勤系统设计方案.md) 与 [断供迷雾与建筑失能吞并设计方案.md](游戏系统/断供迷雾与建筑失能吞并设计方案.md)）：
+
+- 后勤系统落地：`LogisticsService` 按阵营 BFS 供应缓存、`RegisterMainCity`/`SetOwner`/`TransferOwner`/`ClearOwner`、`IsVisibleToFaction` 迷雾判定、`LogisticsChanged` 事件
+- 迷雾改为全量可逆重建（`MapRenderer.RebuildFogMask` 清空后按 `FogAlpha` 盖章）+ `FogTransitionManager` 平滑过渡；断供后重新起雾
+- 建筑迷雾：`FogEnvironmentSelectiveEffect` 纳入 `PlayerBuilding`/`EnemyBuilding` 根节点，断供地块建筑随地面一起被迷雾覆盖；建筑 Canvas（血条/生产进度条）按玩家视角可见性隐藏
+- 建筑失能：`BuildingSupplyGate` 统一门控（箭塔停火、兵营暂停）；失能建筑不再被双方自动索敌（`PlayerUnitBrain`/`AIUnitBrain` 过滤）
+- 占领规则：仅功能正常的建筑阻挡占领；失能建筑随格易主（`BuildingTransferService`，含归属/tag/视觉/HP/索引同步）；中立公共建筑格（Key ≥ 2）豁免
+- 区域吞并：`AnnexationService` 在每次后勤重算后扫描断供区，与敌方网络相邻即整体易主（批量写入、主城豁免、公共建筑含外一环、单次 `LogisticsChanged`）
+- 数据前置：领地字典一律从地块归属重建（`RebuildSphereOfInfluence`），公共建筑不再伪装城市条目；中立公共建筑可见性按观察方发现状态修复
+
+2026-08-03 普通卡池对象化改造（详见 [普通卡池对象化改造方案.md](普通卡池对象化改造方案.md)）：
+
+- 卡池配置化：普通卡池由 `NormalCardPoolSO` 驱动（12 张单位卡 + 6 张建筑卡引用 + 首张移民卡保底），删除 `CardUnlockRuleProvider` 硬编码 ID 数组与科技/文化参数
+- 数据库对象化：`UnitDatabaseSO`/`BuildingDatabaseSO` 平行列表重构为 `UnitConfigSO`/`BuildingConfigSO` 对象列表（资产已原地迁移，GUID 不变），Provider 按显式 ID 查配置，列表顺序不再影响运行结果
+- 卡牌管线对象化：`CardService.GenerateNextCard()`、`CardPresenter`、`ICardView`/`CardController`、AI 手牌（`AIPlayerState`）全部改持配置对象，删除复合卡 ID（单位数量偏移）规则
+- 开局改为纯随机 5 张手牌（首张触发移民保底），删除临时固定箭塔逻辑
+- 探索奖励 `rewardUnitIDs` 改为 `UnitConfigSO[]` 引用（原 ID 2/5 已迁移）；空数组不再回退魔法 ID
+- 攻击音效配置化：`UnitMovementController` 的 UnitID switch 改为读取 `UnitConfigSO.attackSfx`
+- 兵营产出配置化：`BuildingConfigSO.producedUnit` 注入动态创建的 `BarracksSpawner`
+- 建筑类型直接存储枚举，删除 `(buildingId + 1)` 推导与不可通行魔法判定；建筑 HP 12 项中后 6 项垃圾数据已按决策删除
+- 单位策略类型配置化：`UnitConfigSO.strategyType` 替代 `UnitStrategyFactory` 中的 0/3/5/9 魔法数
+- 一次性资产迁移工具（`Tools/Normal Card Pool/Migrate`）在迁移完成后已删除
 
 ## 当前说明
 
