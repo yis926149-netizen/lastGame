@@ -1,95 +1,32 @@
 using System.Collections.Generic;
-using System;
-using UnityEngine;
-using Zenject;
 
+//****************************************
+//功能说明：普通卡解锁规则提供者（对象化）。
+//         卡池内容完全由 NormalCardPoolSO 决定，硬编码 ID 数组与科技/文化参数已移除。
+//****************************************
 public interface ICardUnlockRuleProvider
 {
-    List<int> GetUnlockedCardIds(int techLevel, int cultureLevel);
+    /// <summary>当前可抽取的普通卡列表（单位卡 + 建筑卡）。</summary>
+    IReadOnlyList<NormalCardConfigSO> GetUnlockedCards();
+
+    /// <summary>首张保底卡（移民卡），替代硬编码 return 0。</summary>
+    UnitConfigSO GetGuaranteedFirstCard();
 }
 
 public class CardUnlockRuleProvider : ICardUnlockRuleProvider
 {
-    private static readonly int[] BaseUnitIds = { 0, 1 };
-    private static readonly int[] TechUnitIds = { 2, 3, 4, 9, 10, 11, 6, 5, 7, 8 };
-        private static readonly int[] BaseBuildingIds = { 3, 4, 5 };
-    private static readonly int[] CultureBuildingIds = { 2, 0, 1 };
+    private readonly NormalCardPoolSO _pool;
 
-    [Inject] private IUnitDataProvider _unitData;
-    [Inject] private IBuildingDataProvider _buildingData;
-
-    public List<int> GetUnlockedCardIds(int techLevel, int cultureLevel)
+    public CardUnlockRuleProvider(NormalCardPoolSO pool)
     {
-        // 科技/文化系统已移除：现阶段无条件解锁全部单位卡与建筑卡。
-        // techLevel / cultureLevel 参数保留以兼容调用方签名，当前忽略。
-        // 后续如需按其他条件（时间、击杀数等）解锁，在此处填充规则即可。
-        List<int> unlockedIds = new List<int>();
-        int unitCount = (int)_unitData.GetUnitIconCount();
-        int buildingCount = _buildingData.GetBuildingCardsCount();
-        ValidateCardDatabase(unitCount, buildingCount);
-
-        // 【临时测试】禁用单位卡，只抽建筑卡
-        // AddValidUnitIds(unlockedIds, BaseUnitIds, unitCount);
-        // AddValidUnitIds(unlockedIds, TechUnitIds, unitCount);
-        AddValidBuildingIds(unlockedIds, BaseBuildingIds, unitCount, buildingCount);
-        AddValidBuildingIds(unlockedIds, CultureBuildingIds, unitCount, buildingCount);
-
-        return unlockedIds;
+        _pool = pool;
     }
 
-    private static void ValidateCardDatabase(int unitCount, int buildingCount)
+    public IReadOnlyList<NormalCardConfigSO> GetUnlockedCards()
     {
-        ValidateIds(BaseUnitIds, TechUnitIds, unitCount, "unit");
-        ValidateIds(BaseBuildingIds, CultureBuildingIds, buildingCount, "building");
+        if (_pool == null || _pool.cards == null) return new List<NormalCardConfigSO>();
+        return _pool.cards;
     }
 
-    private static void ValidateIds(int[] baseIds, int[] progressionIds, int count, string cardType)
-    {
-        var ids = new HashSet<int>();
-        foreach (int id in baseIds)
-        {
-            if (id < 0 || id >= count || !ids.Add(id))
-                throw new InvalidOperationException($"Invalid or duplicate {cardType} card ID {id} for database count {count}.");
-        }
-
-        foreach (int id in progressionIds)
-        {
-            if (id < 0 || id >= count || !ids.Add(id))
-                throw new InvalidOperationException($"Invalid or duplicate {cardType} card ID {id} for database count {count}.");
-        }
-    }
-
-    private static void AddValidUnitIds(List<int> cards, int[] unitIds, int unitCount, int count = int.MaxValue)
-    {
-        int end = Mathf.Min(unitIds.Length, Mathf.Max(0, count));
-        for (int i = 0; i < end; i++)
-        {
-            int unitId = unitIds[i];
-            if (unitId >= 0 && unitId < unitCount && !cards.Contains(unitId))
-            {
-                cards.Add(unitId);
-            }
-        }
-    }
-
-    private static void AddValidBuildingIds(
-        List<int> cards,
-        int[] buildingIds,
-        int unitCount,
-        int buildingCount,
-        int count = int.MaxValue)
-    {
-        int end = Mathf.Min(buildingIds.Length, Mathf.Max(0, count));
-        for (int i = 0; i < end; i++)
-        {
-            int buildingId = buildingIds[i];
-            if (buildingId < 0 || buildingId >= buildingCount) continue;
-
-            int cardId = unitCount + buildingId;
-            if (!cards.Contains(cardId))
-            {
-                cards.Add(cardId);
-            }
-        }
-    }
+    public UnitConfigSO GetGuaranteedFirstCard() => _pool != null ? _pool.guaranteedFirstCard : null;
 }

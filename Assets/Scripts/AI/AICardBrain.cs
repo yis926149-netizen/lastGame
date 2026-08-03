@@ -3,7 +3,7 @@ using System.Linq;
 
 //****************************************
 //功能说明：AI 卡牌脑。负责抽卡状态、每回合卡牌管线（抽卡 + 科文推进 + 出牌）与出牌落点决策。
-//         逻辑与拆分前 AIManager 的卡牌相关方法一致。
+//         逻辑与拆分前 AIManager 的卡牌相关方法一致（对象化：手牌/出牌直接持有普通卡配置）。
 //         注：AIIndex 暂固定 1；Tier 3 多阵营化时改为按 aiIndex 参数化。
 //****************************************
 
@@ -50,27 +50,24 @@ public class AICardBrain
 
     public void InitializeCardState()
     {
-        _aiPlayerState.Card.HandCardIds.Clear();
-        _aiPlayerState.Card.NextCardId = -1;
+        _aiPlayerState.Card.HandCards.Clear();
+        _aiPlayerState.Card.NextCard = null;
         _aiPlayerState.Card.HasDealtThisTurn = false;
         _aiPlayerState.Card.HasGivenFirstTurnSettler = false;
 
         // 和玩家一致：第一张保证是移民卡
         for (int i = 0; i < AICardState.MaxHandCards; i++)
         {
-            _aiPlayerState.Card.HandCardIds.Add(GenerateCardId());
+            _aiPlayerState.Card.HandCards.Add(GenerateCard());
         }
-        _aiPlayerState.Card.NextCardId = GenerateCardId();
+        _aiPlayerState.Card.NextCard = GenerateCard();
     }
 
-    private int GenerateCardId()
+    private NormalCardConfigSO GenerateCard()
     {
-        // 科技/文化系统已移除：传 0, 0 无条件解锁全部卡牌。
-        return CardGenerationRule.GenerateNextCardId(
+        return CardGenerationRule.GenerateNextCard(
             giveFirstSettler: true,
             ref _aiPlayerState.Card.HasGivenFirstTurnSettler,
-            0,
-            0,
             _cardUnlockRuleProvider,
             Random);
     }
@@ -86,33 +83,33 @@ public class AICardBrain
 
     private void DealFromNextCardIfPossible()
     {
-        if (_aiPlayerState.Card.NextCardId < 0)
+        if (_aiPlayerState.Card.NextCard == null)
         {
-            _aiPlayerState.Card.NextCardId = GenerateCardId();
+            _aiPlayerState.Card.NextCard = GenerateCard();
         }
 
         if (_aiPlayerState.Card.HasDealtThisTurn) return;
-        if (_aiPlayerState.Card.HandCardIds.Count >= AICardState.MaxHandCards) return;
-        if (_aiPlayerState.Card.NextCardId < 0) return;
+        if (_aiPlayerState.Card.HandCards.Count >= AICardState.MaxHandCards) return;
+        if (_aiPlayerState.Card.NextCard == null) return;
 
-        _aiPlayerState.Card.HandCardIds.Add(_aiPlayerState.Card.NextCardId);
+        _aiPlayerState.Card.HandCards.Add(_aiPlayerState.Card.NextCard);
         _aiPlayerState.Card.HasDealtThisTurn = true;
-        _aiPlayerState.Card.NextCardId = GenerateCardId();
+        _aiPlayerState.Card.NextCard = GenerateCard();
     }
 
     private bool PlayAICards()
     {
-        if (_aiPlayerState.Card.HandCardIds.Count == 0) return false;
+        if (_aiPlayerState.Card.HandCards.Count == 0) return false;
 
-        List<int> orderedCards = _aiPlayerState.Card.HandCardIds
+        List<NormalCardConfigSO> orderedCards = _aiPlayerState.Card.HandCards
             .OrderByDescending(GetCardPriority)
             .ToList();
 
-        foreach (int cardId in orderedCards)
+        foreach (NormalCardConfigSO card in orderedCards)
         {
-            if (TryPlaySingleCard(cardId))
+            if (TryPlaySingleCard(card))
             {
-                _aiPlayerState.Card.HandCardIds.Remove(cardId);
+                _aiPlayerState.Card.HandCards.Remove(card);
                 return true;
             }
         }
@@ -120,37 +117,36 @@ public class AICardBrain
         return false;
     }
 
-    private int GetCardPriority(int cardId)
+    private int GetCardPriority(NormalCardConfigSO card)
     {
-        int unitCount = (int)_unitDataProvider.GetUnitIconCount();
-        bool isUnitCard = cardId < unitCount;
-        if (isUnitCard)
+        if (card is UnitConfigSO unitConfig)
         {
-            return cardId == 0 ? 100 : 70;
+            return unitConfig.strategyType == UnitStrategyType.Settler ? 100 : 70;
         }
 
-        int buildingId = cardId - unitCount;
-        if (buildingId == 3) return 90; // 科技文化建筑优先
+        if (card is BuildingConfigSO buildingConfig)
+        {
+            return buildingConfig.buildingType == Enums.BulidingType.TechnologyAndCultural ? 90 : 60;
+        }
+
         return 60;
     }
 
-    private bool TryPlaySingleCard(int cardId)
+    private bool TryPlaySingleCard(NormalCardConfigSO card)
     {
         // 【探索重构-阶段7】出牌消耗金币
         if (_goldWallet.GetGold(AIIndex) < _goldWallet.CardCost) return false;
 
-        int unitCount = (int)_unitDataProvider.GetUnitIconCount();
-        bool isBuildingCard = cardId >= unitCount;
-        bool success = isBuildingCard
-            ? TrySpawnBuildingFromCard(cardId)
-            : TrySpawnUnitFromCard(cardId);
+        bool success = card is BuildingConfigSO
+            ? TrySpawnBuildingFromCard((BuildingConfigSO)card)
+            : TrySpawnUnitFromCard((UnitConfigSO)card);
 
         if (success)
             _goldWallet.TrySpendGold(AIIndex, _goldWallet.CardCost);
         return success;
     }
 
-    private bool TrySpawnUnitFromCard(int unitId)
+    private bool TrySpawnUnitFromCard(UnitConfigSO unitConfig)
     {
         List<HexCellData> candidateCells = GetAIOwnedCells()
             .Where(IsValidSpawnCellForUnit)
@@ -158,19 +154,12 @@ public class AICardBrain
         if (candidateCells.Count == 0) return false;
 
         HexCellData selected = candidateCells[Random.Next(candidateCells.Count)];
-        _factory.GenerateUnit(unitId, selected.RealCenterWorldCoordinate);
+        _factory.GenerateUnit(unitConfig.Id, selected.RealCenterWorldCoordinate);
         return true;
     }
 
-    private bool TrySpawnBuildingFromCard(int cardId)
+    private bool TrySpawnBuildingFromCard(BuildingConfigSO buildingConfig)
     {
-        int unitCount = (int)_unitDataProvider.GetUnitIconCount();
-        int buildingId = cardId - unitCount;
-        if (buildingId < 0 || buildingId >= _buildingDataProvider.GetBuildingCardsCount())
-        {
-            return false;
-        }
-
         List<HexCellData> candidateCells = GetAIOwnedCells()
             .Where(IsValidSpawnCellForBuilding)
             .ToList();
@@ -178,7 +167,7 @@ public class AICardBrain
 
         // 科文建筑优先放在已有城市圈地内
         HexCellData selected = candidateCells[Random.Next(candidateCells.Count)];
-        _factory.GenerateBuilding(cardId, selected.RealCenterWorldCoordinate);
+        _factory.GenerateBuilding(buildingConfig, selected.RealCenterWorldCoordinate);
         return true;
     }
 

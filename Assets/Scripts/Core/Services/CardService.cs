@@ -6,7 +6,7 @@ using Zenject;
 public interface ICardService
 {
     int GetFirstEmptySlot();
-    int GenerateNextCardID();
+    NormalCardConfigSO GenerateNextCard();
     void RegisterCardView(int slot, ICardView view);
     void RemoveCard(int slot);
     Vector2 GetSlotOffset(int slot);
@@ -39,15 +39,13 @@ public class CardService : ICardService
         return -1;
     }
 
-    public int GenerateNextCardID()
+    public NormalCardConfigSO GenerateNextCard()
     {
         // 【检查点 6】实时化：首张移民保底不再依赖回合数，用 _hasGivenFirstTurnSettler 确保仅一次
         bool giveFirstSettler = !_hasGivenFirstTurnSettler;
-        return CardGenerationRule.GenerateNextCardId(
+        return CardGenerationRule.GenerateNextCard(
             giveFirstSettler,
             ref _hasGivenFirstTurnSettler,
-            0,
-            0,
             _cardUnlockRuleProvider,
             Random);
     }

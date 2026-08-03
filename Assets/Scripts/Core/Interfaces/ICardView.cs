@@ -1,55 +1,76 @@
 using UnityEngine;
 
+public interface ICardDropHandler
+{
+    bool HandleCardDragEnd(ICardView view, HexCellData targetCell, Vector3 releaseWorldPos);
+
+    /// <summary>æ‹–æ‹½å¼€å§‹æ—¶é€šçŸ¥ï¼ˆå æ”¾æˆ˜æœ¯ç‰Œåœ¨æ­¤"å€Ÿå‡º"ä¸€å¼ å¹¶åˆ›å»ºå¹½çµï¼‰ã€‚</summary>
+    void OnCardDragBegin(ICardView view);
+
+    /// <summary>æ‹–æ‹½è¢«å–æ¶ˆ/å¤±è´¥ä¸”æœªèµ° HandleCardDragEnd æ—¶é€šçŸ¥ï¼ˆå½’è¿˜å€Ÿå‡ºï¼‰ã€‚</summary>
+    void OnCardDragCancel(ICardView view);
+}
+
 public interface ICardView
 {
     /// <summary>
-    /// ÉèÖÃ¿¨ÅÆÊı¾İ£¨¿¨Ãæ¡¢ID¡¢³õÊ¼Î»ÖÃµÈ£©
+    /// ï¿½ï¿½ï¿½Ã¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½İ£ï¿½ï¿½ï¿½ï¿½æ¡¢IDï¿½ï¿½ï¿½ï¿½Ê¼Î»ï¿½ÃµÈ£ï¿½
     /// </summary>
     void SetData(CardData data, int placementID, Vector3 originPosition);
 
     /// <summary>
-    /// ²¥·ÅÈë³¡¶¯»­£¨·¢ÅÆ£©
+    /// ï¿½ï¿½ï¿½ï¿½ï¿½ë³¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ£ï¿½
     /// </summary>
-    /// <param name="isNextCard">true=Ô¤¸æ¿¨£¨±£³ÖNextCardSize£¬²»Ëõ·Å£©</param>
+    /// <param name="isNextCard">true=Ô¤ï¿½æ¿¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½NextCardSizeï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å£ï¿½</param>
     void PlayDealAnimation(Vector3 targetPosition, System.Action onComplete, bool isNextCard = false);
 
     /// <summary>
-    /// ²¥·ÅÍÏ×§Ê±µÄËõ·Å/Î»ÒÆ
+    /// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×§Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½/Î»ï¿½ï¿½
     /// </summary>
     void OnDragUpdate(Vector2 localPoint, Vector2 originPos);
 
     /// <summary>
-    /// »¹Ô­¿¨Æ¬Î»ÖÃºÍ´óĞ¡£¨È¡Ïû·ÅÖÃ£©
+    /// ï¿½ï¿½Ô­ï¿½ï¿½Æ¬Î»ï¿½ÃºÍ´ï¿½Ğ¡ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½
     /// </summary>
     void ResetToOrigin();
 
     /// <summary>
-    /// Òş²Ø¸ßÁÁ£¨ËÉÊÖÊ±ÇåÀí£©
+    /// ï¿½ï¿½ï¿½Ø¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     /// </summary>
     void ClearHighlights();
 
     /// <summary>
-    /// »ñÈ¡¿¨ÅÆID
+    /// ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ID
     /// </summary>
     int CardID { get; }
 
     /// <summary>
-    /// ¿¨ÅÆ¶ÔÓ¦µÄ·ÅÖÃ²ÛÎ»ID
+    /// è·å–å®Œæ•´å¡ç‰Œæ•°æ®ï¼ˆæ™®é€šå¡æŒæœ‰ NormalCardConfigï¼Œæˆ˜æœ¯å¡ NormalCardConfig ä¸ºç©ºï¼‰ã€‚
+    /// </summary>
+    CardData Data { get; }
+
+    /// <summary>
+    /// ï¿½ï¿½ï¿½Æ¶ï¿½Ó¦ï¿½Ä·ï¿½ï¿½Ã²ï¿½Î»ID
     /// </summary>
     int PlacementID { get; set; }
 
     /// <summary>
-    /// ¿¨ÅÆÊÇ·ñÎª¡°´Î¿¨¡±
+    /// ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½Îªï¿½ï¿½ï¿½Î¿ï¿½ï¿½ï¿½
     /// </summary>
     bool IsNextCard { get; set; }
 
     /// <summary>
-    /// ¿¨ÅÆµÄ RectTransform
+    /// ï¿½ï¿½ï¿½Æµï¿½ RectTransform
     /// </summary>
     RectTransform RectTransform { get; }
 
     /// <summary>
-    /// ¿¨ÅÆµÄ»ù×¼Ô­Ê¼Î»ÖÃ
+    /// ï¿½ï¿½ï¿½ÆµÄ»ï¿½×¼Ô­Ê¼Î»ï¿½ï¿½
     /// </summary>
     Vector3 OriginPosition { get; set; }
+
+    /// <summary>
+    /// è®¾ç½®æ‹–æ‹½ä»£ç†ï¼ˆå¹½çµï¼‰ï¼šéç©ºæ—¶æ‹–æ‹½ç§»åŠ¨/ç¼©æ”¾ä½œç”¨äºä»£ç†è€Œä¸æ˜¯æœ¬ä½“ã€‚
+    /// </summary>
+    void SetDragProxy(RectTransform proxy);
 }

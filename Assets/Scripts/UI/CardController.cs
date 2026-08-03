@@ -9,13 +9,20 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     IBeginDragHandler, IDragHandler, IEndDragHandler
 {
     [Inject] private IMapDataService _mapDataService;
-    [Inject] private CardPresenter _presenter;
+    [Inject] private ICardDropHandler _dropHandler;
     [Inject] private IUIConfigProvider _uiConfig;
     [Inject] private GameLoop _gameLoop;
     [Inject] private LazyInject<PlayerInputHandler> _playerInputHandler;
 
+    /// <summary>允许外部覆盖 drop handler（战术卡等非默认材质）。应在 Zenject 注入之后、首次拖拽之前调用。</summary>
+    public void OverrideDropHandler(ICardDropHandler handler) => _dropHandler = handler;
+
+    /// <summary>设置拖拽代理（幽灵）：非空时 OnDragUpdate 移动/缩放代理而非本体。</summary>
+    public void SetDragProxy(RectTransform proxy) => _dragProxy = proxy;
+
     private RectTransform _rectTransform;
     private Image _image;
+    private RectTransform _dragProxy;
 
     public CardData _data;
     private Vector3 _originPosition;
@@ -32,6 +39,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     private int originalSiblingIndex;  
 
     public int CardID => _data?.ID ?? -1;
+    public CardData Data => _data;
     public int PlacementID { get; set; }
     public bool IsNextCard { get => _isNextCard; set => _isNextCard = value; }
     public RectTransform RectTransform => _rectTransform;
@@ -42,6 +50,16 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _rectTransform = GetComponent<RectTransform>();
         _image = GetComponent<Image>();
         originalSiblingIndex = transform.GetSiblingIndex();
+
+        // Prefab 内透明 Button 的 RectTransform 远大于卡面，若参与射线会在卡外大范围触发悬浮。
+        // 卡牌交互统一由根节点 Image + CardController 处理，子 Button 只保留视觉层。
+        Button childButton = GetComponentInChildren<Button>(true);
+        if (childButton != null && childButton.gameObject != gameObject)
+        {
+            childButton.interactable = false;
+            if (childButton.targetGraphic != null)
+                childButton.targetGraphic.raycastTarget = false;
+        }
 
         //_image.alphaHitTestMinimumThreshold = 0.01f;
     }
@@ -91,16 +109,18 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     public void OnDragUpdate(Vector2 localPoint, Vector2 originPos)
     {
-        _rectTransform.anchoredPosition = localPoint;
+        RectTransform target = _dragProxy != null ? _dragProxy : _rectTransform;
+        target.anchoredPosition = localPoint;
         float distanceY = Mathf.Abs(localPoint.y - originPos.y);
         float maxDistance = Screen.height * 0.37f; // B3: 拖拽最大距离改为屏幕高度比例
         float minScale = 0.6f;
         float scaleRatio = Mathf.Lerp(1f, minScale, Mathf.Clamp01(distanceY / maxDistance));
-        transform.localScale = _uiConfig.CardSize * scaleRatio;
+        target.localScale = _uiConfig.CardSize * scaleRatio;
     }
 
     public void ResetToOrigin()
     {
+        _rectTransform.DOKill();
         _rectTransform.DOAnchorPos(_originPosition, 0.2f);
         transform.DOScale(_uiConfig.CardSize, 0.2f);
     }
@@ -135,6 +155,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         }
         _playerInputHandler.Value.ForceDeselectUnit();
         _isDragging = true;
+        _dropHandler?.OnCardDragBegin(this);
     }
 
     public void OnDrag(PointerEventData eventData)
@@ -167,6 +188,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
         if (_gameLoop != null && _gameLoop.IsPaused)
         {
+            _dropHandler?.OnCardDragCancel(this);
             ResetToOrigin();
             return;
         }
@@ -177,11 +199,12 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
             HexCellData targetCell = _mapDataService.GetCellByWorldPosition(hit.point);
             if (targetCell != null)
             {
-                if (_presenter.HandleCardDragEnd(this, targetCell, hit.point))
+                if (_dropHandler.HandleCardDragEnd(this, targetCell, hit.point))
                     return;
             }
         }
 
+        _dropHandler?.OnCardDragCancel(this);
         ResetToOrigin();
     }
 
@@ -194,6 +217,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     private void OnDisable()
     {
+        if (_isDragging) _dropHandler?.OnCardDragCancel(this);
         _rectTransform?.DOKill();
     }
 
@@ -202,6 +226,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _isDragging = false;
         transform.SetSiblingIndex(originalSiblingIndex);
         ClearHighlights();
+        _dropHandler?.OnCardDragCancel(this);
         ResetToOrigin();
     }
 }

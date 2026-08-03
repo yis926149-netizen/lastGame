@@ -1,40 +1,55 @@
 using System.Collections.Generic;
-using NSubstitute;
 using NUnit.Framework;
+using UnityEngine;
 using Zenject;
 
 public class CardUnlockRuleProviderTests
 {
-    private CardUnlockRuleProvider _provider;
+    private ICardUnlockRuleProvider _provider;
+    private NormalCardPoolSO _pool;
 
     [SetUp]
     public void SetUp()
     {
-        var unitData = Substitute.For<IUnitDataProvider>();
-        unitData.GetUnitIconCount().Returns(12);
-        var buildingData = Substitute.For<IBuildingDataProvider>();
-        buildingData.GetBuildingCardsCount().Returns(4);
+        _pool = ScriptableObject.CreateInstance<NormalCardPoolSO>();
+        var unit0 = ScriptableObject.CreateInstance<UnitConfigSO>();
+        unit0.unitData = new UnitData(0, "Settler", 1, 20, 1, 0, 1, 2);
+        var unit1 = ScriptableObject.CreateInstance<UnitConfigSO>();
+        unit1.unitData = new UnitData(1, "Warrior", 1, 20, 1, 5, 1, 2);
+        var building0 = ScriptableObject.CreateInstance<BuildingConfigSO>();
+        building0.buildingId = 0;
+        building0.buildingType = Enums.BulidingType.AttackStatue;
+        var building1 = ScriptableObject.CreateInstance<BuildingConfigSO>();
+        building1.buildingId = 1;
+        building1.buildingType = Enums.BulidingType.DefenseStatue;
+
+        _pool.cards = new List<NormalCardConfigSO> { unit0, unit1, building0, building1 };
+        _pool.guaranteedFirstCard = unit0;
 
         var container = new DiContainer();
-        container.Bind<IUnitDataProvider>().FromInstance(unitData);
-        container.Bind<IBuildingDataProvider>().FromInstance(buildingData);
-        container.Bind<CardUnlockRuleProvider>().AsSingle();
-        _provider = container.Resolve<CardUnlockRuleProvider>();
+        container.Bind<NormalCardPoolSO>().FromInstance(_pool);
+        container.Bind<ICardUnlockRuleProvider>().To<CardUnlockRuleProvider>().AsSingle();
+        _provider = container.Resolve<ICardUnlockRuleProvider>();
     }
 
-    [TestCase(0, 0, new[] { 0, 1, 2, 14, 15 })]
-    [TestCase(1, 0, new[] { 0, 1, 2, 3, 14, 15 })]
-    [TestCase(2, 1, new[] { 0, 1, 2, 3, 4, 12, 14, 15 })]
-    [TestCase(5, 2, new[] { 0, 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 15 })]
-    [TestCase(9, 9, new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })]
-    public void GetUnlockedCardIds_ReturnsExplicitCumulativeMapping(
-        int techLevel,
-        int cultureLevel,
-        int[] expected)
+    [TearDown]
+    public void TearDown()
     {
-        List<int> actual = _provider.GetUnlockedCardIds(techLevel, cultureLevel);
+        Object.DestroyImmediate(_pool);
+    }
 
-        CollectionAssert.AreEquivalent(expected, actual);
-        Assert.AreEqual(actual.Count, new HashSet<int>(actual).Count);
+    [Test]
+    public void GetUnlockedCards_ReturnsAllPoolCards()
+    {
+        var cards = _provider.GetUnlockedCards();
+        Assert.AreEqual(4, cards.Count);
+        Assert.AreEqual(_pool.cards[0], cards[0]);
+        Assert.AreEqual(_pool.cards[3], cards[3]);
+    }
+
+    [Test]
+    public void GetGuaranteedFirstCard_ReturnsPoolGuaranteed()
+    {
+        Assert.AreEqual(_pool.guaranteedFirstCard, _provider.GetGuaranteedFirstCard());
     }
 }

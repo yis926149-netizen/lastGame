@@ -215,14 +215,24 @@ public class AIEntityFactory
         // 【探索重构-阶段1】AI单位始终可见，不再隐藏
     }
 
-    /// <summary>AI 建筑生成（入参暂保留旧卡 ID 兼容 AICardBrain，内部解析 BuildingConfig 消费新字段）。</summary>
+    /// <summary>AI 建筑生成（对象化入口：直接消费建筑配置）。</summary>
+    public void GenerateBuilding(BuildingConfigSO config, Vector3 position)
+    {
+        GenerateBuildingInternal(config, config != null ? config.buildingId : 0, position);
+    }
+
+    /// <summary>AI 建筑生成（旧卡 ID 入口：内部解析 BuildingConfig 后委托对象化实现）。</summary>
     public void GenerateBuilding(int CardIndex, Vector3 position)
+    {
+        int bulidingTypeInt = CardIndex - (int)_unitDataProvider.GetUnitIconCount();
+        BuildingConfigSO config = _buildingDataProvider.TryGetBuildingConfig(bulidingTypeInt, out var bc) ? bc : null;
+        GenerateBuildingInternal(config, bulidingTypeInt, position);
+    }
+
+    private void GenerateBuildingInternal(BuildingConfigSO config, int bulidingTypeInt, Vector3 position)
     {
         Vector3 v = _mapDataService.WorldToHexCoordinate(position);
         HexCellData h = _mapDataService.GetCellByWorldPosition(position);
-
-        int bulidingTypeInt = CardIndex - (int)_unitDataProvider.GetUnitIconCount();
-        BuildingConfigSO config = _buildingDataProvider.TryGetBuildingConfig(bulidingTypeInt, out var bc) ? bc : null;
 
         GameObject g = Object.Instantiate(config != null ? config.buildingModel : _buildingDataProvider.GetBuildingPrefab(bulidingTypeInt));
         g.transform.SetParent(GameObject.Find("EnemyBuilding").transform, false);

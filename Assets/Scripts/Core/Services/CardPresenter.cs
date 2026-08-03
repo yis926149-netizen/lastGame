@@ -54,32 +54,10 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
                 "[CardPresenter] Initialization failed: NextCardPlaceholder has no RectTransform.");
         }
 
-        // 【临时测试】3张随机 + 1张箭塔 + 1张随机
-        int arrowTowerBuildingID = 5;
-        int arrowTowerCardID = (int)_unitData.GetUnitIconCount() + arrowTowerBuildingID;
-        for (int i = 0; i < 3; i++)
+        // 【决策 3】开局纯随机：5 张手牌全部从随机池抽取（第一张触发移民保底），无固定箭塔
+        for (int i = 0; i < 5; i++)
         {
-            int cardID = _cardService.GenerateNextCardID();
-            bool isUnit = cardID < _unitData.GetUnitIconCount();
-            Sprite cardSprite = isUnit
-                ? _unitData.GetCard(cardID)
-                : _buildingData.GetBuildingCards(cardID - (int)_unitData.GetUnitIconCount());
-            var cardData = new CardData { ID = cardID, CardSprite = cardSprite, IsUnit = isUnit };
-            _initialDealQueue.Enqueue(cardData);
-        }
-        {
-            Sprite arrowTowerSprite = _buildingData.GetBuildingCards(arrowTowerBuildingID);
-            var arrowTowerCard = new CardData { ID = arrowTowerCardID, CardSprite = arrowTowerSprite, IsUnit = false };
-            _initialDealQueue.Enqueue(arrowTowerCard);
-        }
-        {
-            int cardID = _cardService.GenerateNextCardID();
-            bool isUnit = cardID < _unitData.GetUnitIconCount();
-            Sprite cardSprite = isUnit
-                ? _unitData.GetCard(cardID)
-                : _buildingData.GetBuildingCards(cardID - (int)_unitData.GetUnitIconCount());
-            var cardData = new CardData { ID = cardID, CardSprite = cardSprite, IsUnit = isUnit };
-            _initialDealQueue.Enqueue(cardData);
+            _initialDealQueue.Enqueue(BuildCardData(_cardService.GenerateNextCard()));
         }
        // Debug.Log($"[CardPresenter] 初始卡牌数据准备完成，共 {_initialDealQueue.Count} 张");
 
@@ -99,15 +77,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
     {
         if (_nextCardView != null) return;
 
-        int cardID = _cardService.GenerateNextCardID();
-        bool isUnit = cardID < _unitData.GetUnitIconCount();
-        Sprite cardSprite = isUnit
-            ? _unitData.GetCard(cardID)
-            : _buildingData.GetBuildingCards(cardID - (int)_unitData.GetUnitIconCount());
-
-        var cardData = new CardData { ID = cardID, CardSprite = cardSprite, IsUnit = isUnit };
-
-        DealOneCard(placeholderRect, cardData, null, true);  // true = 预告卡模式
+        DealOneCard(placeholderRect, BuildCardData(_cardService.GenerateNextCard()), null, true);  // true = 预告卡模式
     }
 
     /// <summary>
@@ -136,6 +106,32 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
                 onAllDealt?.Invoke();   // 最后一张发完 → 执行最终回调
             }
         });
+    }
+
+    /// <summary>由普通卡配置构造 CardData（ID/IsUnit/CardSprite 派生自配置）。</summary>
+    private static CardData BuildCardData(NormalCardConfigSO config)
+    {
+        if (config is UnitConfigSO unitConfig)
+        {
+            return new CardData
+            {
+                NormalCardConfig = config,
+                ID = unitConfig.Id,
+                CardSprite = config.cardSprite,
+                IsUnit = true,
+            };
+        }
+        if (config is BuildingConfigSO buildingConfig)
+        {
+            return new CardData
+            {
+                NormalCardConfig = config,
+                ID = buildingConfig.buildingId,
+                CardSprite = config.cardSprite,
+                IsUnit = false,
+            };
+        }
+        return new CardData { NormalCardConfig = config, CardSprite = config.cardSprite };
     }
 
     /// <summary>
@@ -247,9 +243,16 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
         if (!IsReleaseValid(view.CardID, targetCell))
             return false;
 
-        bool spawned = view.CardID < _unitData.GetUnitIconCount()
-            ? SpawnUnit(view.CardID, targetCell.RealCenterWorldCoordinate) != null
-            : SpawnBuilding((int)(view.CardID - _unitData.GetUnitIconCount()), targetCell.RealCenterWorldCoordinate);
+        NormalCardConfigSO config = view.Data?.NormalCardConfig;
+        bool spawned = false;
+        if (config is UnitConfigSO unitConfig)
+        {
+            spawned = SpawnUnit(unitConfig.Id, targetCell.RealCenterWorldCoordinate) != null;
+        }
+        else if (config is BuildingConfigSO buildingConfig)
+        {
+            spawned = SpawnBuilding(buildingConfig.buildingId, targetCell.RealCenterWorldCoordinate);
+        }
         if (!spawned) return false;
 
         // 【探索重构-阶段7】出牌扣费
@@ -533,14 +536,8 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
             return;
         }
 
-        int cardID = _cardService.GenerateNextCardID();
-        bool isUnit = cardID < _unitData.GetUnitIconCount();
-        Sprite cardSprite = isUnit
-            ? _unitData.GetCard(cardID)
-            : _buildingData.GetBuildingCards(cardID - (int)_unitData.GetUnitIconCount());
+        NormalCardConfigSO config = _cardService.GenerateNextCard();
 
-        var cardData = new CardData { ID = cardID, CardSprite = cardSprite, IsUnit = isUnit };
-
-        DealOneCard(placeholder.GetComponent<RectTransform>(), cardData, null, true);
+        DealOneCard(placeholder.GetComponent<RectTransform>(), BuildCardData(config), null, true);
     }
 }

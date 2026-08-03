@@ -12,8 +12,12 @@ public class AICardState
 {
     public const int MaxHandCards = 5;
 
-    public List<int> HandCardIds = new List<int>();
-    public int NextCardId = -1;
+    /// <summary>AI 手牌（普通卡配置引用；允许同一配置多张，等价有放回抽取）。</summary>
+    public List<NormalCardConfigSO> HandCards = new List<NormalCardConfigSO>();
+
+    /// <summary>AI 预告牌（null 表示空）。</summary>
+    public NormalCardConfigSO NextCard = null;
+
     public bool HasGivenFirstTurnSettler = false;
     public bool HasDealtThisTurn = false;
 }
