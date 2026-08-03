@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aae3eff17432ad0439c74337ac13b25b, type: 3}
+  m_Name: UnitConfig-10
+  m_EditorClassIdentifier: 
+  cardSprite: {fileID: 21300000, guid: 02c184d71aa05df41923d2dcb6a6305d, type: 3}
+  unitData:
+    id: 10
+    unitName: "\u5B9D\u7BB1\u602A"
+    MovementPoints: 1
+    hp: 20
+    BasicAttackRange: 1
+    BasicAttackValue: 15
+    Defense: 2
+    ViewPoints: 1
+    AttackInterval: 0
+  unitModel: {fileID: 4017426570353285747, guid: 24e13db13b4fdce4c9788b1ca3afd703, type: 3}
+  unitIcon: {fileID: 21300000, guid: 2c261ef62acd6d441b57e84505154079, type: 3}
+  skillIcon: {fileID: 21300000, guid: 9affb0abb983c3e47b044a3e2ea0eb30, type: 3}
+  strategyType: 0
+  attackSfx:
+    primarySfx: Big_Explosion-004
+    delayedSfx:
+    - sfxName: Big_Explosion-004
+      delay: 0.4
+    - sfxName: Big_Explosion-004
+      delay: 0.9

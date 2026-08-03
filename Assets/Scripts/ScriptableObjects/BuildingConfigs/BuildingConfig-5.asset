@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 41ebb27e865c0ff4bbfe5e1adec85113, type: 3}
+  m_Name: BuildingConfig-5
+  m_EditorClassIdentifier: 
+  cardSprite: {fileID: 21300000, guid: 714a528df5ae3a140b36ca4faa31e421, type: 3}
+  buildingId: 5
+  buildingType: 6
+  buildingModel: {fileID: 4884193936260652596, guid: ab5558bfa83ee754e8cdf82d9609af8d, type: 3}
+  baseHP: 100
+  blocksMovement: 0
+  producedUnit: {fileID: 0}

@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aae3eff17432ad0439c74337ac13b25b, type: 3}
+  m_Name: UnitConfig-9
+  m_EditorClassIdentifier: 
+  cardSprite: {fileID: 21300000, guid: 8c333c455346be84faf730304d010718, type: 3}
+  unitData:
+    id: 9
+    unitName: "\u5927\u773C"
+    MovementPoints: 1
+    hp: 20
+    BasicAttackRange: 2
+    BasicAttackValue: 15
+    Defense: 2
+    ViewPoints: 1
+    AttackInterval: 0
+  unitModel: {fileID: 638875110584444510, guid: 9dbe8196a45df8c4cbc039ca7336f7c2, type: 3}
+  unitIcon: {fileID: 21300000, guid: 585d036dac6d56944961d3d5e812a583, type: 3}
+  skillIcon: {fileID: 21300000, guid: 94c11d4a0954d744aab85735db3b7302, type: 3}
+  strategyType: 2
+  attackSfx:
+    primarySfx: Toilet_Flush-006
+    delayedSfx:
+    - sfxName: Toilet_Flush-006
+      delay: 0.5
