@@ -15,6 +15,7 @@ public class CardServiceTests
     [SetUp]
     public void SetUp()
     {
+        SeedService.Initialize(12345);
         _pool = ScriptableObject.CreateInstance<NormalCardPoolSO>();
         var unit0 = ScriptableObject.CreateInstance<UnitConfigSO>();
         unit0.unitData = new UnitData(0, "Settler", 1, 20, 1, 0, 1, 2);

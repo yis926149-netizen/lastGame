@@ -22,9 +22,10 @@ public class GameInstallerTests
 
         var exception = Assert.Throws<ZenjectException>(() => installer.InstallBindings());
 
-        StringAssert.Contains("_unitDatabaseSO", exception.Message);
-        StringAssert.Contains("_buildingDatabaseSO", exception.Message);
+        // 注：_unitDatabaseSO/_buildingDatabaseSO 等通过 GameInstaller.cs.meta 的 defaultReferences 自动赋值，不在缺失列表。
+        StringAssert.Contains("_publicBuildingSO", exception.Message);
         StringAssert.Contains("_targetUICanvas", exception.Message);
+        StringAssert.Contains("_normalCardPoolSO", exception.Message);
         StringAssert.Contains(nameof(MapGenerator), exception.Message);
         Assert.IsFalse(container.HasBinding<UnitDatabaseSO>());
     }
