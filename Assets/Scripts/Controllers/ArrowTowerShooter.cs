@@ -35,6 +35,15 @@ public class ArrowTowerShooter : MonoBehaviour
     {
         if (_gameLoop == null || _gameLoop.IsPaused) return;
 
+        // 【断供方案-阶段2】失能（断供）箭塔停火；恢复供应前清锁，避免对旧目标射击
+        BuildingBase building = GetComponent<BuildingBase>();
+        if (building != null && !building.IsFunctional)
+        {
+            if (_lockedTarget != null)
+                ClearTargetLock();
+            return;
+        }
+
         _timer += Time.deltaTime;
         if (_timer < _attackInterval) return;
         _timer = 0f;

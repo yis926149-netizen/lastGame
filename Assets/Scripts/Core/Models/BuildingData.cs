@@ -17,7 +17,7 @@ public class BuildingData
     public float AltarValue = 0.4f;
     //额外血量
     public float extraHP = 0f;
-    //【批次 C】回血触发间隔（秒），与 LandFormConfigSO.HealInterval 对齐
+    //【批次 C】回血触发间隔（秒），未配置时 UnitBrainBase 用兜底常量 5f
     public float HealInterval = 5f;
     
     // 【公共建筑系统】两阶段血量：captureHp 用于中立夺取，defenseHp 用于归属后防守

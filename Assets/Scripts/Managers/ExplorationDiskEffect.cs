@@ -4,7 +4,7 @@ using UnityEngine;
 
 /// <summary>
 /// 方案二：六边形飞盘砸落特效。
-/// 流程：地下弹出 → 上抛（抛硬币式水平翻转）→ 滞空 → 下坠撞击 → 势力范围扩散环 + 奖励爆发。
+/// 流程：地下弹出 → 上抛（抛硬币式水平翻转）→ 滞空 → 下坠撞击 → 势力范围扩散环。
 /// 撞击瞬间触发 onImpact 回调（执行领土/收割/奖励），动画结束触发 onComplete（回池）。
 /// </summary>
 public class ExplorationDiskEffect : MonoBehaviour
@@ -40,8 +40,6 @@ public class ExplorationDiskEffect : MonoBehaviour
 
 	[Header("撞击特效（可选）")]
 	[SerializeField] private ParticleSystem _dustBurst = null;  // 尘土爆发
-	[SerializeField] private ParticleSystem _coinBurst = null;  // 金币弹出
-	[SerializeField] private float _coinDelay = 0.05f;          // 金币比冲击波稍晚
 
 	private Action _onImpact;
 	private Action<ExplorationDiskEffect> _onComplete;
@@ -147,7 +145,6 @@ public class ExplorationDiskEffect : MonoBehaviour
 		}
 
 		StartCoroutine(ExpandRing(cellWorldPos, cellY));
-		StartCoroutine(PlayCoinBurst(cellWorldPos, cellY));
 
 		// --- 6. 盘体嵌入地面（scaleY → 0）---
 		t = 0f;
@@ -194,14 +191,6 @@ public class ExplorationDiskEffect : MonoBehaviour
 			yield return null;
 		}
 		_ringObject.gameObject.SetActive(false);
-	}
-
-	private IEnumerator PlayCoinBurst(Vector3 cellWorldPos, float cellY)
-	{
-		if (_coinBurst == null) yield break;
-		if (_coinDelay > 0f) yield return new WaitForSeconds(_coinDelay);
-		_coinBurst.transform.position = new Vector3(cellWorldPos.x, cellY, cellWorldPos.z);
-		_coinBurst.Play();
 	}
 
 	private void SetY(Vector3 cellWorldPos, float y)

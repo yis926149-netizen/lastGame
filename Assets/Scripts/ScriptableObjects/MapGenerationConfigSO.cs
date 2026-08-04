@@ -165,4 +165,20 @@ public class MapGenerationConfigSO : ScriptableObject
     [Tooltip("曲线边界流动速度，仅 WideSmooth 生效。0=静态；越大边界摆动越快。建议 0.1~0.4，过大会让边缘格子明显脉动")]
     [Range(0f, 2f)]
     public float fogEdgeAnimSpeed = 0.25f;
+
+    [Header("渲染后端（动态地图-阶段三）")]
+    [Tooltip("Chunked 当前为实验后端；未同时开启 enableExperimentalChunkRenderer 时会强制回退 WholeMap。")]
+    public Enums.MapRenderMode mapRenderMode = Enums.MapRenderMode.WholeMap;
+    [Tooltip("实验开关：只有完成 WholeMap/Chunked 几何 A/B 对比后才允许开启。默认关闭，防止坏 Chunk mesh 进入游戏。")]
+    public bool enableExperimentalChunkRenderer = false;
+
+    [Header("竞技场（动态地图-阶段二）")]
+    [Tooltip("竞技场激活时机（GameTime 秒，暂停冻结）；0 = 开局即突起")]
+    public float ArenaActivateTime = 90f;
+    [Tooltip("竞技场内 2 环平台高度（Height 级差，必须 > seaLevel 才能脱离水域判定）")]
+    [Min(0f)] public float ArenaFloorHeight = 3f;
+    [Tooltip("竞技场边界环墙高度（Height 级差，表现层纯视觉，无墙实体）")]
+    [Min(0f)] public float ArenaWallHeight = 4f;
+    [Tooltip("中央宝箱模型（出现即激活，含可被攻击的视觉本体；血条画布运行时构造）")]
+    public GameObject centralChestModel;
 }

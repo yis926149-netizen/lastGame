@@ -93,6 +93,16 @@ public class AIUnitBrain : UnitBrainBase
             GameObject building = bCell.BulidingTypeOnHex_Building.Value;
             if (building == null) continue;
 
+            // 【断供方案-阶段2】失能（断供）建筑不是攻击目标。
+            // 仅过滤阵营 0/1 的断供建筑；中立公共建筑（伪阵营 ≥ 2）保持可攻击（决策#36）。
+            BuildingSupplyGate supplyGate = building.GetComponent<BuildingSupplyGate>();
+            if (supplyGate != null && !supplyGate.IsFunctional)
+            {
+                BuildingBase targetBase = building.GetComponent<BuildingBase>();
+                int targetFaction = targetBase != null ? targetBase.Player_City_Index.Key : -1;
+                if (targetFaction == 0 || targetFaction == 1) continue;
+            }
+
             var publicBuilding = building.GetComponent<PublicBuildingBase>();
             if (publicBuilding != null &&
                 publicBuilding.CurrentDiscoveryState == PublicBuildingBase.DiscoveryState.Hidden)

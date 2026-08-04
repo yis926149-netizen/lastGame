@@ -30,6 +30,7 @@ public class UIController : MonoBehaviour
     [Inject] private GoldWallet _goldWallet; // 【探索重构-阶段7】
     [Inject] private GoldIncomeService _goldIncomeService;
     [Inject] private IFactionBuffService _factionBuff; // 天赋 Buff 服务
+    [Inject(Optional = true)] private HexHighlightRenderer _hexHighlightRenderer; // 【动态地图-阶段三】单格高亮替代
 
     // 摄像机
     private Camera Camera;
@@ -363,6 +364,20 @@ public class UIController : MonoBehaviour
     {
         ClearReachableHexes();
 
+        // 【动态地图-阶段三】Chunk 后端优先走 HexHighlightRenderer；WholeMap 后端保持 GridMesh 旧路径
+        if (_hexHighlightRenderer != null)
+        {
+            var cells = new List<HexCellData>();
+            foreach (Vector3 coord in hexCoords)
+            {
+                var cell = _mapDataService.GetCell(coord);
+                if (cell != null) cells.Add(cell);
+            }
+            Color highlightColor = mode == 1 ? Color.cyan : Color.yellow;
+            _hexHighlightRenderer.SetHighlightedCells(HexHighlightChannel.Reachable, cells, highlightColor);
+            return;
+        }
+
         foreach (Vector3 coord in hexCoords)
         {
             var cell = _mapDataService.GetCell(coord);
@@ -388,6 +403,12 @@ public class UIController : MonoBehaviour
 
     private void ClearReachableHexes()
     {
+        if (_hexHighlightRenderer != null)
+        {
+            _hexHighlightRenderer.ClearChannel(HexHighlightChannel.Reachable);
+            return;
+        }
+
         foreach (var cell in _tempHighlightedCells)
         {
             if (cell.GridMesh == null || !_tempGridStates.TryGetValue(cell, out GridVisualState state)) continue;

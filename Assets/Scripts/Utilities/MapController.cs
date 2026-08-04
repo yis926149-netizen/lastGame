@@ -329,7 +329,9 @@ public class MapController : MonoBehaviour
     /// <param name="blendSmooth">过渡宽度 </param>
     /// <param name="blendContrast">混合对比度 </param
     /// <returns>配置完成的混合材质</returns>
-    private static Material ConfigureBlendMaterial(Material baseMaterialA, Material baseMaterialB, Texture2D blendMask, float blendContrast, float blendSmooth)
+    // 【动态地图-阶段二】材质构造入口公开：MapRenderer 运行时重建按材质键缓存复用，
+    // 避免重复重建时泄漏材质实例（§六-2）。
+    public static Material ConfigureBlendMaterial(Material baseMaterialA, Material baseMaterialB, Texture2D blendMask, float blendContrast, float blendSmooth)
     {
         Shader blendShader = Shader.Find("Custom/RealMaterialMaskBlend");
         if (blendShader == null)
@@ -378,7 +380,7 @@ public class MapController : MonoBehaviour
     /// <param name="globalSmoothness">全局光滑度 </param>
     /// <param name="blendContrast">混合对比度 </param
     /// <returns>配置完成的三材质混合材质</returns>
-    private static Material ConfigureBlendMaterial(Material baseMaterialA, Material baseMaterialB, Material baseMaterialC, Texture2D blendMask, float blendContrast, float globalSmoothness)
+    public static Material ConfigureBlendMaterial(Material baseMaterialA, Material baseMaterialB, Material baseMaterialC, Texture2D blendMask, float blendContrast, float globalSmoothness)
     {
         // 1. 加载三材质Shader（关键：替换为三材质Shader路径）
         Shader threeMatShader = Shader.Find("Custom/ThreeMaterialBlend_Land");
@@ -423,7 +425,7 @@ public class MapController : MonoBehaviour
     }
 
     private static Texture2D _barycentricMask;
-    private static Texture2D GetOrCreateBarycentricMask()
+    public static Texture2D GetOrCreateBarycentricMask()
     {
         if (_barycentricMask != null) return _barycentricMask;
 
@@ -482,7 +484,7 @@ public class MapController : MonoBehaviour
     /// 这里把坏法线换成安全值、把坏切线换成“由法线正交推出的有效切线”，从而消除死黑。
     /// </para>
     /// </summary>
-    private static void SanitizeNormalsAndTangents(Mesh mesh)
+    public static void SanitizeNormalsAndTangents(Mesh mesh)
     {
         Vector3[] normals = mesh.normals;
         if (normals == null || normals.Length == 0)
@@ -556,7 +558,7 @@ public class MapController : MonoBehaviour
         return float.IsNaN(value) || float.IsInfinity(value);
     }
 
-    private static Material CreateTerrainFogMaterial(Material sourceMaterial, Shader terrainFogShader)
+    public static Material CreateTerrainFogMaterial(Material sourceMaterial, Shader terrainFogShader)
     {
         // 克隆源 Standard 材质（完整保留 _MainTex 及其 tiling/offset、_BumpMap、_Color、
         // 关键字等所有属性），再只替换 Shader。设置 .shader 时 Unity 会保留两个 Shader 中

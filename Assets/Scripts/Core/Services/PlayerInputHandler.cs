@@ -29,6 +29,9 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     private HexCellData _lastDraggingHighlightCell;
     private bool _lastDraggingGridWasActive;
 
+    // 【动态地图-阶段三】单格高亮替代：拖拽高亮提交到 HexHighlightRenderer（Chunk 后端无 cell.GridMesh）
+    [Inject(Optional = true)] private HexHighlightRenderer _hexHighlightRenderer;
+
     [Inject]
     public PlayerInputHandler(
         IInputService input,
@@ -88,6 +91,12 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     public void ClearCardDragHighlight()
     {
         _isDraggingCard = false;
+        if (_hexHighlightRenderer != null)
+        {
+            _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
+            _lastDraggingHighlightCell = null;
+            return;
+        }
         if (_lastDraggingHighlightCell == null) return;
 
         _lastDraggingHighlightCell.GridMesh?.SetActive(_lastDraggingGridWasActive);
@@ -103,6 +112,22 @@ public class PlayerInputHandler : ITickable, System.IDisposable
             var cell = _mapData.GetCellByWorldPosition(hit.point);
             if (cell != null && cell != _lastDraggingHighlightCell)
             {
+                // 【动态地图-阶段三】Chunk 后端优先走 HexHighlightRenderer；WholeMap 后端保持 GridMesh 旧路径
+                if (_hexHighlightRenderer != null)
+                {
+                    if (cell.IsExplored)
+                    {
+                        _hexHighlightRenderer.SetHighlightedCells(HexHighlightChannel.CardPlacement, new[] { cell }, Color.yellow);
+                        _lastDraggingHighlightCell = cell;
+                    }
+                    else
+                    {
+                        _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
+                        _lastDraggingHighlightCell = null;
+                    }
+                    return;
+                }
+
                 if (_lastDraggingHighlightCell != null && _lastDraggingHighlightCell.GridMesh != null)
                     _lastDraggingHighlightCell.GridMesh.SetActive(_lastDraggingGridWasActive);
 
@@ -120,6 +145,12 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         }
         else
         {
+            if (_hexHighlightRenderer != null)
+            {
+                _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
+                _lastDraggingHighlightCell = null;
+                return;
+            }
             if (_lastDraggingHighlightCell != null && _lastDraggingHighlightCell.GridMesh != null)
                 _lastDraggingHighlightCell.GridMesh.SetActive(_lastDraggingGridWasActive);
             _lastDraggingHighlightCell = null;
@@ -220,8 +251,8 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         // 必须有花费标签才能点击：邻接玩家已占领的已探索格（与 CostLabelRenderer 门控条件一致）
         if (!HasExploredPlayerNeighbor(cell)) return;
 
-        // 尝试探索
-        _explorationService.TryExplore(cell);
+        // 尝试探索（玩家阵营 0）
+        _explorationService.TryExplore(cell, 0);
     }
 
     /// <summary>

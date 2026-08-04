@@ -19,6 +19,7 @@ public class PublicBuildingGenerator
     private readonly IUIConfigProvider _uiConfigProvider;
     private readonly MapGenerationConfigSO _config;
     private readonly PublicBuildingMarkerManager _markerManager;
+    private readonly ArenaEventManager _arenaEventManager;
 
     public PublicBuildingGenerator(
         IMapDataService mapDataService,
@@ -28,7 +29,8 @@ public class PublicBuildingGenerator
         DiContainer container,
         IUIConfigProvider uiConfigProvider,
         MapGenerationConfigSO config,
-        PublicBuildingMarkerManager markerManager)
+        PublicBuildingMarkerManager markerManager,
+        ArenaEventManager arenaEventManager)
     {
         _mapDataService = mapDataService;
         _dataProvider = dataProvider;
@@ -38,6 +40,7 @@ public class PublicBuildingGenerator
         _uiConfigProvider = uiConfigProvider;
         _config = config;
         _markerManager = markerManager;
+        _arenaEventManager = arenaEventManager;
     }
 
     /// <summary>
@@ -157,6 +160,9 @@ public class PublicBuildingGenerator
 
             // 限定中立区域
             if (!_config.neutralZone.Contains(cell.HexCoordinate.z)) continue;
+
+            // 【竞技场-阶段二】公共建筑生成避开预留区（含外 1 环，玩法文档 §7.3）
+            if (_arenaEventManager != null && _arenaEventManager.IsNearReservedZone(cell, 1)) continue;
 
             // 【待确认项3.2】后续补充：
             // - 避开玩家/AI出生点一定范围

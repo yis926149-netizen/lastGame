@@ -10,7 +10,10 @@ public class MapGenerator : MonoBehaviour
     [Inject] private IUIConfigProvider uiConfigProvider;
     [Inject] private IMapDataService _mapDataService;
     [Inject] private MapGenerationConfigSO _config; 
-    [Inject] private IEnvironmentModelsProvider environmentModelsProvider;
+    // 【地图资源配置化】资源数据库（生成权重表）
+    [Inject] private MapResourceDatabaseSO _resourceDatabase;
+    // 【地图地貌配置化】地貌数据库（生成权重表）
+    [Inject] private MapLandFormDatabaseSO _landFormDatabase;
 
     //�ο�
     public GameObject NextCardPlaceholder;
@@ -252,9 +255,21 @@ public class MapGenerator : MonoBehaviour
             HexCellData hexCellData = HexC_HexCellData[hexVertices[j]];
             //���ǡ����򺣡�������
             if (isLakeOrSea(hexCellData) || hexCellData.hasRiver) { continue; }
-            //��ò
-            hexCellData.landFormType = (Enums.LandFormType)Mathf.Clamp(random.Next(0, Enum.GetValues(typeof(Enums.LandFormType)).Length + 9), 0, Enum.GetValues(typeof(Enums.LandFormType)).Length - 1);
-            if (hexCellData.landFormType == Enums.LandFormType.None) continue;
+
+            // 【地图地貌配置化】按数据库权重表掷点；掷中空白保持 null
+            hexCellData.landForm = LandFormSpawnRule.RollLandForm(_landFormDatabase, random);
+        }
+
+        // 【金矿扎堆】阶段二：簇生成。仅 clusterSpawn=true 的地貌（金矿）走固定 n 堆
+        // 不规则扎堆；散落池保持原权重锁定随机流（同种子下其他地貌位置不变），
+        // 簇外掷中该地貌的格由 RemoveScatteredForm 拦截改写为空白。
+        MapLandFormSO clusterForm = LandFormClusterSpawnRule.FindClusterForm(_landFormDatabase);
+        if (clusterForm != null)
+        {
+            List<HexCellData> allCells = _mapDataService.GetAllCells();
+            HashSet<HexCellData> claimed = LandFormClusterSpawnRule.PlaceClusters(
+                clusterForm, allCells, _mapDataService.GetNeighbors, SeedService.GetRandom("LandFormCluster"));
+            LandFormClusterSpawnRule.RemoveScatteredForm(clusterForm, allCells, claimed);
         }
     }
 
@@ -267,19 +282,12 @@ public class MapGenerator : MonoBehaviour
             HexCellData hexCellData = HexC_HexCellData[hexVertices[j]];
             //���ǡ����򺣡�������
             if (isLakeOrSea(hexCellData) || hexCellData.hasRiver) { continue; }
-            //�����ڡ���ò��������
-            if (hexCellData.landFormType != Enums.LandFormType.None) { continue; }
+            //【地图地貌配置化】有地貌的格不生成资源（与旧行为一致）
+            if (hexCellData.landForm != null) { continue; }
 
-            hexCellData.resourceType = MapRandomResourceRoll(random.Next(0, 18));
-            if (hexCellData.resourceType == Enums.ResourceType.None) continue;
+            // 【地图资源配置化】按数据库权重表掷点；掷中空白保持 null
+            hexCellData.resource = ResourceSpawnRule.RollResource(_resourceDatabase, random);
         }
-    }
-
-    public static Enums.ResourceType MapRandomResourceRoll(int roll)
-    {
-        return roll >= 0 && roll < (int)Enums.ResourceType.HealthPack
-            ? (Enums.ResourceType)roll
-            : Enums.ResourceType.None;
     }
 
     //�ж�ĳ���ؿ��Ƿ�Ϊ����

@@ -34,7 +34,8 @@ public class RangedStrategy : IUnitStrategy
             return new List<Vector3> { directionPath[0] };
         }
 
-        Vector3? targetHex = brain.FindNearestEnemy() ?? brain.FindNearestEnemyBuilding();
+        // 【竞技场-阶段二】索敌链第二优先级：敌方单位 > 宝箱 > 敌方建筑（玩法文档 §4.2）
+        Vector3? targetHex = brain.FindNearestEnemy() ?? brain.FindNearestChest() ?? brain.FindNearestEnemyBuilding();
         if (!targetHex.HasValue)
         {
             // 无目标时前沿游走：返回单步路径
@@ -44,7 +45,7 @@ public class RangedStrategy : IUnitStrategy
             return null;
         }
 
-        int attackRange = brain.Owner.unitData?.BasicAttackRange ?? 1;
+        int attackRange = GetEffectiveRange(brain, startHex);
         float dist = HexDistance(startHex, targetHex.Value);
         if (dist <= attackRange) return null;  // 已在射程内，不需要移动
 
@@ -99,12 +100,12 @@ public class RangedStrategy : IUnitStrategy
     {
         if (brain?.Owner?.model == null || brain.MapData == null) return false;
 
-        int attackRange = brain.Owner.unitData?.BasicAttackRange ?? 1;
         bool isPlayer = brain.Owner.model.CompareTag("PlayerUnit");
         string enemyUnitTag = isPlayer ? "EnemyUnit" : "PlayerUnit";
         string enemyBuildingTag = isPlayer ? "EnemyBuilding" : "PlayerBuilding";
 
         Vector3 selfHex = brain.MapData.WorldToHexCoordinate(brain.Owner.model.transform.position);
+        int attackRange = GetEffectiveRange(brain, selfHex);
 
         foreach (var cell in brain.MapData.GetAllCells())
         {
@@ -128,12 +129,12 @@ public class RangedStrategy : IUnitStrategy
     {
         if (brain?.Owner?.model == null || brain.MapData == null) return;
 
-        int attackRange = brain.Owner.unitData?.BasicAttackRange ?? 1;
         bool isPlayer = brain.Owner.model.CompareTag("PlayerUnit");
         string enemyUnitTag = isPlayer ? "EnemyUnit" : "PlayerUnit";
         string enemyBuildingTag = isPlayer ? "EnemyBuilding" : "PlayerBuilding";
 
         Vector3 selfHex = brain.MapData.WorldToHexCoordinate(brain.Owner.model.transform.position);
+        int attackRange = GetEffectiveRange(brain, selfHex);
 
         float bestDist = float.MaxValue;
         GameObject bestTarget = null;
@@ -192,6 +193,18 @@ public class RangedStrategy : IUnitStrategy
 
         // 启动攻速冷却
         brain.MarkAttacked();
+    }
+
+    private static int GetEffectiveRange(UnitBrainBase brain, Vector3 selfHex)
+    {
+        if (brain?.Owner?.unitData == null || brain.MapData == null)
+            return 1;
+
+        int baseRange = brain.Owner.unitData.BasicAttackRange;
+        HexCellData cell = brain.MapData.GetCell(selfHex);
+        if (cell == null) return baseRange;
+
+        return WaterLevelConfig.ClassifyHeight(cell.Height) == 2 ? baseRange + 1 : baseRange;
     }
 
     private static float HexDistance(Vector3 a, Vector3 b)

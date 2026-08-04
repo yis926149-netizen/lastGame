@@ -23,6 +23,8 @@ Shader "Custom/RealMaterialMaskBlend"
     {
         Tags { "RenderType"="Opaque" "Queue"="Geometry" "IgnoreProjector"="True" }
         LOD 200
+        // 矩形过渡含竖面/踢面，保持双面渲染。
+        Cull Off
 
         CGPROGRAM
         #pragma surface surf Standard fullforwardshadows vertex:vert addshadow finalcolor:fogFinal
@@ -60,6 +62,7 @@ Shader "Custom/RealMaterialMaskBlend"
         void vert(inout appdata_full v, out Input o)
         {
             UNITY_INITIALIZE_OUTPUT(Input, o);
+
             o.vertexColor_R = v.color.r;
             o.vertexColor_G = v.color.g;
             FogBlend_vert(v.vertex, o.fogCoord);

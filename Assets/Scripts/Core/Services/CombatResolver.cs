@@ -96,10 +96,8 @@ public class CombatResolver
         HexCellData attackerHex = _mapDataService.GetCellByWorldPosition(attacker.model.transform.position);
         if (h == null || attackerHex == null) return 0;
 
-        if (h.landFormType != Enums.LandFormType.BigBones)
-            theAttacked.LandFormType_BigBones = 0;
-        else
-            theAttacked.LandFormType_BigBones = 0.3f;
+        // 【地图地貌配置化】地貌防御加成按被攻击者所在格配置查询（原 BigBones 缓存字段已删除）
+        float landFormDefenseBonus = LandFormEffectRule.GetDefenseBonus(h.landForm);
 
         if (!h.hasRiver)
             theAttacked.LandFormType_River = 0;
@@ -129,7 +127,7 @@ public class CombatResolver
         int defenderFaction = theAttacked.unitMovementController?.PlayerIndex ?? -1;
         float factionDefenseMultiplier = _factionBuff.GetStatMultiplier(defenderFaction, "defense");
         float Defense = theAttacked.Defense * factionDefenseMultiplier;
-        float DefenseGain = 1 + theAttacked.Resource_Minerals + theAttacked.LandFormType_BigBones + theAttacked.LandFormType_River;
+        float DefenseGain = 1 + theAttacked.Resource_Minerals + landFormDefenseBonus + theAttacked.LandFormType_River;
 
         return Mathf.Max(0, AttackPower * AttackGain - Defense * DefenseGain);
     }

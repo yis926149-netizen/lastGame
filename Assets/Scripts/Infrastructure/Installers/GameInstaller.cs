@@ -9,7 +9,6 @@ public class GameInstaller : MonoInstaller
     [SerializeField] private BuildingDatabaseSO _buildingDatabaseSO;
     [SerializeField] private PublicBuildingSO _publicBuildingSO;
     [SerializeField] private UIConfigSO _uiConfigSO;
-    [SerializeField] private EnvironmentModelsSO _environmentModelsSO;
     [SerializeField] private MapGenerationConfigSO _mapGenerationConfigSO;
     [SerializeField] private MapVisualEventSO _mapVisualEventSO;
     [SerializeField] private EventSystem _eventSystem; // 引用场景中的 EventSystem
@@ -17,8 +16,16 @@ public class GameInstaller : MonoInstaller
     [SerializeField] private UIManager _uiManager; // 引用场景中的 UIManager
     [SerializeField] private Canvas _targetUICanvas; // 拖拽操作的目标 Canvas
     [SerializeField] private TalentCardPoolSO _talentCardPoolSO; // 天赋卡池
+    [SerializeField] private NormalCardPoolSO _normalCardPoolSO; // 普通卡池
     [SerializeField] private TalentCardSelectionUI _talentCardSelectionUI; // 天赋卡选择 UI
     [SerializeField] private ExplorationRewardConfigSO _explorationRewardConfigSO; // 探索奖励配置
+    [SerializeField] private TacticalCardDatabaseSO _tacticalCardDatabaseSO; // 战术牌数据库
+    [SerializeField] private Transform _tacticalCardAnchor1; // 战术牌锚点1
+    [SerializeField] private Transform _tacticalCardAnchor2; // 战术牌锚点2
+    [SerializeField] private GameObject _tacticalCardQuantityBadge1; // 战术牌数量文本1（物体内挂 Text）
+    [SerializeField] private GameObject _tacticalCardQuantityBadge2; // 战术牌数量文本2（物体内挂 Text）
+    [SerializeField] private MapResourceDatabaseSO _mapResourceDatabaseSO; // 地图资源数据库
+    [SerializeField] private MapLandFormDatabaseSO _mapLandFormDatabaseSO; // 地图地貌数据库
     public override void InstallBindings()
     {
         ValidateRequiredReferences();
@@ -42,6 +49,7 @@ public class GameInstaller : MonoInstaller
         Container.Bind<PublicBuildingMarkerManager>().AsSingle();
         Container.Bind<PublicBuildingGenerator>().AsSingle();
         Container.Bind<ExplorationPillarPool>().FromComponentInHierarchy().AsSingle();
+        Container.Bind<ExplorationCoinPresenter>().FromComponentInHierarchy().AsSingle();
 
         // UI
 
@@ -52,9 +60,15 @@ public class GameInstaller : MonoInstaller
 
         // �ؿ���Դ����ò
 
-        Container.Bind<EnvironmentModelsSO>().FromInstance(_environmentModelsSO).AsSingle();
+        // 【地图资源配置化】地图资源数据库与统一消费服务
+        Container.Bind<MapResourceDatabaseSO>().FromInstance(_mapResourceDatabaseSO).AsSingle();
+        Container.Bind<MapResourceCollectionService>().AsSingle();
 
-        Container.Bind<IEnvironmentModelsProvider>().To<EnvironmentModelsProvider>().AsSingle();
+        // 【地图地貌配置化】地貌数据库（生成权重表）
+        Container.Bind<MapLandFormDatabaseSO>().FromInstance(_mapLandFormDatabaseSO).AsSingle();
+
+        // 【金矿提示图标】地貌提示浮标管理（复用公共建筑浮标视图；ITickable 轮询移除）
+        Container.BindInterfacesAndSelfTo<LandFormMarkerManager>().AsSingle().NonLazy();
 
         //科技图标已移除
 
@@ -76,6 +90,33 @@ public class GameInstaller : MonoInstaller
         // �󶨵�ͼ��Ⱦ��
         Container.Bind<MapRenderer>()
                  .FromComponentInHierarchy()
+                 .AsSingle();
+
+        // 【动态地图-阶段三】渲染后端双模式：WholeMap=MapRenderer（默认）；Chunked=ChunkMapRenderer（8×8 分块）。
+        // IMapRenderBackend 统一解析：MapMutationService/测试只依赖接口；按配置分派。
+        if (_mapGenerationConfigSO != null &&
+            _mapGenerationConfigSO.enableExperimentalChunkRenderer &&
+            _mapGenerationConfigSO.mapRenderMode == Enums.MapRenderMode.Chunked)
+        {
+            Container.Bind<ChunkMapRenderer>()
+                     .FromNewComponentOnNewGameObject()
+                     .WithGameObjectName("ChunkMapRenderer")
+                     .AsSingle();
+            Container.Bind<IMapRenderBackend>().To<ChunkMapRenderer>().FromResolve();
+        }
+        else
+        {
+            Container.Bind<IMapRenderBackend>().To<MapRenderer>().FromResolve();
+        }
+
+        // 【动态地图-阶段三】统一地图射线服务（卡牌/拖拽高亮入口收敛，§11）
+        Container.Bind<IMapRaycastService>().To<MapRaycastService>().AsSingle();
+
+        // 【动态地图-阶段三】单格高亮渲染器（替代 cell.GridMesh 高亮，§二十-4）。
+        // 代码创建（不依赖场景组件）：WholeMap 模式调用方保持 GridMesh 旧路径，渲染器空载无害。
+        Container.Bind<HexHighlightRenderer>()
+                 .FromNewComponentOnNewGameObject()
+                 .WithGameObjectName("HexHighlightRenderer")
                  .AsSingle();
 
         // ���������ɷ���
@@ -101,6 +142,30 @@ public class GameInstaller : MonoInstaller
         // 【探索重构-阶段5.5】势力范围服务（新模型：主城固有范围 + 探索占领 + 公共建筑占领）
         Container.Bind<ITerritoryService>().To<TerritoryService>().AsSingle();
         Container.Bind<ILogisticsService>().To<LogisticsService>().AsSingle();
+
+        // 【动态地图-阶段二】地块变化管线：临时可见性（VisibilityLease）/ 地块变化服务（事务 + 交互锁）
+        Container.BindInterfacesAndSelfTo<TemporaryVisibilityService>().AsSingle();
+        Container.Bind<MapInteractionGate>().AsSingle();
+        Container.Bind<IMapInteractionGate>().To<MapInteractionGate>().FromResolve();
+        Container.Bind<MapMutationService>().AsSingle();
+
+        // 【动态地图-阶段五】分帧提交执行器（每帧驱动 CommitSliced 的脏 Chunk 几何构建，§阶段五-分帧提交）
+        Container.BindInterfacesAndSelfTo<MapSlicedCommitExecutor>().AsSingle();
+
+        // 【动态地图-阶段四】视觉过渡服务（Shader 顶点动画驱动，ITickable；§13.7/§20-10）
+        Container.BindInterfacesAndSelfTo<MapVisualTransitionService>().AsSingle();
+
+        Container.BindInterfacesAndSelfTo<ArenaEventManager>().AsSingle();
+
+        // 【动态地图-阶段五】调试热键（开发辅助，§18.5-2：F8 提交日志 / F9 脏 Chunk 高亮 /
+        // F10 立即突起 / F11 资源计数；当前无 MCP 桥接时验证"地图动态重建"的运行时入口）
+        Container.Bind<ITickable>().To<MapMutationDebugHotkeys>()
+                 .FromNewComponentOnNewGameObject()
+                 .WithGameObjectName("MapMutationDebugHotkeys")
+                 .AsSingle();
+
+        //【普通卡池对象化】普通卡池配置
+        Container.Bind<NormalCardPoolSO>().FromInstance(_normalCardPoolSO).AsSingle();
 
         //��ͼ�¼�
         Container.BindInstance(_mapVisualEventSO).AsSingle();
@@ -148,6 +213,9 @@ public class GameInstaller : MonoInstaller
         // concrete class ע��� ITickable ע��
         Container.BindInterfacesAndSelfTo<UnitMovementSystem>().AsSingle();
 
+        // 全局倒计时服务
+        Container.Bind<GlobalTimerService>().AsSingle();
+
         // 【批次 A】GameLoop：注册为 IInitializable + ITickable + 具体类（AsSingle）
         Container.BindInterfacesAndSelfTo<GameLoop>().AsSingle();
 
@@ -185,6 +253,14 @@ public class GameInstaller : MonoInstaller
 
         Container.BindInterfacesAndSelfTo<CardService>().AsSingle();
         Container.BindInterfacesAndSelfTo<CardPresenter>().AsSingle().NonLazy();
+
+        // 战术牌系统：具体类型 AsSingle 创建唯一实例（不绑定 ICardDropHandler，避免与 CardPresenter 冲突），
+        // IInitializable 从该实例解析，ExplorationRewardSystem 注入同一实例。
+        Container.Bind<TacticalCardDatabaseSO>().FromInstance(_tacticalCardDatabaseSO).AsSingle();
+        Container.Bind<TacticalCardPresenter>().AsSingle()
+            .WithArguments(_tacticalCardAnchor1, _tacticalCardAnchor2,
+                _tacticalCardQuantityBadge1, _tacticalCardQuantityBadge2);
+        Container.Bind<IInitializable>().To<TacticalCardPresenter>().FromResolve();
         // IPlayerUnitSpawnService 已通过 BindInterfacesAndSelfTo<CardPresenter> 自动绑定，无需额外注册
 
         // UIManager ��ͼ ���� ֱ�ӽ������е� UIManager ʵ��
@@ -212,7 +288,6 @@ public class GameInstaller : MonoInstaller
         AddMissing(missing, _buildingDatabaseSO, nameof(_buildingDatabaseSO));
         AddMissing(missing, _publicBuildingSO, nameof(_publicBuildingSO));
         AddMissing(missing, _uiConfigSO, nameof(_uiConfigSO));
-        AddMissing(missing, _environmentModelsSO, nameof(_environmentModelsSO));
         AddMissing(missing, _mapGenerationConfigSO, nameof(_mapGenerationConfigSO));
         AddMissing(missing, _mapVisualEventSO, nameof(_mapVisualEventSO));
         AddMissing(missing, _eventSystem, nameof(_eventSystem));
@@ -220,8 +295,12 @@ public class GameInstaller : MonoInstaller
         AddMissing(missing, _uiManager, nameof(_uiManager));
         AddMissing(missing, _targetUICanvas, nameof(_targetUICanvas));
         AddMissing(missing, _talentCardPoolSO, nameof(_talentCardPoolSO));
+        AddMissing(missing, _normalCardPoolSO, nameof(_normalCardPoolSO));
         AddMissing(missing, _talentCardSelectionUI, nameof(_talentCardSelectionUI));
         AddMissing(missing, _explorationRewardConfigSO, nameof(_explorationRewardConfigSO));
+        AddMissing(missing, _tacticalCardDatabaseSO, nameof(_tacticalCardDatabaseSO));
+        AddMissing(missing, _mapResourceDatabaseSO, nameof(_mapResourceDatabaseSO));
+        AddMissing(missing, _mapLandFormDatabaseSO, nameof(_mapLandFormDatabaseSO));
 
         AddMissingInScene<MapGenerator>(missing);
         AddMissingInScene<MapRenderer>(missing);
@@ -232,6 +311,7 @@ public class GameInstaller : MonoInstaller
         AddMissingInScene<CameraController>(missing);
         AddMissingInScene<EndGame>(missing);
         AddMissingInScene<ExplorationPillarPool>(missing);
+        AddMissingInScene<ExplorationCoinPresenter>(missing);
 
         if (missing.Count > 0)
         {
@@ -260,6 +340,10 @@ public class GameInstaller : MonoInstaller
             foreach (ExplorationPillarPool pool in root.GetComponentsInChildren<ExplorationPillarPool>(true))
             {
                 pool.enabled = true;
+            }
+            foreach (ExplorationCoinPresenter presenter in root.GetComponentsInChildren<ExplorationCoinPresenter>(true))
+            {
+                presenter.enabled = true;
             }
         }
     }

@@ -35,18 +35,11 @@ public class CharacterData
     //资源效果
     //动物 - 提升下一次攻击力
     public float Resource_Animals = 0;
-    //植物 - 立即回血
-    public float Resource_Plants = 0;
     //矿物 - 提升下一次防御力
     public float Resource_Minerals = 0;
 
-    //地貌效果
-    //石头 - 地形高度 + 1
-    //Stone,
-    //大骨阵 - 防御力增加 
-    public float LandFormType_BigBones = 0;
-    //农田 - 每回合自动回血
-    public float LandFormType_FromLand = 0.1f;
+    //地貌效果（【地图地貌配置化】BigBones/FromLand 字段已删除：
+    // 防御加成改为按被攻击者所在格配置实时查询 LandFormEffectRule，回血参数改由 MapLandFormSO 提供）
     //河流 - 防御力下降
     public float LandFormType_River = 0;
 

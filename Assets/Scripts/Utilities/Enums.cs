@@ -39,20 +39,7 @@ public class Enums
         SeaFloor, FlatLand, HighLand
     }
 
-    //地貌类型
-    public enum LandFormType
-    {
-        //森林 - 移动力 - 1
-        Forest,
-        //石头 - 地形高度 + 1
-        Stone,
-        //大骨阵 - 防御力增加 
-        BigBones,
-        //农田 - 每回合自动回血
-        FromLand,
-        
-        None
-    }
+    //地貌类型（【地图地貌配置化】已移除：改由 MapLandFormSO 配置，见 ScriptableObjects/MapLandForm）
 
     public enum TransitionEdgeType
     {
@@ -92,22 +79,14 @@ public class Enums
         PaletteMap
     }
 
-    //资源类型
-    public enum ResourceType
+    // 【动态地图-阶段三】渲染后端模式：WholeMap = 整图合并 mesh（阶段二现状），Chunked = 8×8 分块（阶段三）
+    public enum MapRenderMode
     {
-        //动物 - 提升下一次攻击力
-        Animals,
-        //植物 - 立即回血
-        Plants,
-        //矿物 - 提升下一次防御力
-        Minerals,
-        //科技文化值宝箱 - 提升科文
-        Chest,
-        //击杀敌人掉落的回血包
-        HealthPack,
-
-        None
+        WholeMap,
+        Chunked
     }
+
+    //资源类型（【地图资源配置化】已移除：改由 MapResourceSO 配置，见 ScriptableObjects/MapResource）
 
     //移动目的
     public enum MovementPurpose

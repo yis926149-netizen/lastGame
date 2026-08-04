@@ -5,6 +5,7 @@ public static class SeedService
     private const int Terrain  = 101;
     private const int River    = 201;
     private const int LandForm = 301;
+    private const int LandFormCluster = 311;
     private const int Resource = 401;
     private const int Player   = 501;
     private const int AI       = 601;
@@ -32,6 +33,7 @@ public static class SeedService
             "Terrain"  => Terrain,
             "River"    => River,
             "LandForm" => LandForm,
+            "LandFormCluster" => LandFormCluster,
             "Resource" => Resource,
             "Player"   => Player,
             "AI"       => AI,

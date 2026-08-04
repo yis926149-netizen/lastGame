@@ -13,11 +13,12 @@ using Zenject;
 
 public abstract class PublicBuildingBase : BuildingBase
 {
-    [Inject] private GoldWallet _goldWallet;
     [Inject] private GameLoop _gameLoop;
     [Inject] private PublicBuildingMarkerManager _markerManager;
     [Inject] private ExplorationPillarPool _explorationEffectPool;
     [Inject] private ILogisticsService _logisticsService;
+    // 【地图资源配置化】资源统一消费服务（替代原本地收割 switch + _goldWallet 直接发币）
+    [Inject] private MapResourceCollectionService _collectionService;
 
     public enum DiscoveryState
     {
@@ -27,6 +28,19 @@ public abstract class PublicBuildingBase : BuildingBase
 
     /// <summary>公共建筑被占领事件（参数为占领方的 PlayerIndex）</summary>
     public static event System.Action<int> OnPublicBuildingCaptured;
+
+    // ── 【动态地图-阶段二】基类保护入口（CentralChest 用）──────────────────
+    /// <summary>触发占领/摧毁事件（C# 事件只能由声明类型内部 Invoke，宝箱 OnDeath 经此触发海克斯）。</summary>
+    protected void RaiseCapturedEvent(int factionId)
+    {
+        OnPublicBuildingCaptured?.Invoke(factionId);
+    }
+
+    /// <summary>不经探索直接置为已发现（宝箱生成即激活；不写探索位，迷雾由 VisibilityLease 覆盖）。</summary>
+    protected void MarkRevealedWithoutExploration()
+    {
+        CurrentDiscoveryState = DiscoveryState.Revealed;
+    }
 
     // ── 多格坐标（决策#34/#4）──────────────────────────
     /// <summary>根格（持有 HP 和 Controller 的中心格）</summary>
@@ -116,8 +130,9 @@ public abstract class PublicBuildingBase : BuildingBase
 
     /// <summary>
     /// 由 GameLoop 调用。任意单位进入建筑占位格外一环时，全局发现该公共建筑。
+    /// 【动态地图-阶段二】改 virtual：CentralChest 覆写为空（生成即激活，不参与发现）。
     /// </summary>
-    public void TickDiscovery()
+    public virtual void TickDiscovery()
     {
         if (CurrentDiscoveryState == DiscoveryState.Revealed) return;
 
@@ -212,8 +227,9 @@ public abstract class PublicBuildingBase : BuildingBase
     // ── 易主流程（决策#32）────────────────────────────
     /// <summary>
     /// 易主流程：移除旧势力范围 → 切换 PlayerIndex → 切换血量阶段（首次时）→ 回满 → 扩展新势力范围 → 更新视觉
+    /// 【断供方案-阶段3】triggerRecalculate=false 供区域吞并批量调用（吞并后统一一次重算，见 AnnexationService）。
     /// </summary>
-    public void OnCaptured(int newOwnerPlayerIndex)
+    public void OnCaptured(int newOwnerPlayerIndex, bool triggerRecalculate = true)
     {
         int oldPlayerIndex = PlayerIndex;
 
@@ -238,7 +254,9 @@ public abstract class PublicBuildingBase : BuildingBase
 
         // 5. 扩展新势力范围（决策#20/#33）
         ExpandSphereOfInfluence(newOwnerPlayerIndex);
-        _logisticsService.RecalculateAll();
+        // 【断供方案-阶段3】区域吞并批量调用时抑制逐格重算（AnnexationService 统一一次重算）
+        if (triggerRecalculate)
+            _logisticsService.RecalculateAll();
 
         // 6. 更新视觉（血条颜色、tag）
         UpdateVisual(newOwnerPlayerIndex);
@@ -252,24 +270,28 @@ public abstract class PublicBuildingBase : BuildingBase
     }
 
     // ── 势力范围：移除旧主人的范围（决策#20）────────
+    // 【断供方案-阶段1/§4.3】不再读写单城字典——公共建筑不伪装为城市条目，
+    // 领地字典统一由 LogisticsService.RecalculateAll 从地块归属重建。
     private void RemoveSphereOfInfluence(int oldPlayerIndex)
     {
         if (oldPlayerIndex < 0) return;
 
+        // 【防 NRE】依赖未注入或已失效时跳过（例如旧场景残留实例、注入失败的边缘情况）
+        if (_enemyModelManager == null || _playerModelManager == null)
+        {
+            Debug.LogWarning($"[PublicBuildingBase] {name}: 依赖未注入 (enemy={_enemyModelManager != null}, player={_playerModelManager != null})，跳过势力范围移除。");
+            return;
+        }
+
         if (oldPlayerIndex == 0)
         {
-            if (_playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData.TryGetValue(0, out var sphere))
+            foreach (var hex in OccupiedHexes)
             {
-                foreach (var hex in OccupiedHexes)
-                {
-                    sphere.Remove(hex.HexCoordinate);
-                    _playerModelManager.SphereOfInfluence_HexC_HexCellData.Remove(hex.HexCoordinate);
-                }
-                foreach (var hex in GetInfluenceRingHexes())
-                {
-                    sphere.Remove(hex.HexCoordinate);
-                    _playerModelManager.SphereOfInfluence_HexC_HexCellData.Remove(hex.HexCoordinate);
-                }
+                _playerModelManager.SphereOfInfluence_HexC_HexCellData.Remove(hex.HexCoordinate);
+            }
+            foreach (var hex in GetInfluenceRingHexes())
+            {
+                _playerModelManager.SphereOfInfluence_HexC_HexCellData.Remove(hex.HexCoordinate);
             }
         }
         else
@@ -288,21 +310,19 @@ public abstract class PublicBuildingBase : BuildingBase
                         hex.Player_City_Index = new KeyValuePair<int, int>(-1, -1);
                 }
             }
-
-            var cityKey = new KeyValuePair<int, int>(oldPlayerIndex, 0);
-            if (_enemyModelManager.Enemy_SingleCity_SphereOfInfluence_HexC_HexCellData.TryGetValue(cityKey, out var citySphere))
-            {
-                foreach (var hex in OccupiedHexes)
-                    citySphere.Remove(hex.HexCoordinate);
-                foreach (var hex in GetInfluenceRingHexes())
-                    citySphere.Remove(hex.HexCoordinate);
-            }
         }
     }
 
     // ── 势力范围：扩展新主人的范围（决策#7/#20/#33）──
     private void ExpandSphereOfInfluence(int newOwnerPlayerIndex)
     {
+        // 【防 NRE】依赖未注入或已失效时跳过（避免吞并/易主流程逐帧刷屏）
+        if (_mapDataService == null || _enemyModelManager == null || _playerModelManager == null || _collectionService == null)
+        {
+            Debug.LogWarning($"[PublicBuildingBase] {name}: 依赖未注入 (map={_mapDataService != null}, enemy={_enemyModelManager != null}, player={_playerModelManager != null}, collection={_collectionService != null})，跳过势力范围扩展。");
+            return;
+        }
+
         var newCityKey = new KeyValuePair<int, int>(newOwnerPlayerIndex, 0);
         var owner = newCityKey;
 
@@ -323,19 +343,15 @@ public abstract class PublicBuildingBase : BuildingBase
 
         if (newOwnerPlayerIndex == 0)
         {
-            if (!_playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData.ContainsKey(0))
-                _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData[0] = new Dictionary<Vector3, HexCellData>();
-
             foreach (var hex in allInfluenceHexes)
             {
                 if (!hex.IsExploredBy(0) || _pendingCaptureRewards.Remove(hex))
                 {
-                    HarvestAndReward(hex, newOwnerPlayerIndex);
+                    _collectionService.HarvestForGold(hex, newOwnerPlayerIndex);
                 }
 
                 hex.Player_City_Index = owner;
                 hex.ExploreBy(0);
-                _playerModelManager.SingleCity_SphereOfInfluence_HexC_HexCellData[0][hex.HexCoordinate] = hex;
                 _playerModelManager.SphereOfInfluence_HexC_HexCellData[hex.HexCoordinate] = hex;
             }
         }
@@ -348,7 +364,7 @@ public abstract class PublicBuildingBase : BuildingBase
             {
                 if (!hex.IsExploredBy(newOwnerPlayerIndex) || _pendingCaptureRewards.Remove(hex))
                 {
-                    HarvestAndReward(hex, newOwnerPlayerIndex);
+                    _collectionService.HarvestForGold(hex, newOwnerPlayerIndex);
                 }
 
                 hex.Player_City_Index = owner;
@@ -374,35 +390,6 @@ public abstract class PublicBuildingBase : BuildingBase
             }
         }
         return ring;
-    }
-
-    // ── 收割地块资源与金币奖励 ──────────────────────
-    private void HarvestAndReward(HexCellData hex, int ownerPlayerIndex)
-    {
-        if (hex == null) return;
-
-        int reward = 5;
-        var resource = hex.GetResource();
-        switch (resource)
-        {
-            case Enums.ResourceType.Animals:   reward += 20; break;
-            case Enums.ResourceType.Plants:    reward += 15; break;
-            case Enums.ResourceType.Minerals:  reward += 25; break;
-            case Enums.ResourceType.Chest:     reward += 30; break;
-            case Enums.ResourceType.HealthPack: reward += 10; break;
-        }
-
-        if (resource != Enums.ResourceType.None)
-        {
-            hex.ReapResource();
-            if (hex.resourceModel != null)
-            {
-                Object.Destroy(hex.resourceModel);
-                hex.resourceModel = null;
-            }
-        }
-
-        _goldWallet.AddGold(ownerPlayerIndex, reward);
     }
 
     // ── 视觉更新（血条颜色 / tag，决策#24）──────────
@@ -441,6 +428,8 @@ public abstract class PublicBuildingBase : BuildingBase
     // ── MonoBehaviour 生命周期 ────────────────────────
     protected virtual void OnDestroy()
     {
+        base.OnDestroy(); // 【断供方案-阶段5】退订血条可见性事件
+
         _markerManager?.RemoveMarker(this);
 
         // 清空占位格引用，防止野指针

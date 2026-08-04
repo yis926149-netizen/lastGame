@@ -1,11 +1,12 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 //****************************************
 // 功能说明：单位行为基类（MonoBehaviour，挂在每个单位 GameObject 上）。
 //
 // 【批次 C】新增回血计时器（农田地貌/祭坛建筑），替代 SettlementPhase 每回合回血。
-//   计时器在 Update 中累加（非暂停时），到达 HealInterval 后触发回血，
-//   与 LandFormConfigSO 默认值（HealRatio=0.1f, HealInterval=5f）对齐。
+//   计时器在 Update 中累加（非暂停时），到达间隔后触发回血。
+//   【地图地貌配置化】农田回血参数改由当前格 MapLandFormSO 配置，不再对齐 LandFormConfigSO。
 //****************************************
 
 public abstract class UnitBrainBase : MonoBehaviour
@@ -29,11 +30,12 @@ public abstract class UnitBrainBase : MonoBehaviour
     public bool IsBusy => Owner?.unitMovementController?.IsBusy ?? false;
 
     // ── 回血计时器（批次 C）──────────────────────────────
-    // 与 LandFormConfigSO 默认值对齐；ScriptableObject 无法直接注入 MonoBehaviour，使用常量。
-    private const float HealInterval = 5f;          // 秒
-    private const float LandHealRatio = 0.1f;       // 农田：占最大 HP 比例
+    // 【地图地貌配置化】农田回血参数来自当前格 MapLandFormSO（LandFormEffectRule.TryGetPeriodicHeal），
+    // 不再使用硬编码常量；以下常量仅作为祭坛回血的兜底间隔。
+    private const float BuildingHealIntervalFallback = 5f; // 秒
     private float _landHealTimer = 0f;
     private float _buildingHealTimer = 0f;
+    private MapLandFormSO _landHealSource;
 
     // ── 攻速冷却（批次 D）────────────────────────────────
     // 策略的 DoCombat 每次结算后调用 MarkAttacked()，冷却结束前 CanAttack 在骨架层被屏蔽。
@@ -76,18 +78,28 @@ public abstract class UnitBrainBase : MonoBehaviour
     private void TickLandHeal(float dt)
     {
         HexCellData h = GetCurrentCell();
-        if (h == null || h.landFormType != Enums.LandFormType.FromLand)
+        // 【地图地貌配置化】回血参数按当前格地貌配置查询
+        MapLandFormSO current = h?.landForm;
+        if (!LandFormEffectRule.TryGetPeriodicHeal(current, out float ratio, out float interval))
         {
             _landHealTimer = 0f;  // 离开农田时重置
+            _landHealSource = null;
             return;
         }
 
+        // 回血来源切换（移动到不同配置的回血地貌）时重置计时，避免沿用旧地貌已累计的时间
+        if (_landHealSource != current)
+        {
+            _landHealSource = current;
+            _landHealTimer = 0f;
+        }
+
         _landHealTimer += dt;
-        if (_landHealTimer < HealInterval) return;
+        if (_landHealTimer < interval) return;
 
         _landHealTimer = 0f;
         if (Owner.unitData != null)
-            Owner.Heal(LandHealRatio * Owner.unitData.hp);
+            Owner.Heal(ratio * Owner.unitData.hp);
     }
 
     private void TickBuildingHeal(float dt)
@@ -104,7 +116,7 @@ public abstract class UnitBrainBase : MonoBehaviour
         var ctrl = h.BulidingTypeOnHex_Building.Value.GetComponent<BuildingController>();
         if (ctrl?.buildingData == null) return;
 
-        float interval = ctrl.buildingData.HealInterval > 0 ? ctrl.buildingData.HealInterval : HealInterval;
+        float interval = ctrl.buildingData.HealInterval > 0 ? ctrl.buildingData.HealInterval : BuildingHealIntervalFallback;
         _buildingHealTimer += dt;
         if (_buildingHealTimer < interval) return;
 
@@ -207,6 +219,42 @@ public abstract class UnitBrainBase : MonoBehaviour
     // ── 子类必须实现 ──────────────────────────────────────
     public abstract Vector3? FindNearestEnemy();
     public abstract Vector3? FindNearestEnemyBuilding();
+
+    /// <summary>
+    /// 【竞技场-阶段二】最近中央宝箱（索敌链第二优先级：敌方单位 > 宝箱 > 敌方建筑，玩法文档 §4.2）。
+    /// 近战/远程共用；箭塔不索敌建筑故天然忽略宝箱。
+    /// </summary>
+    public virtual Vector3? FindNearestChest()
+    {
+        if (Owner?.model == null || MapData == null || Movement == null) return null;
+
+        List<Vector3> allPoints = new List<Vector3>(MapData.GetAllHexCoordinates());
+        Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
+        if (startHex == default) return null;
+
+        Vector3? best = null;
+        float bestCost = float.MaxValue;
+
+        foreach (var cell in MapData.GetAllCells())
+        {
+            GameObject building = cell.BulidingTypeOnHex_Building.Value;
+            if (building == null || building.GetComponent<CentralChest>() == null) continue;
+
+            Vector3 endHex = cell.HexCoordinate;
+            if (HexDistance(startHex, endHex) >= bestCost) continue;
+
+            if (Movement.CalculateMinMovementCostBetweenTwoHexes(
+                    allPoints, startHex, endHex,
+                    Enums.MovementPurpose.MoveToAttack, out float cost, out _)
+                && cost < bestCost)
+            {
+                bestCost = cost;
+                best = endHex;
+            }
+        }
+
+        return best;
+    }
 
     public Vector3? FindApproximateDirectionToHiddenBuilding()
     {

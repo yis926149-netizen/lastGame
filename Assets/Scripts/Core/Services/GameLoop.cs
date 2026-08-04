@@ -34,6 +34,14 @@ public class GameLoop : IInitializable, ITickable
     // 【公共建筑系统-决策#26/#41】公共建筑列表（单独遍历，不改 UnitBrainBase）
     private readonly List<PublicBuildingBase> _publicBuildings = new List<PublicBuildingBase>();
 
+    // 全局倒计时服务
+    private readonly GlobalTimerService _globalTimer;
+
+    public GameLoop(GlobalTimerService globalTimer)
+    {
+        _globalTimer = globalTimer;
+    }
+
     public void Initialize()
     {
         // 批次 A：无额外初始化操作
@@ -64,6 +72,9 @@ public class GameLoop : IInitializable, ITickable
 
         // 【公共建筑系统】检测公共建筑死亡（易主），替代 Update() 轮询
         TickPublicBuildings();
+
+        // 全局倒计时（暂停时跳过，已在上方 IsPaused 检查中一并跳过）
+        _globalTimer.Tick(Time.deltaTime);
     }
 
     // ── 公共建筑 Tick（决策#15/#26）─────────────────

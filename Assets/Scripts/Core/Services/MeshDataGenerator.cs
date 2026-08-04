@@ -33,9 +33,19 @@ public class MeshGeneratorService : IMeshGenerator
     区别在于如何绘制三角形；
     */
     /// <summary>
-    /// 返回地块实心区域的坐标（包括河道顶点）
+    /// 无状态构建地块实心区域：44 顶点 + 中心点（不写回 HexCellData 渲染缓存）。
+    /// 中心点 = Vertices[0]（等价原 RealCenterWorldCoordinate，由调用方同步逻辑字段）。
     /// </summary>
-    public List<Vector3> GetSolidAreaVertices(ref HexCellData hexCellData)
+    public SolidAreaMeshData BuildSolidArea(HexCellData hexCellData, IReadOnlyMapView view)
+    {
+        Vector3[] vertices = ComputeSolidAreaVertices(hexCellData);
+        return new SolidAreaMeshData { Vertices = vertices, Center = vertices[0] };
+    }
+
+    /// <summary>
+    /// 计算地块实心区域 44 顶点（含河道）。纯函数：只读 hexCellData 逻辑字段与配置。
+    /// </summary>
+    private Vector3[] ComputeSolidAreaVertices(HexCellData hexCellData)
     {
         //实心区域顶点坐标 
         //根据每个地块的中心点世界坐标生成 - 对应地块的其他6个坐标
@@ -94,27 +104,27 @@ public class MeshGeneratorService : IMeshGenerator
             //18点(无扰动)
             zero + new Vector3(i*s * Mathf.Cos(Mathf.PI * 11 / 18), 0, i*s * Mathf.Sin(Mathf.PI * 11 / 18)),
         };
-        hexCellData.SolidAreaVerticesWithoutPerturb.AddRange(arrSolidAreaVerticesWithoutPerturb);
+        Vector3[] withoutPerturb = arrSolidAreaVerticesWithoutPerturb;
 
         //比例值(不知道为什么算错了，但总而言之先让比例值减半吧) - (减半之后好像是对的，但原因先不管了)
-        float ratio = ((hexCellData.SolidAreaVerticesWithoutPerturb[7] - hexCellData.SolidAreaVerticesWithoutPerturb[1]).magnitude / ((hexCellData.SolidAreaVerticesWithoutPerturb[2] - hexCellData.SolidAreaVerticesWithoutPerturb[1]) / 2).magnitude) / 2;
+        float ratio = ((withoutPerturb[7] - withoutPerturb[1]).magnitude / ((withoutPerturb[2] - withoutPerturb[1]) / 2).magnitude) / 2;
         //全扰动 + 地块整体高程扰动       
         Vector3 Y_Perturb = HexMetrics.PerturbY2(zero);
         //位移向量
         Vector3[] displacementVector = new Vector3[]
         {
             //位移向量1
-            (HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[1]) - HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0])) * ratio,
+            (HexMetrics.Perturb(withoutPerturb[1]) - HexMetrics.Perturb(withoutPerturb[0])) * ratio,
             //位移向量2
-            (HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[2]) - HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0])) * ratio,
+            (HexMetrics.Perturb(withoutPerturb[2]) - HexMetrics.Perturb(withoutPerturb[0])) * ratio,
             //位移向量3
-            (HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[3]) - HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0])) * ratio,
+            (HexMetrics.Perturb(withoutPerturb[3]) - HexMetrics.Perturb(withoutPerturb[0])) * ratio,
             //位移向量4
-            (HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[4]) - HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0])) * ratio,
+            (HexMetrics.Perturb(withoutPerturb[4]) - HexMetrics.Perturb(withoutPerturb[0])) * ratio,
             //位移向量5
-            (HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[5]) - HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0])) * ratio,
+            (HexMetrics.Perturb(withoutPerturb[5]) - HexMetrics.Perturb(withoutPerturb[0])) * ratio,
             //位移向量6
-            (HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[6]) - HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0])) * ratio,
+            (HexMetrics.Perturb(withoutPerturb[6]) - HexMetrics.Perturb(withoutPerturb[0])) * ratio,
         };
         //河道高度偏移
         Vector3 RiverOffset = new Vector3(0, hexCellData.RiverDepth, 0);
@@ -124,26 +134,26 @@ public class MeshGeneratorService : IMeshGenerator
         {
             ///*
             //本体六边形的7个点
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[1]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[2]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[3]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[4]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[5]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[6]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[0]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[1]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[2]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[3]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[4]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[5]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[6]) + Y_Perturb,
             //分割边缘的12个新点
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[7]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[8]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[9]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[10]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[11]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[12]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[13]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[14]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[15]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[16]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[17]) + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[18]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[7]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[8]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[9]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[10]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[11]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[12]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[13]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[14]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[15]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[16]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[17]) + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[18]) + Y_Perturb,
             //*/
             
             /*
@@ -174,14 +184,14 @@ public class MeshGeneratorService : IMeshGenerator
             //同平面除0点的6个河道点：地块中心点 + 位移向量
             //位移向量：外径向量 * 比例值
             //比例值：模(点7-点1)/(模(点2-点1)/2)
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0]) + displacementVector[0] + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0]) + displacementVector[1] + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0]) + displacementVector[2] + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0]) + displacementVector[3] + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0]) + displacementVector[4] + Y_Perturb,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0]) + displacementVector[5] + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[0]) + displacementVector[0] + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[0]) + displacementVector[1] + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[0]) + displacementVector[2] + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[0]) + displacementVector[3] + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[0]) + displacementVector[4] + Y_Perturb,
+            HexMetrics.Perturb(withoutPerturb[0]) + displacementVector[5] + Y_Perturb,
             //河道底部的7个点(含0'点): 就前面的点 + 河道深度
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[0]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[0]) + Y_Perturb + RiverOffset,
             HexMetrics.Perturb(zero + displacementVector[0]) + Y_Perturb + RiverOffset,
             HexMetrics.Perturb(zero + displacementVector[1]) + Y_Perturb + RiverOffset,
             HexMetrics.Perturb(zero + displacementVector[2]) + Y_Perturb + RiverOffset,
@@ -189,30 +199,27 @@ public class MeshGeneratorService : IMeshGenerator
             HexMetrics.Perturb(zero + displacementVector[4]) + Y_Perturb + RiverOffset,
             HexMetrics.Perturb(zero + displacementVector[5]) + Y_Perturb + RiverOffset,
             //河道底部拆分的12个点：就前面的点 + 河道深度
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[7]) + Y_Perturb + RiverOffset,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[8]) + Y_Perturb + RiverOffset,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[9]) + Y_Perturb + RiverOffset,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[10]) + Y_Perturb + RiverOffset,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[11]) + Y_Perturb + RiverOffset,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[12]) + Y_Perturb + RiverOffset,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[13]) + Y_Perturb + RiverOffset,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[14]) + Y_Perturb + RiverOffset,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[15]) + Y_Perturb + RiverOffset,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[16]) + Y_Perturb + RiverOffset,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[17]) + Y_Perturb + RiverOffset,
-            HexMetrics.Perturb(hexCellData.SolidAreaVerticesWithoutPerturb[18]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[7]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[8]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[9]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[10]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[11]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[12]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[13]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[14]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[15]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[16]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[17]) + Y_Perturb + RiverOffset,
+            HexMetrics.Perturb(withoutPerturb[18]) + Y_Perturb + RiverOffset,
 
         };
-        hexCellData.SolidAreaVertices.AddRange(arrVertices);
-        hexCellData.RealCenterWorldCoordinate = arrVertices[0];
-
-        return arrVertices.ToList();
+        return arrVertices;
     }
 
     /// <summary>
     /// 设置地块实心区域的UV（包括河道顶点）
     /// </summary>
-    public List<Vector2> GetSolidAreaVerticesUV(ref HexCellData hexCellData)
+    public List<Vector2> BuildSolidAreaUV(HexCellData hexCellData)
     {
         //河道UV暂且设为(0.5f，0.5f)，其他正常
         //实心区域顶点UV
@@ -269,8 +276,6 @@ public class MeshGeneratorService : IMeshGenerator
             new Vector2(0.5f, 0.5f),
             new Vector2(0.5f, 0.5f),
         };
-        hexCellData.SolidAreaUV.AddRange(arrUV);
-
         return arrUV.ToList();
     }
 
@@ -835,150 +840,153 @@ public class MeshGeneratorService : IMeshGenerator
     /// <summary>
     /// 设置地块实心区域的顶点绘制顺序（无河道地块）
     /// </summary>
-    public List<int> GetSolidAreaVerticesDrawOrder1(ref HexCellData hexCellData)
+    public List<int> BuildSolidAreaDrawOrder1(HexCellData hexCellData)
     {
         //实心区域三角形的绘制顺序
         //每个地块的绘制顺序是 - 本体：012、023、034、045、056、061
         //                     - 本体7点 + 分割边缘的12个新点（每条边多2个等分点）
         //                     - 河道点不用
-        hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NE));
-        hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.E));
-        hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SE));
-        hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SW));
-        hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.W));
-        hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NW));
+        List<int> result = new List<int>();
+        result.AddRange(GetPlaneFace(Enums.HexDirection.NE));
+        result.AddRange(GetPlaneFace(Enums.HexDirection.E));
+        result.AddRange(GetPlaneFace(Enums.HexDirection.SE));
+        result.AddRange(GetPlaneFace(Enums.HexDirection.SW));
+        result.AddRange(GetPlaneFace(Enums.HexDirection.W));
+        result.AddRange(GetPlaneFace(Enums.HexDirection.NW));
 
-        return hexCellData.SolidAreaDrawOrder;
+        return result;
     }
 
     /// <summary>
     /// 设置地块实心区域的顶点绘制顺序（河道始末地块）
     /// </summary>
-    public List<int> GetSolidAreaVerticesDrawOrder2(ref HexCellData hexCellData, Enums.HexDirection direction)
+    public List<int> BuildSolidAreaDrawOrder2(HexCellData hexCellData, Enums.HexDirection direction)
     {
         //实心区域三角形顶点的储存顺序是：中心点 - 本体6点 - 分割12点 - 同平面河道6点 - 下方中心点 - 下方河道6点 - 下方分割12点 == 44点
         //绘制顺序：平面 - 河道方向面 - 河道链接面
+        List<int> result = new List<int>();
         switch (direction)
         {
             case Enums.HexDirection.NE:
                 //平面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverPlaneFace(Enums.HexDirection.NE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.E));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SW));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.W));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NW));
+                result.AddRange(GetRiverPlaneFace(Enums.HexDirection.NE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.E));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.W));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NW));
 
                 //方向面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverDirectionFace(Enums.HexDirection.NE));
+                result.AddRange(GetRiverDirectionFace(Enums.HexDirection.NE));
 
                 //链接面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("01", 0));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("02", 1));
+                result.AddRange(GetRiverLinkFace("01", 0));
+                result.AddRange(GetRiverLinkFace("02", 1));
                 break;
             case Enums.HexDirection.E:
                 //平面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverPlaneFace(Enums.HexDirection.E));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SW));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.W));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NE));
+                result.AddRange(GetRiverPlaneFace(Enums.HexDirection.E));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.W));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NW));
 
                 //方向面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverDirectionFace(Enums.HexDirection.E));
+                result.AddRange(GetRiverDirectionFace(Enums.HexDirection.E));
 
                 //链接面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("02", 0));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("03", 1));
+                result.AddRange(GetRiverLinkFace("02", 0));
+                result.AddRange(GetRiverLinkFace("03", 1));
                 break;
             case Enums.HexDirection.SE:
                 //平面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.E));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverPlaneFace(Enums.HexDirection.SE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SW));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.W));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.E));
+                result.AddRange(GetRiverPlaneFace(Enums.HexDirection.SE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.W));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NW));
 
                 //方向面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverDirectionFace(Enums.HexDirection.SE));
+                result.AddRange(GetRiverDirectionFace(Enums.HexDirection.SE));
 
                 //链接面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("03", 0));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("04", 1));
+                result.AddRange(GetRiverLinkFace("03", 0));
+                result.AddRange(GetRiverLinkFace("04", 1));
                 break;
             case Enums.HexDirection.SW:
                 //平面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.E));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverPlaneFace(Enums.HexDirection.SW));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.W));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.E));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SE));
+                result.AddRange(GetRiverPlaneFace(Enums.HexDirection.SW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.W));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NW));
 
                 //方向面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverDirectionFace(Enums.HexDirection.SW));
+                result.AddRange(GetRiverDirectionFace(Enums.HexDirection.SW));
 
                 //链接面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("04", 0));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("05", 1));
+                result.AddRange(GetRiverLinkFace("04", 0));
+                result.AddRange(GetRiverLinkFace("05", 1));
                 break;
             case Enums.HexDirection.W:
                 //平面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.E));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SW));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverPlaneFace(Enums.HexDirection.W));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.E));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SW));
+                result.AddRange(GetRiverPlaneFace(Enums.HexDirection.W));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NW));
 
                 //方向面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverDirectionFace(Enums.HexDirection.W));
+                result.AddRange(GetRiverDirectionFace(Enums.HexDirection.W));
 
                 //链接面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("05", 0));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("06", 1));
+                result.AddRange(GetRiverLinkFace("05", 0));
+                result.AddRange(GetRiverLinkFace("06", 1));
                 break;
             case Enums.HexDirection.NW:
                 //平面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.E));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SW));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.W));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverPlaneFace(Enums.HexDirection.NW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.E));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.W));
+                result.AddRange(GetRiverPlaneFace(Enums.HexDirection.NW));
 
                 //方向面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverDirectionFace(Enums.HexDirection.NW));
+                result.AddRange(GetRiverDirectionFace(Enums.HexDirection.NW));
 
                 //链接面
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("06", 0));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace("01", 1));
+                result.AddRange(GetRiverLinkFace("06", 0));
+                result.AddRange(GetRiverLinkFace("01", 1));
                 break;
             default:
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.E));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SE));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SW));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.W));
-                hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.E));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SE));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.SW));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.W));
+                result.AddRange(GetPlaneFace(Enums.HexDirection.NW));
                 break;
         }
 
-        return hexCellData.SolidAreaDrawOrder;
+        return result;
     }
 
     /// <summary>
     /// 设置地块实心区域的顶点绘制顺序（河道中流地块）
     /// </summary>
-    public List<int> GetSolidAreaVerticesDrawOrder3(ref HexCellData hexCellData, Enums.HexDirection incomingDirection, Enums.HexDirection outgoingDirection)
+    public List<int> BuildSolidAreaDrawOrder3(HexCellData hexCellData, Enums.HexDirection incomingDirection, Enums.HexDirection outgoingDirection)
     {
         //实心区域三角形顶点的储存顺序是：中心点 - 本体6点 - 分割12点 - 同平面河道6点 - 下方中心点 - 下方河道6点 - 下方分割12点 == 44点
         //绘制顺序：先平面，再河道
         //河道中流地块 - [出入方向相邻] - [出入方向相差2] - [贯穿]
         //三种地块的构成是：平面 + 方向面 + 链接面（方向面三种地块可复用，平面和链接面是各自特有的）
         //绘制顺序：平面 + 方向面 + 链接面
+        List<int> result = new List<int>();
         int intervalCount = Mathf.Abs((int)outgoingDirection - (int)incomingDirection);
         //Debug.Log("intervalCount" +  intervalCount);
         //[出入方向相邻]
@@ -990,19 +998,19 @@ public class MeshGeneratorService : IMeshGenerator
                 if ((Enums.HexDirection)i != incomingDirection && (Enums.HexDirection)i != outgoingDirection)
                 {
                     //Debug.Log("111");
-                    hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace((Enums.HexDirection)i));
+                    result.AddRange(GetPlaneFace((Enums.HexDirection)i));
                 }
                 else if ((Enums.HexDirection)i == incomingDirection || (Enums.HexDirection)i == outgoingDirection)
                 {
                     //Debug.Log("222");
                     //Debug.Log((Map.HexDirection)i);
-                    hexCellData.SolidAreaDrawOrder.AddRange(GetRiverPlaneFace((Enums.HexDirection)i));
+                    result.AddRange(GetRiverPlaneFace((Enums.HexDirection)i));
                 }
             }
 
             //进入方向面 + 离开方向面
-            hexCellData.SolidAreaDrawOrder.AddRange(GetRiverDirectionFace(incomingDirection));
-            hexCellData.SolidAreaDrawOrder.AddRange(GetRiverDirectionFace(outgoingDirection));
+            result.AddRange(GetRiverDirectionFace(incomingDirection));
+            result.AddRange(GetRiverDirectionFace(outgoingDirection));
 
             //链接面
             string incomingLink;
@@ -1126,8 +1134,8 @@ public class MeshGeneratorService : IMeshGenerator
                     throw new Exception("出错");
             }
 
-            hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace(incomingLink, incomingLinkType));
-            hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace(outgoingLink, outgoingLinkType));
+            result.AddRange(GetRiverLinkFace(incomingLink, incomingLinkType));
+            result.AddRange(GetRiverLinkFace(outgoingLink, outgoingLinkType));
         }
         //[出入方向相差2]
         else if (intervalCount == 2 || intervalCount == 4)
@@ -1148,23 +1156,23 @@ public class MeshGeneratorService : IMeshGenerator
                 //正常平面
                 if ((Enums.HexDirection)i != incomingDirection && (Enums.HexDirection)i != outgoingDirection && i != intervalIndex)
                 {
-                    hexCellData.SolidAreaDrawOrder.AddRange(GetPlaneFace((Enums.HexDirection)i));
+                    result.AddRange(GetPlaneFace((Enums.HexDirection)i));
                 }
                 //河道所在平面
                 else if (((Enums.HexDirection)i == incomingDirection || (Enums.HexDirection)i == outgoingDirection) && i != intervalIndex)
                 {
-                    hexCellData.SolidAreaDrawOrder.AddRange(GetRiverPlaneFace((Enums.HexDirection)i));
+                    result.AddRange(GetRiverPlaneFace((Enums.HexDirection)i));
                 }
                 //间隔平面
                 else
                 {
-                    hexCellData.SolidAreaDrawOrder.AddRange(GetRiver2PlaneFace((Enums.HexDirection)i));
+                    result.AddRange(GetRiver2PlaneFace((Enums.HexDirection)i));
                 }
             }
 
             //进入方向面 + 离开方向面
-            hexCellData.SolidAreaDrawOrder.AddRange(GetRiverDirectionFace(incomingDirection));
-            hexCellData.SolidAreaDrawOrder.AddRange(GetRiverDirectionFace(outgoingDirection));
+            result.AddRange(GetRiverDirectionFace(incomingDirection));
+            result.AddRange(GetRiverDirectionFace(outgoingDirection));
 
             //链接面 - [两个河道侧面 + 间隔的面(一底一侧)]
             //两个河道侧面
@@ -1289,19 +1297,19 @@ public class MeshGeneratorService : IMeshGenerator
                     throw new Exception("出错");
             }
 
-            hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace(incomingLink, incomingLinkType));
-            hexCellData.SolidAreaDrawOrder.AddRange(GetRiverLinkFace(outgoingLink, outgoingLinkType));
+            result.AddRange(GetRiverLinkFace(incomingLink, incomingLinkType));
+            result.AddRange(GetRiverLinkFace(outgoingLink, outgoingLinkType));
 
             //间隔的面(一底一侧)
             //底
             int[] arr = GetRiverDirectionFace((Enums.HexDirection)intervalIndex).ToArray(); ;
-            hexCellData.SolidAreaDrawOrder.AddRange(new int[] { arr[12], arr[13], arr[14], });
+            result.AddRange(new int[] { arr[12], arr[13], arr[14], });
             //侧
             int one = arr[13] - 7;
             int two = arr[14] - 7;
             int three = arr[13];
             int four = arr[14];
-            hexCellData.SolidAreaDrawOrder.AddRange(new int[] {
+            result.AddRange(new int[] {
                 one, two, three,
                 two, four,three,
             });
@@ -1313,12 +1321,12 @@ public class MeshGeneratorService : IMeshGenerator
         else
         {
             //平面(按顺序绘制)
-            hexCellData.SolidAreaDrawOrder.AddRange(GetRiver3PlaneFace(incomingDirection, outgoingDirection));
+            result.AddRange(GetRiver3PlaneFace(incomingDirection, outgoingDirection));
             //河道
-            hexCellData.SolidAreaDrawOrder.AddRange(GetRiver3DirectionFace(incomingDirection, outgoingDirection));
+            result.AddRange(GetRiver3DirectionFace(incomingDirection, outgoingDirection));
         }
 
-        return hexCellData.SolidAreaDrawOrder;
+        return result;
     }
 
     /////////////////////////////////////////////////////////////////////- 矩形 -/////////////////////////////////////////////////////////////////////
@@ -1328,83 +1336,80 @@ public class MeshGeneratorService : IMeshGenerator
     /// </summary>
     /// <param name="direction">哪个方向的矩形</param>
     /// <returns></returns>
-    public List<Vector3> GetRectVertices(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<Vector3> BuildRectVertices(CellBuildContext ctx, Enums.HexDirection direction)
     {
         //坡河道的话就是在原本的基础上多4个点，4个侧矩形，1个底矩形
         //顶点组顺序是原本的坡顶点组 + 4个河道点(己方、邻居、邻居、己方) - 3 4 7 8
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
+        if (direction == Enums.HexDirection.NE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.NE) != null)
         {
             //需要自己的1、7、8、2点 + NE邻居的4、13、14、5点
             //排序应为1、NE_5、NE_14、NE_13、NE_4、2、8、7
             Vector3[] arrRectVertices = new Vector3[]
             {
-                hexCellData.SolidAreaVertices[1],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[5],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[14],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[13],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[4],
-                hexCellData.SolidAreaVertices[2],
-                hexCellData.SolidAreaVertices[8],
-                hexCellData.SolidAreaVertices[7],
+                ctx.Solid[1],
+                ctx.GetNeighborSolid(Enums.HexDirection.NE)[5],
+                ctx.GetNeighborSolid(Enums.HexDirection.NE)[14],
+                ctx.GetNeighborSolid(Enums.HexDirection.NE)[13],
+                ctx.GetNeighborSolid(Enums.HexDirection.NE)[4],
+                ctx.Solid[2],
+                ctx.Solid[8],
+                ctx.Solid[7],
 
                 //河道
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[14] + new Vector3(0, hexCellData.RiverDepth, 0),
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[13] + new Vector3(0, hexCellData.RiverDepth, 0),
-                hexCellData.SolidAreaVertices[8] + new Vector3(0, hexCellData.RiverDepth, 0),
-                hexCellData.SolidAreaVertices[7] + new Vector3(0, hexCellData.RiverDepth, 0),
+                ctx.GetNeighborSolid(Enums.HexDirection.NE)[14] + new Vector3(0, ctx.Cell.RiverDepth, 0),
+                ctx.GetNeighborSolid(Enums.HexDirection.NE)[13] + new Vector3(0, ctx.Cell.RiverDepth, 0),
+                ctx.Solid[8] + new Vector3(0, ctx.Cell.RiverDepth, 0),
+                ctx.Solid[7] + new Vector3(0, ctx.Cell.RiverDepth, 0),
 
             };
-            hexCellData.NERectVertices.AddRange(arrRectVertices);
-            return hexCellData.NERectVertices;
+            return arrRectVertices.ToList();
         }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        else if (direction == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null)
         {
             //需要自己的2、9、10、3点 + E邻居的5、15、16、6点
             //排序应为2、E_6、E_16、E_15、E_5、3、10、9
             Vector3[] arrRectVertices = new Vector3[]
             {
-                hexCellData.SolidAreaVertices[2],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[6],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[16],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[15],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[5],
-                hexCellData.SolidAreaVertices[3],
-                hexCellData.SolidAreaVertices[10],
-                hexCellData.SolidAreaVertices[9],
+                ctx.Solid[2],
+                ctx.GetNeighborSolid(Enums.HexDirection.E)[6],
+                ctx.GetNeighborSolid(Enums.HexDirection.E)[16],
+                ctx.GetNeighborSolid(Enums.HexDirection.E)[15],
+                ctx.GetNeighborSolid(Enums.HexDirection.E)[5],
+                ctx.Solid[3],
+                ctx.Solid[10],
+                ctx.Solid[9],
 
                 //河道
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[16] + new Vector3(0, hexCellData.RiverDepth, 0),
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[15] + new Vector3(0, hexCellData.RiverDepth, 0),
-                hexCellData.SolidAreaVertices[10] + new Vector3(0, hexCellData.RiverDepth, 0),
-                hexCellData.SolidAreaVertices[9] + new Vector3(0, hexCellData.RiverDepth, 0),
+                ctx.GetNeighborSolid(Enums.HexDirection.E)[16] + new Vector3(0, ctx.Cell.RiverDepth, 0),
+                ctx.GetNeighborSolid(Enums.HexDirection.E)[15] + new Vector3(0, ctx.Cell.RiverDepth, 0),
+                ctx.Solid[10] + new Vector3(0, ctx.Cell.RiverDepth, 0),
+                ctx.Solid[9] + new Vector3(0, ctx.Cell.RiverDepth, 0),
 
             };
-            hexCellData.ERectVertices.AddRange(arrRectVertices);
-            return hexCellData.ERectVertices;
+            return arrRectVertices.ToList();
         }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction == Enums.HexDirection.SE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.SE) != null)
         {
             //需要自己的3、11、12、4点 + SE邻居的6、17、18、1点
             //排序应为3、SE_1、SE_18、SE_17、SE_6、4、12、11
             Vector3[] arrRectVertices = new Vector3[]
             {
-                hexCellData.SolidAreaVertices[3],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[1],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[18],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[17],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[6],
-                hexCellData.SolidAreaVertices[4],
-                hexCellData.SolidAreaVertices[12],
-                hexCellData.SolidAreaVertices[11],
+                ctx.Solid[3],
+                ctx.GetNeighborSolid(Enums.HexDirection.SE)[1],
+                ctx.GetNeighborSolid(Enums.HexDirection.SE)[18],
+                ctx.GetNeighborSolid(Enums.HexDirection.SE)[17],
+                ctx.GetNeighborSolid(Enums.HexDirection.SE)[6],
+                ctx.Solid[4],
+                ctx.Solid[12],
+                ctx.Solid[11],
 
                 //河道
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[18] + new Vector3(0, hexCellData.RiverDepth, 0),
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[17] + new Vector3(0, hexCellData.RiverDepth, 0),
-                hexCellData.SolidAreaVertices[12] + new Vector3(0, hexCellData.RiverDepth, 0),
-                hexCellData.SolidAreaVertices[11] + new Vector3(0, hexCellData.RiverDepth, 0),
+                ctx.GetNeighborSolid(Enums.HexDirection.SE)[18] + new Vector3(0, ctx.Cell.RiverDepth, 0),
+                ctx.GetNeighborSolid(Enums.HexDirection.SE)[17] + new Vector3(0, ctx.Cell.RiverDepth, 0),
+                ctx.Solid[12] + new Vector3(0, ctx.Cell.RiverDepth, 0),
+                ctx.Solid[11] + new Vector3(0, ctx.Cell.RiverDepth, 0),
             };
-            hexCellData.SERectVertices.AddRange(arrRectVertices);
-            return hexCellData.SERectVertices;
+            return arrRectVertices.ToList();
         }
         else
         {
@@ -1417,7 +1422,7 @@ public class MeshGeneratorService : IMeshGenerator
     /// 返回矩形过渡区域的uv
     /// </summary>
     /// <param name="direction">哪个方向的矩形</param>
-    public List<Vector2> GetRectUV(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<Vector2> BuildRectUV(CellBuildContext ctx, Enums.HexDirection direction)
     {
         Vector2[] arrRectUV = new Vector2[]
         {
@@ -1436,20 +1441,17 @@ public class MeshGeneratorService : IMeshGenerator
             new Vector2(0.5f,0.5f),
             new Vector2(0.5f,0.5f),
         };
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
+        if (direction == Enums.HexDirection.NE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.NE) != null)
         {
-            hexCellData.NERectUV.AddRange(arrRectUV);
-            return hexCellData.NERectUV;
+            return arrRectUV.ToList();
         }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        else if (direction == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null)
         {
-            hexCellData.ERectUV.AddRange(arrRectUV);
-            return hexCellData.ERectUV;
+            return arrRectUV.ToList();
         }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction == Enums.HexDirection.SE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.SE) != null)
         {
-            hexCellData.SERectUV.AddRange(arrRectUV);
-            return hexCellData.SERectUV;
+            return arrRectUV.ToList();
         }
         else
         {
@@ -1463,7 +1465,7 @@ public class MeshGeneratorService : IMeshGenerator
     /// </summary>
     /// <param name="direction">哪个方向的矩形</param>
 
-    public List<int> GetRectDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<int> BuildRectDrawOrder(CellBuildContext ctx, Enums.HexDirection direction)
     {
         int[] arrRectDrawOrder = new int[]
         {
@@ -1474,20 +1476,17 @@ public class MeshGeneratorService : IMeshGenerator
             6,3,4,
             6,4,5,
         };
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
+        if (direction == Enums.HexDirection.NE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.NE) != null)
         {
-            hexCellData.NERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.NERectDrawOrder;
+            return arrRectDrawOrder.ToList();
         }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        else if (direction == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null)
         {
-            hexCellData.ERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.ERectDrawOrder;
+            return arrRectDrawOrder.ToList();
         }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction == Enums.HexDirection.SE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.SE) != null)
         {
-            hexCellData.SERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.SERectDrawOrder;
+            return arrRectDrawOrder.ToList();
         }
         else
         {
@@ -1501,7 +1500,7 @@ public class MeshGeneratorService : IMeshGenerator
     /// </summary>
     /// <param name="direction">哪个方向的矩形</param>
 
-    public List<int> GetRectSlopeRiverDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<int> BuildRectSlopeRiverDrawOrder(CellBuildContext ctx, Enums.HexDirection direction)
     {
         int[] arrRectDrawOrder = new int[]
         {
@@ -1533,20 +1532,17 @@ public class MeshGeneratorService : IMeshGenerator
             8,9,10,
             8,10,11,
         };
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
+        if (direction == Enums.HexDirection.NE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.NE) != null)
         {
-            hexCellData.NERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.NERectDrawOrder;
+            return arrRectDrawOrder.ToList();
         }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        else if (direction == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null)
         {
-            hexCellData.ERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.ERectDrawOrder;
+            return arrRectDrawOrder.ToList();
         }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction == Enums.HexDirection.SE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.SE) != null)
         {
-            hexCellData.SERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.SERectDrawOrder;
+            return arrRectDrawOrder.ToList();
         }
         else
         {
@@ -1564,29 +1560,30 @@ public class MeshGeneratorService : IMeshGenerator
     /// </summary>
     /// <param name="direction"></param>
     /// <returns>获取矩形阶梯的顶点</returns>
-    public List<Vector3> GetRectStepVertices(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<Vector3> BuildRectStepVertices(CellBuildContext ctx, Enums.HexDirection direction)
     {
-        float heightDelta = Mathf.Abs(hexCellData.Height - _mapDataService.GetNeighbor(hexCellData, direction).Height);
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
+        List<Vector3> result = new List<Vector3>();
+        float heightDelta = Mathf.Abs(ctx.Cell.Height - ctx.View.GetNeighbor(ctx.Cell, direction).Height);
+        if (direction == Enums.HexDirection.NE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.NE) != null)
         {
             //需要自己的1、7、8、2点 + NE邻居的4、13、14、5点
             //排序应为1、NE_5、NE_14、NE_13、NE_4、2、8、7
             //对应的点对为 (1、NE_5) - (7、NE_14) - (8、NE_13) - (2、NE_4)
             //同理点的排序为：(1、NE_5) - (7、NE_14) - (8、NE_13) - (2、NE_4)
-            List<Vector3> one = SimpleInterpolate(hexCellData.SolidAreaVertices[1], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[5], hexCellData.interpCount);
-            List<Vector3> two = SimpleInterpolate(hexCellData.SolidAreaVertices[7], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[14], hexCellData.interpCount);
-            List<Vector3> three = SimpleInterpolate(hexCellData.SolidAreaVertices[8], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[13], hexCellData.interpCount);
-            List<Vector3> four = SimpleInterpolate(hexCellData.SolidAreaVertices[2], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[4], hexCellData.interpCount);
+            List<Vector3> one = SimpleInterpolate(ctx.Solid[1], ctx.GetNeighborSolid(Enums.HexDirection.NE)[5], ctx.InterpCount);
+            List<Vector3> two = SimpleInterpolate(ctx.Solid[7], ctx.GetNeighborSolid(Enums.HexDirection.NE)[14], ctx.InterpCount);
+            List<Vector3> three = SimpleInterpolate(ctx.Solid[8], ctx.GetNeighborSolid(Enums.HexDirection.NE)[13], ctx.InterpCount);
+            List<Vector3> four = SimpleInterpolate(ctx.Solid[2], ctx.GetNeighborSolid(Enums.HexDirection.NE)[4], ctx.InterpCount);
             //河道
             List<Vector3> River_two = new List<Vector3>();
             List<Vector3> River_three = new List<Vector3>();
             foreach (Vector3 v in two)
             {
-                River_two.Add(v + new Vector3(0, hexCellData.RiverDepth, 0));
+                River_two.Add(v + new Vector3(0, ctx.Cell.RiverDepth, 0));
             }
             foreach (Vector3 v in three)
             {
-                River_three.Add(v + new Vector3(0, hexCellData.RiverDepth, 0));
+                River_three.Add(v + new Vector3(0, ctx.Cell.RiverDepth, 0));
             }
 
 
@@ -1620,36 +1617,36 @@ public class MeshGeneratorService : IMeshGenerator
                 }
             }
 
-            hexCellData.NERectVertices.AddRange(one);
-            hexCellData.NERectVertices.AddRange(two);
-            hexCellData.NERectVertices.AddRange(three);
-            hexCellData.NERectVertices.AddRange(four);
-            hexCellData.NERectVertices.AddRange(River_two);
-            hexCellData.NERectVertices.AddRange(River_three);
+            result.AddRange(one);
+            result.AddRange(two);
+            result.AddRange(three);
+            result.AddRange(four);
+            result.AddRange(River_two);
+            result.AddRange(River_three);
 
-            return hexCellData.NERectVertices;
+            return result;
         }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        else if (direction == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null)
         {
             //需要自己的2、9、10、3点 + E邻居的5、15、16、6点
             //排序应为2、E_6、E_16、E_15、E_5、3、10、9
             //对应的点对为 (2、E_6) - (9、NE_16) - (10、NE_15) - (3、NE_5)
             //同理点的排序为：(2、E_6) - (9、NE_16) - (10、NE_15) - (3、NE_5)
             //阶梯
-            List<Vector3> one = SimpleInterpolate(hexCellData.SolidAreaVertices[2], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[6], hexCellData.interpCount);
-            List<Vector3> two = SimpleInterpolate(hexCellData.SolidAreaVertices[9], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[16], hexCellData.interpCount);
-            List<Vector3> three = SimpleInterpolate(hexCellData.SolidAreaVertices[10], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[15], hexCellData.interpCount);
-            List<Vector3> four = SimpleInterpolate(hexCellData.SolidAreaVertices[3], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[5], hexCellData.interpCount);
+            List<Vector3> one = SimpleInterpolate(ctx.Solid[2], ctx.GetNeighborSolid(Enums.HexDirection.E)[6], ctx.InterpCount);
+            List<Vector3> two = SimpleInterpolate(ctx.Solid[9], ctx.GetNeighborSolid(Enums.HexDirection.E)[16], ctx.InterpCount);
+            List<Vector3> three = SimpleInterpolate(ctx.Solid[10], ctx.GetNeighborSolid(Enums.HexDirection.E)[15], ctx.InterpCount);
+            List<Vector3> four = SimpleInterpolate(ctx.Solid[3], ctx.GetNeighborSolid(Enums.HexDirection.E)[5], ctx.InterpCount);
             //河道
             List<Vector3> River_two = new List<Vector3>();
             List<Vector3> River_three = new List<Vector3>();
             foreach (Vector3 v in two)
             {
-                River_two.Add(v + new Vector3(0, hexCellData.RiverDepth, 0));
+                River_two.Add(v + new Vector3(0, ctx.Cell.RiverDepth, 0));
             }
             foreach (Vector3 v in three)
             {
-                River_three.Add(v + new Vector3(0, hexCellData.RiverDepth, 0));
+                River_three.Add(v + new Vector3(0, ctx.Cell.RiverDepth, 0));
             }
 
             if (heightDelta > 0f)
@@ -1683,35 +1680,35 @@ public class MeshGeneratorService : IMeshGenerator
             }
 
 
-            hexCellData.ERectVertices.AddRange(one);
-            hexCellData.ERectVertices.AddRange(two);
-            hexCellData.ERectVertices.AddRange(three);
-            hexCellData.ERectVertices.AddRange(four);
-            hexCellData.ERectVertices.AddRange(River_two);
-            hexCellData.ERectVertices.AddRange(River_three);
+            result.AddRange(one);
+            result.AddRange(two);
+            result.AddRange(three);
+            result.AddRange(four);
+            result.AddRange(River_two);
+            result.AddRange(River_three);
 
-            return hexCellData.ERectVertices;
+            return result;
         }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction == Enums.HexDirection.SE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.SE) != null)
         {
             //需要自己的3、11、12、4点 + SE邻居的6、17、18、1点
             //排序应为3、SE_1、SE_18、SE_17、SE_6、4、12、11
             //对应的点对为 (3、NE_1) - (11、NE_18) - (12、NE_17) - (4、NE_6)
             //同理点的排序为：(3、NE_1) - (11、NE_18) - (12、NE_17) - (4、NE_6)
-            List<Vector3> one = SimpleInterpolate(hexCellData.SolidAreaVertices[3], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[1], hexCellData.interpCount);
-            List<Vector3> two = SimpleInterpolate(hexCellData.SolidAreaVertices[11], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[18], hexCellData.interpCount);
-            List<Vector3> three = SimpleInterpolate(hexCellData.SolidAreaVertices[12], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[17], hexCellData.interpCount);
-            List<Vector3> four = SimpleInterpolate(hexCellData.SolidAreaVertices[4], _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[6], hexCellData.interpCount);
+            List<Vector3> one = SimpleInterpolate(ctx.Solid[3], ctx.GetNeighborSolid(Enums.HexDirection.SE)[1], ctx.InterpCount);
+            List<Vector3> two = SimpleInterpolate(ctx.Solid[11], ctx.GetNeighborSolid(Enums.HexDirection.SE)[18], ctx.InterpCount);
+            List<Vector3> three = SimpleInterpolate(ctx.Solid[12], ctx.GetNeighborSolid(Enums.HexDirection.SE)[17], ctx.InterpCount);
+            List<Vector3> four = SimpleInterpolate(ctx.Solid[4], ctx.GetNeighborSolid(Enums.HexDirection.SE)[6], ctx.InterpCount);
             //河道
             List<Vector3> River_two = new List<Vector3>();
             List<Vector3> River_three = new List<Vector3>();
             foreach (Vector3 v in two)
             {
-                River_two.Add(v + new Vector3(0, hexCellData.RiverDepth, 0));
+                River_two.Add(v + new Vector3(0, ctx.Cell.RiverDepth, 0));
             }
             foreach (Vector3 v in three)
             {
-                River_three.Add(v + new Vector3(0, hexCellData.RiverDepth, 0));
+                River_three.Add(v + new Vector3(0, ctx.Cell.RiverDepth, 0));
             }
 
             if (heightDelta > 0f)
@@ -1744,14 +1741,14 @@ public class MeshGeneratorService : IMeshGenerator
                 }
             }
 
-            hexCellData.SERectVertices.AddRange(one);
-            hexCellData.SERectVertices.AddRange(two);
-            hexCellData.SERectVertices.AddRange(three);
-            hexCellData.SERectVertices.AddRange(four);
-            hexCellData.SERectVertices.AddRange(River_two);
-            hexCellData.SERectVertices.AddRange(River_three);
+            result.AddRange(one);
+            result.AddRange(two);
+            result.AddRange(three);
+            result.AddRange(four);
+            result.AddRange(River_two);
+            result.AddRange(River_three);
 
-            return hexCellData.SERectVertices;
+            return result;
         }
         else
         {
@@ -1765,93 +1762,41 @@ public class MeshGeneratorService : IMeshGenerator
     /// </summary>
     /// <param name="direction">方向</param>
 
-    public List<Vector2> GetRectStepUV(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<Vector2> BuildRectStepUV(CellBuildContext ctx, IReadOnlyList<Vector3> rectVertices)
     {
         List<Vector2> arrRectUV = new List<Vector2>();
 
-        List<Vector3> RectVertices = new List<Vector3>();
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
-        {
-            RectVertices = hexCellData.NERectVertices;
-        }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
-        {
-            RectVertices = hexCellData.ERectVertices;
-        }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
-        {
-            RectVertices = hexCellData.SERectVertices;
-        }
-        else
-        {
-            Debug.LogError("方向输入出错");
-            return null;
-        }
-
         for (int i = 0; i < 4; i++)
         {
-            for (int j = 0; j < hexCellData.interpCount * 2 + 2; j++)
+            for (int j = 0; j < ctx.InterpCount * 2 + 2; j++)
             {
                 float numerator = (i + 1) / 4.0f;
-                float denominator = (float)(j + 1) / (hexCellData.interpCount * 2 + 2);
+                float denominator = (float)(j + 1) / (ctx.InterpCount * 2 + 2);
                 arrRectUV.Add(new Vector2(numerator, denominator));
             }
         }
 
         //河道点的uv暂且全为(0.5f,0.5f)
-        for (int i = 0; i < 2 * (2 + 2 * hexCellData.interpCount); i++)
+        for (int i = 0; i < 2 * (2 + 2 * ctx.InterpCount); i++)
         {
             arrRectUV.Add(new Vector2(0.5f, 0.5f));
         }
 
-        switch (direction)
-        {
-            case Enums.HexDirection.NE:
-                hexCellData.NERectUV.AddRange(arrRectUV);
-                return hexCellData.NERectUV;
-            case Enums.HexDirection.E:
-                hexCellData.ERectUV.AddRange(arrRectUV);
-                return hexCellData.ERectUV;
-            case Enums.HexDirection.SE:
-                hexCellData.SERectUV.AddRange(arrRectUV);
-                return hexCellData.SERectUV;
-            default:
-                Debug.LogError("方向输入出错");
-                return null;
-        }
+        return arrRectUV.ToList();
     }
 
     /// <summary>
     /// 获取矩形阶梯的绘制顺序
     /// </summary>
     /// <param name="direction">方向</param>
-    public List<int> GetRectStepDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<int> BuildRectStepDrawOrder(CellBuildContext ctx, IReadOnlyList<Vector3> rectVertices)
     {
         List<int> arrRectDrawOrder = new List<int>();
 
-        List<Vector3> RectVertices = new List<Vector3>();
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
-        {
-            RectVertices = hexCellData.NERectVertices;
-        }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
-        {
-            RectVertices = hexCellData.ERectVertices;
-        }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
-        {
-            RectVertices = hexCellData.SERectVertices;
-        }
-        else
-        {
-            Debug.LogError("方向输入出错");
-            return null;
-        }
-
         for (int i = 1; i < 4; i++)
         {
-            int round = hexCellData.interpCount * 2 + 2;
-            for (int j = 0; j < (hexCellData.interpCount * 2 + 2) - 1; j++)
+            int round = ctx.InterpCount * 2 + 2;
+            for (int j = 0; j < (ctx.InterpCount * 2 + 2) - 1; j++)
             {
                 if (i == 1)
                 {
@@ -1877,61 +1822,23 @@ public class MeshGeneratorService : IMeshGenerator
             }
         }
 
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
-        {
-            hexCellData.NERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.NERectDrawOrder;
-        }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
-        {
-            hexCellData.ERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.ERectDrawOrder;
-        }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
-        {
-            hexCellData.SERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.SERectDrawOrder;
-        }
-        else
-        {
-            Debug.LogError("方向输入出错");
-            return null;
-        }
+        return arrRectDrawOrder.ToList();
     }
 
     /// <summary>
     /// 返回矩形矩形河道过渡区域的矩形绘制顺序
     /// </summary>
     /// <param name="direction">哪个方向的矩形</param>
-    public List<int> GetRectStepRiverDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<int> BuildRectStepRiverDrawOrder(CellBuildContext ctx, IReadOnlyList<Vector3> rectVertices)
     {
         List<int> arrRectDrawOrder = new List<int>();
-
-        List<Vector3> RectVertices = new List<Vector3>();
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
-        {
-            RectVertices = hexCellData.NERectVertices;
-        }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
-        {
-            RectVertices = hexCellData.ERectVertices;
-        }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
-        {
-            RectVertices = hexCellData.SERectVertices;
-        }
-        else
-        {
-            Debug.LogError("方向输入出错");
-            return null;
-        }
 
         //阶梯面 + 河道底面
         for (int i = 1; i < 4; i++)
         {
             if (i == 2) { i = 5; }
-            int round = hexCellData.interpCount * 2 + 2;
-            for (int j = 0; j < (hexCellData.interpCount * 2 + 2) - 1; j++)
+            int round = ctx.InterpCount * 2 + 2;
+            for (int j = 0; j < (ctx.InterpCount * 2 + 2) - 1; j++)
             {
                 if (i == 1)
                 {
@@ -1965,9 +1872,9 @@ public class MeshGeneratorService : IMeshGenerator
             int RiverOffset;
             if (i == 0)
             {
-                Offset = (hexCellData.interpCount * 2 + 2) * 1;
-                RiverOffset = (hexCellData.interpCount * 2 + 2) * 4;
-                for (int j = 0; j < (hexCellData.interpCount * 2 + 2) - 1; j++)
+                Offset = (ctx.InterpCount * 2 + 2) * 1;
+                RiverOffset = (ctx.InterpCount * 2 + 2) * 4;
+                for (int j = 0; j < (ctx.InterpCount * 2 + 2) - 1; j++)
                 {
                     arrRectDrawOrder.Add(j + Offset);
                     arrRectDrawOrder.Add(j + 1 + Offset);
@@ -1980,9 +1887,9 @@ public class MeshGeneratorService : IMeshGenerator
             }
             else
             {
-                Offset = (hexCellData.interpCount * 2 + 2) * 2;
-                RiverOffset = (hexCellData.interpCount * 2 + 2) * 5;
-                for (int j = 0; j < (hexCellData.interpCount * 2 + 2) - 1; j++)
+                Offset = (ctx.InterpCount * 2 + 2) * 2;
+                RiverOffset = (ctx.InterpCount * 2 + 2) * 5;
+                for (int j = 0; j < (ctx.InterpCount * 2 + 2) - 1; j++)
                 {
                     arrRectDrawOrder.Add(j + Offset);
                     arrRectDrawOrder.Add(j + 1 + RiverOffset);
@@ -1995,27 +1902,7 @@ public class MeshGeneratorService : IMeshGenerator
             }
         }
 
-
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
-        {
-            hexCellData.NERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.NERectDrawOrder;
-        }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
-        {
-            hexCellData.ERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.ERectDrawOrder;
-        }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
-        {
-            hexCellData.SERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.SERectDrawOrder;
-        }
-        else
-        {
-            Debug.LogError("方向输入出错");
-            return null;
-        }
+        return arrRectDrawOrder.ToList();
     }
 
     /////////////////////////////////////////////////////////////////////- 三角 -/////////////////////////////////////////////////////////////////////
@@ -2026,25 +1913,26 @@ public class MeshGeneratorService : IMeshGenerator
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param>
 
-    public List<Vector3> GetTriVertices(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService)
+    public List<Vector3> BuildTriVertices(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1)
     {
-        if (direction0 == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null && direction1 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        List<Vector3> result = new List<Vector3>();
+        if (direction0 == Enums.HexDirection.NE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.NE) != null && direction1 == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null)
         {
             //需要自己的2点 + NE邻居的4点 + E邻居的6点
             //排序应为2、NE_4、E_6
-            hexCellData.NE_ETriVertices.Add(hexCellData.SolidAreaVertices[2]);
-            hexCellData.NE_ETriVertices.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[4]);
-            hexCellData.NE_ETriVertices.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[6]);
-            return hexCellData.NE_ETriVertices;
+            result.Add(ctx.Solid[2]);
+            result.Add(ctx.GetNeighborSolid(Enums.HexDirection.NE)[4]);
+            result.Add(ctx.GetNeighborSolid(Enums.HexDirection.E)[6]);
+            return result;
         }
-        else if (direction0 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null && direction1 == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction0 == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null && direction1 == Enums.HexDirection.SE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.SE) != null)
         {
             //需要自己的3点 + E邻居的5点 + SE邻居的1点
             //排序应为3、E_5、SE_1
-            hexCellData.E_SETriVertices.Add(hexCellData.SolidAreaVertices[3]);
-            hexCellData.E_SETriVertices.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[5]);
-            hexCellData.E_SETriVertices.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[1]);
-            return hexCellData.E_SETriVertices;
+            result.Add(ctx.Solid[3]);
+            result.Add(ctx.GetNeighborSolid(Enums.HexDirection.E)[5]);
+            result.Add(ctx.GetNeighborSolid(Enums.HexDirection.SE)[1]);
+            return result;
         }
         else
         {
@@ -2058,25 +1946,26 @@ public class MeshGeneratorService : IMeshGenerator
     /// </summary>
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param>
-    public List<Vector2> GetTriUV(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService)
+    public List<Vector2> BuildTriUV(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1)
     {
-        if (direction0 == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null && direction1 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        List<Vector2> result = new List<Vector2>();
+        if (direction0 == Enums.HexDirection.NE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.NE) != null && direction1 == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null)
         {
             //需要自己的2点 + NE邻居的4点 + E邻居的6点
             //排序应为2、NE_4、E_6
-            hexCellData.NE_ETriUV.Add(new Vector2(0, 1));
-            hexCellData.NE_ETriUV.Add(new Vector2(0.5f, 0.2f));
-            hexCellData.NE_ETriUV.Add(new Vector2(1, 1));
-            return hexCellData.NE_ETriUV;
+            result.Add(new Vector2(0, 1));
+            result.Add(new Vector2(0.5f, 0.2f));
+            result.Add(new Vector2(1, 1));
+            return result;
         }
-        else if (direction0 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null && direction1 == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction0 == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null && direction1 == Enums.HexDirection.SE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.SE) != null)
         {
             //需要自己的3点 + E邻居的5点 + SE邻居的1点
             //排序应为3、E_5、SE_1
-            hexCellData.E_SETriUV.Add(new Vector2(0, 1));
-            hexCellData.E_SETriUV.Add(new Vector2(0.5f, 0.2f));
-            hexCellData.E_SETriUV.Add(new Vector2(1, 1));
-            return hexCellData.E_SETriUV;
+            result.Add(new Vector2(0, 1));
+            result.Add(new Vector2(0.5f, 0.2f));
+            result.Add(new Vector2(1, 1));
+            return result;
         }
         else
         {
@@ -2090,25 +1979,26 @@ public class MeshGeneratorService : IMeshGenerator
     /// </summary>
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param>
-    public List<int> GetTriDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService)
+    public List<int> BuildTriDrawOrder(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1)
     {
-        if (direction0 == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null && direction1 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        List<int> result = new List<int>();
+        if (direction0 == Enums.HexDirection.NE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.NE) != null && direction1 == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null)
         {
             //需要自己的2点 + NE邻居的4点 + E邻居的6点
             //排序应为2、NE_4、E_6
-            hexCellData.NE_ETriDrawOrder.Add(0);
-            hexCellData.NE_ETriDrawOrder.Add(1);
-            hexCellData.NE_ETriDrawOrder.Add(2);
-            return hexCellData.NE_ETriDrawOrder;
+            result.Add(0);
+            result.Add(1);
+            result.Add(2);
+            return result;
         }
-        else if (direction0 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null && direction1 == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction0 == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null && direction1 == Enums.HexDirection.SE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.SE) != null)
         {
             //需要自己的3点 + E邻居的5点 + SE邻居的1点
             //排序应为3、E_5、SE_1
-            hexCellData.E_SETriDrawOrder.Add(0);
-            hexCellData.E_SETriDrawOrder.Add(1);
-            hexCellData.E_SETriDrawOrder.Add(2);
-            return hexCellData.E_SETriDrawOrder;
+            result.Add(0);
+            result.Add(1);
+            result.Add(2);
+            return result;
         }
         else
         {
@@ -2123,16 +2013,17 @@ public class MeshGeneratorService : IMeshGenerator
     /// </summary>
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param>
-    public List<Vector3> GetTriStep3Vertices(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService)
+    public List<Vector3> BuildTriStep3Vertices(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1, out int[] isSlope)
     {
+        isSlope = new int[] { -1, -1 };
         //方法三：梯 - 坡(2) - 梯NE_ETriVertices
         //判断是哪个方向的三角过渡区域
         bool isNE_E = false;
         if (direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E) { isNE_E = true; }
         //判断哪边是坡
-        float height0 = hexCellData.Height;
-        float height1 = _mapDataService.GetNeighbor(hexCellData, direction0).Height;
-        float height2 = _mapDataService.GetNeighbor(hexCellData, direction1).Height;
+        float height0 = ctx.Cell.Height;
+        float height1 = ctx.View.GetNeighbor(ctx.Cell, direction0).Height;
+        float height2 = ctx.View.GetNeighbor(ctx.Cell, direction1).Height;
         //返回的顶点组
         List<Vector3> vector3s = new List<Vector3>();
 
@@ -2145,7 +2036,7 @@ public class MeshGeneratorService : IMeshGenerator
         {
             if (isNE_E)
             {
-                hexCellData.isSlope[0] = 0;
+                isSlope[0] = 0;
                 //NE_E三角
                 //1边：NE邻居的SE矩形后(1/4)顶点
                 //2边：自己E矩形的前(1/4)顶点
@@ -2162,11 +2053,11 @@ public class MeshGeneratorService : IMeshGenerator
 
                 //1边
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SERectVertices.Count != 0)
+                    if (ctx.GetNeighborRectVertices(Enums.HexDirection.NE, Enums.HexDirection.SE).Count != 0)
                     {
-                        v.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SERectVertices[i]);
+                        v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.NE, Enums.HexDirection.SE)[i]);
                     }
 
                 }
@@ -2182,11 +2073,11 @@ public class MeshGeneratorService : IMeshGenerator
                 }
                 //2边
                 v.Clear();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (hexCellData.ERectVertices.Count != 0)
+                    if (ctx.GetRectVertices(Enums.HexDirection.E).Count != 0)
                     {
-                        v.Add(hexCellData.ERectVertices[i]);
+                        v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                     }
 
                 }
@@ -2200,8 +2091,8 @@ public class MeshGeneratorService : IMeshGenerator
                     }
                 }
 
-                Vector3 PointA = hexCellData.SolidAreaVertices[2];
-                Vector3 PointB = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[4];
+                Vector3 PointA = ctx.Solid[2];
+                Vector3 PointB = ctx.GetNeighborSolid(Enums.HexDirection.NE)[4];
                 //梯1的插入点
                 for (int i = 0; i < v1.Count; i++)
                 {
@@ -2215,7 +2106,7 @@ public class MeshGeneratorService : IMeshGenerator
             }
             else
             {
-                hexCellData.isSlope[1] = 0;
+                isSlope[1] = 0;
                 //E_SE三角
                 //1边：SE邻居的NE矩形前(1/4)顶点
                 //2边：自己的SE矩形前(1/4)顶点
@@ -2223,11 +2114,11 @@ public class MeshGeneratorService : IMeshGenerator
 
                 //1边
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).NERectVertices.Count != 0)
+                    if (ctx.GetNeighborRectVertices(Enums.HexDirection.SE, Enums.HexDirection.NE).Count != 0)
                     {
-                        v.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).NERectVertices[i]);
+                        v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.SE, Enums.HexDirection.NE)[i]);
                     }
 
                 }
@@ -2242,11 +2133,11 @@ public class MeshGeneratorService : IMeshGenerator
                 }
                 //2边
                 v.Clear();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (hexCellData.SERectVertices.Count != 0)
+                    if (ctx.GetRectVertices(Enums.HexDirection.SE).Count != 0)
                     {
-                        v.Add(hexCellData.SERectVertices[i]);
+                        v.Add(ctx.GetRectVertices(Enums.HexDirection.SE)[i]);
                     }
 
                 }
@@ -2261,8 +2152,8 @@ public class MeshGeneratorService : IMeshGenerator
                 }
                 //v2.Reverse();
 
-                Vector3 PointA = hexCellData.SolidAreaVertices[3];
-                Vector3 PointB = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[5];
+                Vector3 PointA = ctx.Solid[3];
+                Vector3 PointB = ctx.GetNeighborSolid(Enums.HexDirection.E)[5];
                 //梯1的插入点
                 for (int i = 0; i < v1.Count; i++)
                 {
@@ -2280,7 +2171,7 @@ public class MeshGeneratorService : IMeshGenerator
         {
             if (isNE_E)
             {
-                hexCellData.isSlope[0] = 1;
+                isSlope[0] = 1;
                 //NE_E三角
                 //0边：自己NE矩形的后(1/4)顶点
                 //2边：自己E矩形的前(1/4)顶点
@@ -2288,11 +2179,11 @@ public class MeshGeneratorService : IMeshGenerator
 
                 //1边                
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (hexCellData.NERectVertices.Count != 0)
+                    if (ctx.GetRectVertices(Enums.HexDirection.NE).Count != 0)
                     {
-                        v.Add(hexCellData.NERectVertices[i]);
+                        v.Add(ctx.GetRectVertices(Enums.HexDirection.NE)[i]);
                     }
 
                 }
@@ -2308,11 +2199,11 @@ public class MeshGeneratorService : IMeshGenerator
                 }
                 //2边
                 v.Clear();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (hexCellData.ERectVertices.Count != 0)
+                    if (ctx.GetRectVertices(Enums.HexDirection.E).Count != 0)
                     {
-                        v.Add(hexCellData.ERectVertices[i]);
+                        v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                     }
 
                 }
@@ -2326,8 +2217,8 @@ public class MeshGeneratorService : IMeshGenerator
                     }
                 }
 
-                Vector3 PointA = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[4];
-                Vector3 PointB = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[6];
+                Vector3 PointA = ctx.GetNeighborSolid(Enums.HexDirection.NE)[4];
+                Vector3 PointB = ctx.GetNeighborSolid(Enums.HexDirection.E)[6];
                 //梯1的插入点
                 for (int i = 0; i < v1.Count; i++)
                 {
@@ -2342,7 +2233,7 @@ public class MeshGeneratorService : IMeshGenerator
             }
             else
             {
-                hexCellData.isSlope[1] = 1;
+                isSlope[1] = 1;
                 //E_SE三角
 
                 //0边：自己E矩形的后(1/4)顶点
@@ -2351,11 +2242,11 @@ public class MeshGeneratorService : IMeshGenerator
 
                 //1边
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (hexCellData.ERectVertices.Count != 0)
+                    if (ctx.GetRectVertices(Enums.HexDirection.E).Count != 0)
                     {
-                        v.Add(hexCellData.ERectVertices[i]);
+                        v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                     }
                 }
                 //List<Vector3> v = ERectVertices;
@@ -2369,11 +2260,11 @@ public class MeshGeneratorService : IMeshGenerator
                 }
                 //2边
                 v.Clear();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (hexCellData.SERectVertices.Count != 0)
+                    if (ctx.GetRectVertices(Enums.HexDirection.SE).Count != 0)
                     {
-                        v.Add(hexCellData.SERectVertices[i]);
+                        v.Add(ctx.GetRectVertices(Enums.HexDirection.SE)[i]);
                     }
 
                 }
@@ -2387,8 +2278,8 @@ public class MeshGeneratorService : IMeshGenerator
                     }
                 }
 
-                Vector3 PointA = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[5];
-                Vector3 PointB = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[1];
+                Vector3 PointA = ctx.GetNeighborSolid(Enums.HexDirection.E)[5];
+                Vector3 PointB = ctx.GetNeighborSolid(Enums.HexDirection.SE)[1];
                 //梯1的插入点
                 for (int i = 0; i < v1.Count; i++)
                 {
@@ -2406,18 +2297,18 @@ public class MeshGeneratorService : IMeshGenerator
         {
             if (isNE_E)
             {
-                hexCellData.isSlope[0] = 2;
+                isSlope[0] = 2;
                 //NE_E三角
                 //0边：自己NE矩形的后(1/4)顶点
                 //1边：NE邻居的SE矩形后(1/4)顶点
                 //坡_2边：自己的2点 + E邻居的6点 - 排序应为2、E_6
                 //0边
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (hexCellData.NERectVertices.Count != 0)
+                    if (ctx.GetRectVertices(Enums.HexDirection.NE).Count != 0)
                     {
-                        v.Add(hexCellData.NERectVertices[i]);
+                        v.Add(ctx.GetRectVertices(Enums.HexDirection.NE)[i]);
                     }
 
                 }
@@ -2432,11 +2323,11 @@ public class MeshGeneratorService : IMeshGenerator
                 }
                 //1边
                 v.Clear();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SERectVertices.Count != 0)
+                    if (ctx.GetNeighborRectVertices(Enums.HexDirection.NE, Enums.HexDirection.SE).Count != 0)
                     {
-                        v.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SERectVertices[i]);
+                        v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.NE, Enums.HexDirection.SE)[i]);
                     }
 
                 }
@@ -2449,8 +2340,8 @@ public class MeshGeneratorService : IMeshGenerator
                         v2.Add(v[i]);
                     }
                 }
-                Vector3 PointA = hexCellData.SolidAreaVertices[2];
-                Vector3 PointB = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[6];
+                Vector3 PointA = ctx.Solid[2];
+                Vector3 PointB = ctx.GetNeighborSolid(Enums.HexDirection.E)[6];
                 //梯1的插入点
                 for (int i = 0; i < v1.Count; i++)
                 {
@@ -2464,7 +2355,7 @@ public class MeshGeneratorService : IMeshGenerator
             }
             else
             {
-                hexCellData.isSlope[1] = 2;
+                isSlope[1] = 2;
                 //E_SE三角
                 //0边：自己E矩形的后(1/4)顶点
                 //1边：SE邻居的NE矩形前(1/4)顶点
@@ -2472,11 +2363,11 @@ public class MeshGeneratorService : IMeshGenerator
 
                 //0边
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (hexCellData.ERectVertices.Count != 0)
+                    if (ctx.GetRectVertices(Enums.HexDirection.E).Count != 0)
                     {
-                        v.Add(hexCellData.ERectVertices[i]);
+                        v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                     }
 
                 }
@@ -2491,11 +2382,11 @@ public class MeshGeneratorService : IMeshGenerator
                 }
                 //1边
                 v.Clear();
-                for (int i = 0; i < 4 * (hexCellData.interpCount * 2 + 2); i++)
+                for (int i = 0; i < 4 * (ctx.InterpCount * 2 + 2); i++)
                 {
-                    if (_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).NERectVertices.Count != 0)
+                    if (ctx.GetNeighborRectVertices(Enums.HexDirection.SE, Enums.HexDirection.NE).Count != 0)
                     {
-                        v.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).NERectVertices[i]);
+                        v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.SE, Enums.HexDirection.NE)[i]);
                     }
 
                 }
@@ -2508,8 +2399,8 @@ public class MeshGeneratorService : IMeshGenerator
                         v2.Add(v[i]);
                     }
                 }
-                Vector3 PointA = hexCellData.SolidAreaVertices[3];
-                Vector3 PointB = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[1];
+                Vector3 PointA = ctx.Solid[3];
+                Vector3 PointB = ctx.GetNeighborSolid(Enums.HexDirection.SE)[1];
                 //梯1的插入点
                 for (int i = 0; i < v1.Count; i++)
                 {
@@ -2523,8 +2414,8 @@ public class MeshGeneratorService : IMeshGenerator
             }
         }
 
-        if (isNE_E) { hexCellData.NE_ETriVertices.AddRange(vector3s); return hexCellData.NE_ETriVertices; }
-        else { hexCellData.E_SETriVertices.AddRange(vector3s); return hexCellData.E_SETriVertices; }
+        return vector3s;
+        
 
     }
 
@@ -2533,29 +2424,9 @@ public class MeshGeneratorService : IMeshGenerator
     /// </summary>
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param>
-    public List<Vector2> GetTriStep3UV(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1)
+    public List<Vector2> BuildTriStep3UV(CellBuildContext ctx)
     {
-        //判断是哪个方向的三角过渡区域
-        bool isNE_E = false;
-        List<Vector3> vector3s = new List<Vector3>();
         List<Vector2> vector2s = new List<Vector2>();
-        if (direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E)
-        {
-            isNE_E = true;
-            vector3s = hexCellData.NE_ETriVertices;
-        }
-        else
-        {
-            vector3s = hexCellData.E_SETriVertices;
-        }
-        /*
-        //需要将三角阶梯摊开，映射到正方形区域上
-        //梯边有：(2*interpCount + 2)个点 - 有一个点重复
-        //坡边有：2*(interpCount + 1)个点 - 有一个点重复
-        //总共有：2梯 + 1坡 = (8*interpCount + 8)个点
-        //顶点排序是梯1、梯2、坡1、坡2
-        //梯点均分 y=1，x∈(0,1)，坡点均分 y=0，x∈(0,1)
-        */
 
         //需要将三角阶梯摊开，映射到正方形区域上
         //梯边有：(2*interpCount + 2)个点 - 有一个点重复
@@ -2565,27 +2436,18 @@ public class MeshGeneratorService : IMeshGenerator
         //三个顶点从自己开始顺时针排序分别为：(0, 1)、(0.5f, 0.2f)、(1, 1)
         //梯边、坡边的其余点为其中的插值
 
-        float ΔxT = 1 / 2 * (2 * hexCellData.interpCount + 2);
-        float ΔxP = 1 / 2 * (1 * hexCellData.interpCount + 1);
-        for (int i = 0; i < 2 * (2 * hexCellData.interpCount + 2); i++)
+        float ΔxT = 1 / 2 * (2 * ctx.InterpCount + 2);
+        float ΔxP = 1 / 2 * (1 * ctx.InterpCount + 1);
+        for (int i = 0; i < 2 * (2 * ctx.InterpCount + 2); i++)
         {
             vector2s.Add(new Vector2(ΔxT * i, 1));
         }
-        for (int i = 0; i < 2 * (hexCellData.interpCount + 1); i++)
+        for (int i = 0; i < 2 * (ctx.InterpCount + 1); i++)
         {
             vector2s.Add(new Vector2(ΔxP * i, 0));
         }
 
-        if (isNE_E)
-        {
-            hexCellData.NE_ETriUV.AddRange(vector2s);
-            return hexCellData.NE_ETriUV;
-        }
-        else
-        {
-            hexCellData.E_SETriUV.AddRange(vector2s);
-            return hexCellData.E_SETriUV;
-        }
+        return vector2s;
     }
 
     /// <summary>
@@ -2593,11 +2455,9 @@ public class MeshGeneratorService : IMeshGenerator
     /// </summary>
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param>
-    public List<int> GetTriStep3DrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1)
+    public List<int> BuildTriStep3DrawOrder(CellBuildContext ctx, int[] isSlope, Enums.HexDirection direction0, Enums.HexDirection direction1)
     {
-        //判断是哪个方向的三角过渡区域
-        bool isNE_E = false;
-        if (direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E) { isNE_E = true; }
+        bool isNE_E = direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E;
         //方法3会有：2 * (1 + 3*interpCount) 个三角形
         //          (两梯) * [尖端一个三角 + (一阶梯有三个三角)*(插入阶梯数)]
         //按照顶点数组的顺序：梯1、梯2、坡1、坡2
@@ -2643,21 +2503,21 @@ T2_7、P2_4、T2_8✔
 T2_8、P2_4、T2_9✔
         */
         //以下是各组的顶点数
-        int T1_Count = (2 + 2 * hexCellData.interpCount);
-        int T2_Count = (2 + 2 * hexCellData.interpCount);
-        int P1_Count = (1 + hexCellData.interpCount);
-        int P2_Count = (1 + hexCellData.interpCount);
+        int T1_Count = (2 + 2 * ctx.InterpCount);
+        int T2_Count = (2 + 2 * ctx.InterpCount);
+        int P1_Count = (1 + ctx.InterpCount);
+        int P2_Count = (1 + ctx.InterpCount);
         //以下是各组的偏移量
         int T1_Offset = 0;
-        int T2_Offset = (2 + 2 * hexCellData.interpCount);
-        int P1_Offset = (2 + 2 * hexCellData.interpCount) + (2 + 2 * hexCellData.interpCount);
-        int P2_Offset = (1 + hexCellData.interpCount) + (2 + 2 * hexCellData.interpCount) + (2 + 2 * hexCellData.interpCount);
+        int T2_Offset = (2 + 2 * ctx.InterpCount);
+        int P1_Offset = (2 + 2 * ctx.InterpCount) + (2 + 2 * ctx.InterpCount);
+        int P2_Offset = (1 + ctx.InterpCount) + (2 + 2 * ctx.InterpCount) + (2 + 2 * ctx.InterpCount);
 
         List<int> drawOrder = new List<int>();
 
         if (isNE_E)
         {
-            if (hexCellData.isSlope[0] == 0 || hexCellData.isSlope[0] == 1)
+            if (isSlope[0] == 0 || isSlope[0] == 1)
             {
                 //第一个梯(顺时针)
                 for (int i = P1_Count - 1, j = T1_Count - 1; i > 0; i--, j -= 2)
@@ -2771,11 +2631,11 @@ T2_8、P2_4、T2_9✔
                     }
                 }
             }
-            hexCellData.NE_ETriDrawOrder.AddRange(drawOrder);
+            
         }
         else
         {
-            if (hexCellData.isSlope[1] == 0)
+            if (isSlope[1] == 0)
             {
                 //第一个梯(逆时针)
                 for (int i = P1_Count - 1, j = T1_Count - 1; i > 0; i--, j -= 2)
@@ -2832,7 +2692,7 @@ T2_8、P2_4、T2_9✔
                     }
                 }
             }
-            else if (hexCellData.isSlope[1] == 1)
+            else if (isSlope[1] == 1)
             {
                 //第一个梯(顺时针)
                 for (int i = P1_Count - 1, j = T1_Count - 1; i > 0; i--, j -= 2)
@@ -2939,7 +2799,7 @@ T2_8、P2_4、T2_9✔
                     }
                 }
             }
-            hexCellData.E_SETriDrawOrder.AddRange(drawOrder);
+            
         }
 
         return drawOrder;
@@ -2952,7 +2812,7 @@ T2_8、P2_4、T2_9✔
     /// </summary>
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param>
-    public List<Vector3> GetTriStep4Vertices(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService)
+    public List<Vector3> BuildTriStep4Vertices(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1)
     {
         //方法四：两梯一平坡（要分清哪边是平坡）
         //只需要两梯边的顶点即可
@@ -2965,9 +2825,9 @@ T2_8、P2_4、T2_9✔
         if (direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E) { isNE_E = true; }
         //判断哪边是坡
         int isSlope;
-        float height0 = hexCellData.Height;
-        float height1 = _mapDataService.GetNeighbor(hexCellData, direction0).Height;
-        float height2 = _mapDataService.GetNeighbor(hexCellData, direction1).Height;
+        float height0 = ctx.Cell.Height;
+        float height1 = ctx.View.GetNeighbor(ctx.Cell, direction0).Height;
+        float height2 = ctx.View.GetNeighbor(ctx.Cell, direction1).Height;
         if (height0 == height1) { isSlope = 0; }
         else if (height1 == height2) { isSlope = 1; }
         else { isSlope = 2; }
@@ -2981,9 +2841,9 @@ T2_8、P2_4、T2_9✔
             {
                 //1边 - NE邻居的SE矩形后(1/4)顶点
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetNeighborRectVertices(Enums.HexDirection.NE, Enums.HexDirection.SE).Count * 2 / 3; i++)
                 {
-                    v.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SERectVertices[i]);
+                    v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.NE, Enums.HexDirection.SE)[i]);
                 }
                 //List<Vector3> v = Map.GetNeighbor(this, Map.HexDirection.NE).GetSERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
@@ -2992,9 +2852,9 @@ T2_8、P2_4、T2_9✔
                 }
                 //2边 - 自己的E矩形前(1/4)顶点
                 v.Clear();
-                for (int i = 0; i < hexCellData.ERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetRectVertices(Enums.HexDirection.E).Count * 2 / 3; i++)
                 {
-                    v.Add(hexCellData.ERectVertices[i]);
+                    v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                 }
                 //v = ERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
@@ -3010,9 +2870,9 @@ T2_8、P2_4、T2_9✔
             {
                 //0边 - 自己的NE矩形后(1/4)顶点
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < hexCellData.NERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetRectVertices(Enums.HexDirection.NE).Count * 2 / 3; i++)
                 {
-                    v.Add(hexCellData.NERectVertices[i]);
+                    v.Add(ctx.GetRectVertices(Enums.HexDirection.NE)[i]);
                 }
                 //List<Vector3> v = NERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
@@ -3024,9 +2884,9 @@ T2_8、P2_4、T2_9✔
                 reverseVector3s.Clear();
                 //2边 - 自己的E矩形前(1/4)顶点
                 v.Clear();
-                for (int i = 0; i < hexCellData.ERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetRectVertices(Enums.HexDirection.E).Count * 2 / 3; i++)
                 {
-                    v.Add(hexCellData.ERectVertices[i]);
+                    v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                 }
                 //v = ERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
@@ -3045,9 +2905,9 @@ T2_8、P2_4、T2_9✔
             {
                 //0边 - 自己的NE矩形后(1/4)顶点
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < hexCellData.NERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetRectVertices(Enums.HexDirection.NE).Count * 2 / 3; i++)
                 {
-                    v.Add(hexCellData.NERectVertices[i]);
+                    v.Add(ctx.GetRectVertices(Enums.HexDirection.NE)[i]);
                 }
                 //List<Vector3> v = NERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
@@ -3056,9 +2916,9 @@ T2_8、P2_4、T2_9✔
                 }
                 //1边 - NE邻居的SE矩形后(1/4)顶点
                 v.Clear();
-                for (int i = 0; i < _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetNeighborRectVertices(Enums.HexDirection.NE, Enums.HexDirection.SE).Count * 2 / 3; i++)
                 {
-                    v.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SERectVertices[i]);
+                    v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.NE, Enums.HexDirection.SE)[i]);
                 }
                 //v = Map.GetNeighbor(this, Map.HexDirection.NE).GetSERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
@@ -3079,9 +2939,9 @@ T2_8、P2_4、T2_9✔
             {
                 //1边 - SE邻居的NE矩形前(1/4)顶点
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).NERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetNeighborRectVertices(Enums.HexDirection.SE, Enums.HexDirection.NE).Count * 2 / 3; i++)
                 {
-                    v.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).NERectVertices[i]);
+                    v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.SE, Enums.HexDirection.NE)[i]);
                 }
                 //List<Vector3> v = Map.GetNeighbor(this, Map.HexDirection.SE).GetNERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
@@ -3093,9 +2953,9 @@ T2_8、P2_4、T2_9✔
                 reverseVector3s.Clear();
                 //2边 - 自己的E矩形后(1/4)顶点
                 v.Clear();
-                for (int i = 0; i < hexCellData.SERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetRectVertices(Enums.HexDirection.SE).Count * 2 / 3; i++)
                 {
-                    v.Add(hexCellData.SERectVertices[i]);
+                    v.Add(ctx.GetRectVertices(Enums.HexDirection.SE)[i]);
                 }
                 //v = SERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
@@ -3111,9 +2971,9 @@ T2_8、P2_4、T2_9✔
             {
                 //0边 - 自己的E矩形后(1/4)顶点
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < hexCellData.ERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetRectVertices(Enums.HexDirection.E).Count * 2 / 3; i++)
                 {
-                    v.Add(hexCellData.ERectVertices[i]);
+                    v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                 }
                 //List<Vector3> v = ERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
@@ -3125,9 +2985,9 @@ T2_8、P2_4、T2_9✔
                 reverseVector3s.Clear();
                 //2边 - 自己的SE矩形前(1/4)顶点
                 v.Clear();
-                for (int i = 0; i < hexCellData.SERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetRectVertices(Enums.HexDirection.SE).Count * 2 / 3; i++)
                 {
-                    v.Add(hexCellData.SERectVertices[i]);
+                    v.Add(ctx.GetRectVertices(Enums.HexDirection.SE)[i]);
                 }
                 //v = SERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
@@ -3146,9 +3006,9 @@ T2_8、P2_4、T2_9✔
             {
                 //0边 - 自己的E矩形后(1/4)顶点
                 List<Vector3> v = new List<Vector3>();
-                for (int i = 0; i < hexCellData.ERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetRectVertices(Enums.HexDirection.E).Count * 2 / 3; i++)
                 {
-                    v.Add(hexCellData.ERectVertices[i]);
+                    v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                 }
                 //List<Vector3> v = ERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
@@ -3157,9 +3017,9 @@ T2_8、P2_4、T2_9✔
                 }
                 //1边 - SE邻居的NE矩形前(1/4)顶点
                 v.Clear();
-                for (int i = 0; i < _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).NERectVertices.Count * 2 / 3; i++)
+                for (int i = 0; i < ctx.GetNeighborRectVertices(Enums.HexDirection.SE, Enums.HexDirection.NE).Count * 2 / 3; i++)
                 {
-                    v.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).NERectVertices[i]);
+                    v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.SE, Enums.HexDirection.NE)[i]);
                 }
                 //v = Map.GetNeighbor(this, Map.HexDirection.SE).GetNERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
@@ -3169,8 +3029,8 @@ T2_8、P2_4、T2_9✔
             }
         }
 
-        if (isNE_E) { hexCellData.NE_ETriVertices.AddRange(vector3s); return hexCellData.NE_ETriVertices; }
-        else { hexCellData.E_SETriVertices.AddRange(vector3s); return hexCellData.E_SETriVertices; }
+        return vector3s;
+        
     }
 
     /// <summary>
@@ -3178,118 +3038,27 @@ T2_8、P2_4、T2_9✔
     /// </summary>
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param> //顶点排序是梯1、梯2
-    public List<Vector2> GetTriStep4UV_Old(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1)
-    {
-        //判断是哪个方向的三角过渡区域
-        bool isNE_E = false;
-        List<Vector3> vector3s = new List<Vector3>();
-        List<Vector2> vector2s = new List<Vector2>();
-        if (direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E)
-        {
-            isNE_E = true;
-            vector3s = hexCellData.NE_ETriVertices;
-        }
-        else
-        {
-            vector3s = hexCellData.E_SETriVertices;
-        }
-
-        //顶点排序是梯1、梯2
-
-
-        //倾斜、垂直线段的长度不论什么方向，理应都是一样的，所有暂且取NE方向，即x[0,0]、x[0,1]
-        //x只是比值，总二维向量的模是 (0.5)/cosθ
-        float ΔY = hexCellData.x[0, 1] * (0.5f / Mathf.Cos(Mathf.Atan(2f)));
-        float ΔX = hexCellData.x[0, 0] * (0.5f / Mathf.Cos(Mathf.Atan(2f)));
-
-        //∵这是个三角形，所以ΔY、ΔX是二维向量，而非标量
-        //∴通过三角函数求坐标的x,y增量
-        float ΔY_x = ΔY * Mathf.Cos(Mathf.Atan(2f));
-        float ΔY_y = ΔY * Mathf.Sin(Mathf.Atan(2f));
-
-        float ΔX_x = ΔX * Mathf.Cos(Mathf.Atan(2f));
-        float ΔX_y = ΔX * Mathf.Sin(Mathf.Atan(2f));
-
-        //坐标x,y
-        float Δx = 0, Δy = 0;
-        //x增量一直是正的、y增量前梯是正的，后梯是负的
-        //前梯
-        for (int i = 0; i < vector3s.Count / 2; i++)
-        {
-            if (i % 2 == 0)
-            {
-                vector2s.Add(new Vector2(Δx, Δy));
-                Δx += ΔY_x;
-                Δy += ΔY_y;
-            }
-            else
-            {
-                vector2s.Add(new Vector2(Δx, Δy));
-                Δx += ΔX_x;
-                Δy += ΔX_y;
-            }
-        }
-        //后梯
-        for (int i = 0; i < vector3s.Count / 2; i++)
-        {
-            if (i % 2 == 0)
-            {
-                vector2s.Add(new Vector2(Δx, Δy));
-                Δx += ΔY_x;
-                Δy -= ΔY_y;
-            }
-            else
-            {
-                vector2s.Add(new Vector2(Δx, Δy));
-                Δx += ΔX_x;
-                Δy -= ΔX_y;
-            }
-        }
-
-        if (isNE_E)
-        {
-            hexCellData.NE_ETriUV.AddRange(vector2s);
-            return hexCellData.NE_ETriUV;
-        }
-        else
-        {
-            hexCellData.E_SETriUV.AddRange(vector2s);
-            return hexCellData.E_SETriUV;
-        }
-    }
 
     /// <summary>
     /// 返回三角过渡区域 - 方法4 - 的uv - （新的，简单的方法）
     /// </summary>
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param> //顶点排序是梯1、梯2
-    public List<Vector2> GetTriStep4UV(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1)
+    public List<Vector2> BuildTriStep4UV(IReadOnlyList<Vector3> triVertices)
     {
-        //判断是哪个方向的三角过渡区域
-        bool isNE_E = false;
-        List<Vector3> vector3s = new List<Vector3>();
-        List<Vector2> vector2s = new List<Vector2>();
-        if (direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E)
-        {
-            isNE_E = true;
-            vector3s = hexCellData.NE_ETriVertices;
-        }
-        else
-        {
-            vector3s = hexCellData.E_SETriVertices;
-        }
-
         //顶点排序是梯1、梯2
+        List<Vector2> vector2s = new List<Vector2>();
+        int vertexCount = triVertices != null ? triVertices.Count : 0;
         //三个顶点从自己开始顺时针排序分别为：(0, 1)、(0.5f, 0.2f)、(1, 1)
         //梯边其余点为其中的插值
         //设梯1的起点、梯2的终点点为(0.5f, 0.2f)、梯1终点为(0, 1)、梯2起点为(1, 1)
-        Vector2 Δv1 = (new Vector2(0, 1) - new Vector2(0.5f, 0.2f)) / (vector3s.Count / 2);
+        Vector2 Δv1 = (new Vector2(0, 1) - new Vector2(0.5f, 0.2f)) / (vertexCount / 2);
         //Vector2 Δv2 = (new Vector2(1, 1) - new Vector2(0.5f, 0.2f)) / (vector3s.Count / 2);
         //Vector2 Δv1 = (new Vector2(0.5f, 0.2f) - new Vector2(0, 1)) / (vector3s.Count / 2);
-        Vector2 Δv2 = (new Vector2(0.5f, 0.2f) - new Vector2(1, 1)) / (vector3s.Count / 2);
+        Vector2 Δv2 = (new Vector2(0.5f, 0.2f) - new Vector2(1, 1)) / (vertexCount / 2);
         for (int j = 0; j < 2; j++)
         {
-            for (int i = 0; i < vector3s.Count / 2; i++)
+            for (int i = 0; i < vertexCount / 2; i++)
             {
                 if (i == 0)
                 {
@@ -3302,7 +3071,7 @@ T2_8、P2_4、T2_9✔
                         vector2s.Add(new Vector2(1, 1));
                     }
                 }
-                else if (i == (vector3s.Count / 2) - 1)
+                else if (i == (vertexCount / 2) - 1)
                 {
                     if (j == 0)
                     {
@@ -3329,18 +3098,7 @@ T2_8、P2_4、T2_9✔
             }
         }
 
-
-
-        if (isNE_E)
-        {
-            hexCellData.NE_ETriUV.AddRange(vector2s);
-            return hexCellData.NE_ETriUV;
-        }
-        else
-        {
-            hexCellData.E_SETriUV.AddRange(vector2s);
-            return hexCellData.E_SETriUV;
-        }
+        return vector2s;
     }
 
 
@@ -3350,36 +3108,24 @@ T2_8、P2_4、T2_9✔
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param>
 
-    public List<int> GetTriStep4DrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService)
+    public List<int> BuildTriStep4DrawOrder(CellBuildContext ctx, IReadOnlyList<Vector3> triVertices, Enums.HexDirection direction0, Enums.HexDirection direction1)
     {
-        //判断是哪个方向的三角过渡区域
-        bool isNE_E = false;
-        if (direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E) { isNE_E = true; }
         List<int> drawOrder = new List<int>();
         //后梯边的偏移
-        List<Vector3> vector3s = new List<Vector3>();
-        if (direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E)
-        {
-            isNE_E = true;
-            vector3s = hexCellData.NE_ETriVertices;
-        }
-        else
-        {
-            vector3s = hexCellData.E_SETriVertices;
-        }
-        int offset = vector3s.Count / 2;
+        int vertexCount = triVertices != null ? triVertices.Count : 0;
+        int offset = vertexCount / 2;
         //判断哪边是坡
         int isSlope;
-        float height0 = hexCellData.Height;
-        float height1 = _mapDataService.GetNeighbor(hexCellData, direction0).Height;
-        float height2 = _mapDataService.GetNeighbor(hexCellData, direction1).Height;
+        float height0 = ctx.Cell.Height;
+        float height1 = ctx.View.GetNeighbor(ctx.Cell, direction0).Height;
+        float height2 = ctx.View.GetNeighbor(ctx.Cell, direction1).Height;
         if (height0 == height1) { isSlope = 0; }
         else if (height1 == height2) { isSlope = 1; }
         else { isSlope = 2; }
 
         if (isSlope != 1)
         {
-            for (int i = 0; i < hexCellData.interpCount * 2 + 1; i++)
+            for (int i = 0; i < ctx.InterpCount * 2 + 1; i++)
             {
                 drawOrder.Add(i);
                 drawOrder.Add(i + 1);
@@ -3393,7 +3139,7 @@ T2_8、P2_4、T2_9✔
         }
         else
         {
-            for (int i = 0; i < hexCellData.interpCount * 2 + 1; i++)
+            for (int i = 0; i < ctx.InterpCount * 2 + 1; i++)
             {
                 drawOrder.Add(i);
                 drawOrder.Add(i + offset);
@@ -3405,8 +3151,7 @@ T2_8、P2_4、T2_9✔
             }
         }
 
-        if (isNE_E) { hexCellData.NE_ETriDrawOrder.AddRange(drawOrder); return drawOrder; }
-        else { hexCellData.E_SETriDrawOrder.AddRange(drawOrder); return drawOrder; }
+        return drawOrder;
     }
 
     /// <summary>
@@ -3463,48 +3208,49 @@ T2_8、P2_4、T2_9✔
     /// <summary>
     /// 返回地块实心区域的河水坐标
     /// </summary>
-    public Vector3[] GetRiverVertices(ref HexCellData hexCellData)
+    public Vector3[] BuildRiverVertices(CellBuildContext ctx)
     {
-        List<Vector3> solidAreaVertices = hexCellData.SolidAreaVertices;
+        Vector3[] solidAreaVertices = ctx.Solid;
         //实心区域河水坐标 - ( 0" - 外围顺时针" - 内圈顺时针" ) - (1 - 12 - 6) - 19个点
         Vector3[] arrVertices = new Vector3[]
         {
-            solidAreaVertices[0] + (solidAreaVertices[25] - solidAreaVertices[0]) * (1 - hexCellData.RiverWaterDepth),
+            solidAreaVertices[0] + (solidAreaVertices[25] - solidAreaVertices[0]) * (1 - ctx.Cell.RiverWaterDepth),
 
-            solidAreaVertices[7] + (solidAreaVertices[32] - solidAreaVertices[7]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[8] + (solidAreaVertices[33] - solidAreaVertices[8]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[9] + (solidAreaVertices[34] - solidAreaVertices[9]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[10] + (solidAreaVertices[35] - solidAreaVertices[10]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[11] + (solidAreaVertices[36] - solidAreaVertices[11]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[12] + (solidAreaVertices[37] - solidAreaVertices[12]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[13] + (solidAreaVertices[38] - solidAreaVertices[13]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[14] + (solidAreaVertices[39] - solidAreaVertices[14]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[15] + (solidAreaVertices[40] - solidAreaVertices[15]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[16] + (solidAreaVertices[41] - solidAreaVertices[16]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[17] + (solidAreaVertices[42] - solidAreaVertices[17]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[18] + (solidAreaVertices[43] - solidAreaVertices[18]) * (1 - hexCellData.RiverWaterDepth),
+            solidAreaVertices[7] + (solidAreaVertices[32] - solidAreaVertices[7]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[8] + (solidAreaVertices[33] - solidAreaVertices[8]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[9] + (solidAreaVertices[34] - solidAreaVertices[9]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[10] + (solidAreaVertices[35] - solidAreaVertices[10]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[11] + (solidAreaVertices[36] - solidAreaVertices[11]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[12] + (solidAreaVertices[37] - solidAreaVertices[12]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[13] + (solidAreaVertices[38] - solidAreaVertices[13]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[14] + (solidAreaVertices[39] - solidAreaVertices[14]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[15] + (solidAreaVertices[40] - solidAreaVertices[15]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[16] + (solidAreaVertices[41] - solidAreaVertices[16]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[17] + (solidAreaVertices[42] - solidAreaVertices[17]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[18] + (solidAreaVertices[43] - solidAreaVertices[18]) * (1 - ctx.Cell.RiverWaterDepth),
 
-            solidAreaVertices[19] + (solidAreaVertices[26] - solidAreaVertices[19]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[20] + (solidAreaVertices[27] - solidAreaVertices[20]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[21] + (solidAreaVertices[28] - solidAreaVertices[21]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[22] + (solidAreaVertices[29] - solidAreaVertices[22]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[23] + (solidAreaVertices[30] - solidAreaVertices[23]) * (1 - hexCellData.RiverWaterDepth),
-            solidAreaVertices[24] + (solidAreaVertices[31] - solidAreaVertices[24]) * (1 - hexCellData.RiverWaterDepth),
+            solidAreaVertices[19] + (solidAreaVertices[26] - solidAreaVertices[19]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[20] + (solidAreaVertices[27] - solidAreaVertices[20]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[21] + (solidAreaVertices[28] - solidAreaVertices[21]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[22] + (solidAreaVertices[29] - solidAreaVertices[22]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[23] + (solidAreaVertices[30] - solidAreaVertices[23]) * (1 - ctx.Cell.RiverWaterDepth),
+            solidAreaVertices[24] + (solidAreaVertices[31] - solidAreaVertices[24]) * (1 - ctx.Cell.RiverWaterDepth),
         };
-        hexCellData.RiverVertices.AddRange(arrVertices);
+        
 
-        return hexCellData.RiverVertices.ToArray();
+        return arrVertices;
     }
 
     /// <summary>
     ///  返回地块实心区域的河水坐标UV
     /// </summary>
-    public Vector2[] GetRiverUV(ref HexCellData hexCellData, List<int> l)
+    public Vector2[] BuildRiverUV(CellBuildContext ctx, List<int> l, int riverVertexCount)
     {
-        Enums.HexDirection incomingDirection = hexCellData.RiverIncomingDirection;
-        Enums.HexDirection outgoingDirection = hexCellData.RiverOutgoingDirection;
+        List<Vector2> result = new List<Vector2>();
+        Enums.HexDirection incomingDirection = ctx.Cell.RiverIncomingDirection;
+        Enums.HexDirection outgoingDirection = ctx.Cell.RiverOutgoingDirection;
 
-        if ((hexCellData.HexType == Enums.HexType.RiverSource || hexCellData.HexType == Enums.HexType.RiverEnd) && l.Count > 6)
+        if ((ctx.Cell.HexType == Enums.HexType.RiverSource || ctx.Cell.HexType == Enums.HexType.RiverEnd) && l.Count > 6)
         {
             //所需点按河流方向排序 - 河道源头、终点都有5个点、3*3=9 个排序
             int[] points = new int[]
@@ -3514,35 +3260,35 @@ T2_8、P2_4、T2_9✔
                 l[4],l[5],
             };
 
-            for (int i = 0; i < hexCellData.RiverVertices.Count; i++)
+            for (int i = 0; i < riverVertexCount; i++)
             {
                 if (i == points[0])
                 {
-                    hexCellData.RiverUV.Add(hexCellData.HexType == Enums.HexType.RiverSource ? new Vector2(0.5f, 0) : new Vector2(0.5f, 1));
+                    result.Add(ctx.Cell.HexType == Enums.HexType.RiverSource ? new Vector2(0.5f, 0) : new Vector2(0.5f, 1));
                 }
                 else if (i == points[1])
                 {
-                    hexCellData.RiverUV.Add(hexCellData.HexType == Enums.HexType.RiverSource ? new Vector2(0, 0.4f) : new Vector2(0, 0.6f));
+                    result.Add(ctx.Cell.HexType == Enums.HexType.RiverSource ? new Vector2(0, 0.4f) : new Vector2(0, 0.6f));
                 }
                 else if (i == points[2])
                 {
-                    hexCellData.RiverUV.Add(hexCellData.HexType == Enums.HexType.RiverSource ? new Vector2(1, 0.4f) : new Vector2(1, 0.6f));
+                    result.Add(ctx.Cell.HexType == Enums.HexType.RiverSource ? new Vector2(1, 0.4f) : new Vector2(1, 0.6f));
                 }
                 else if (i == points[3])
                 {
-                    hexCellData.RiverUV.Add(hexCellData.HexType == Enums.HexType.RiverSource ? new Vector2(0, 1) : new Vector2(0, 0));
+                    result.Add(ctx.Cell.HexType == Enums.HexType.RiverSource ? new Vector2(0, 1) : new Vector2(0, 0));
                 }
                 else if (i == points[4])
                 {
-                    hexCellData.RiverUV.Add(hexCellData.HexType == Enums.HexType.RiverSource ? new Vector2(1, 1) : new Vector2(1, 0));
+                    result.Add(ctx.Cell.HexType == Enums.HexType.RiverSource ? new Vector2(1, 1) : new Vector2(1, 0));
                 }
                 else
                 {
-                    hexCellData.RiverUV.Add(new Vector2(0.5f, 0.5f));
+                    result.Add(new Vector2(0.5f, 0.5f));
                 }
             }
         }
-        else if (hexCellData.HexType == Enums.HexType.RiverMidstream && l.Count > 0)
+        else if (ctx.Cell.HexType == Enums.HexType.RiverMidstream && l.Count > 0)
         {
             int intervalCount = Mathf.Abs((int)outgoingDirection - (int)incomingDirection);
             //[出入方向相邻]
@@ -3560,50 +3306,50 @@ T2_8、P2_4、T2_9✔
                     l[13],l[14],
                 };
 
-                for (int i = 0; i < hexCellData.RiverVertices.Count; i++)
+                for (int i = 0; i < riverVertexCount; i++)
                 {
                     if (i == points[0])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0.45f, 0.45f));
+                        result.Add(new Vector2(0.45f, 0.45f));
                     }
                     else if (i == points[1])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0, 0.3f));
+                        result.Add(new Vector2(0, 0.3f));
                     }
                     else if (i == points[2])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(1, 0.3f));
+                        result.Add(new Vector2(1, 0.3f));
                     }
                     else if (i == points[3])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0, 0));
+                        result.Add(new Vector2(0, 0));
                     }
                     else if (i == points[4])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(1, 0));
+                        result.Add(new Vector2(1, 0));
                     }
 
 
                     else if (i == points[5])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0, 0.7f));
+                        result.Add(new Vector2(0, 0.7f));
                     }
                     else if (i == points[6])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(1, 0.7f));
+                        result.Add(new Vector2(1, 0.7f));
                     }
                     else if (i == points[7])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(1, 1));
+                        result.Add(new Vector2(1, 1));
                     }
                     else if (i == points[8])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0, 1));
+                        result.Add(new Vector2(0, 1));
                     }
 
                     else
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0.5f, 0.5f));
+                        result.Add(new Vector2(0.5f, 0.5f));
                     }
                 }
             }
@@ -3634,50 +3380,50 @@ T2_8、P2_4、T2_9✔
                     l[13],l[14],
                 };
 
-                for (int i = 0; i < hexCellData.RiverVertices.Count; i++)
+                for (int i = 0; i < riverVertexCount; i++)
                 {
                     if (i == points[0])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(1, 0));
+                        result.Add(new Vector2(1, 0));
                     }
                     else if (i == points[1])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0, 0));
+                        result.Add(new Vector2(0, 0));
                     }
                     else if (i == points[2])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(1, 0.3f));
+                        result.Add(new Vector2(1, 0.3f));
                     }
                     else if (i == points[3])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0, 0.3f));
+                        result.Add(new Vector2(0, 0.3f));
                     }
 
                     else if (i == points[4])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0, 0.5f));
+                        result.Add(new Vector2(0, 0.5f));
                     }
 
                     else if (i == points[5])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0, 0.7f));
+                        result.Add(new Vector2(0, 0.7f));
                     }
                     else if (i == points[6])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(1, 0.7f));
+                        result.Add(new Vector2(1, 0.7f));
                     }
                     else if (i == points[7])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0, 1));
+                        result.Add(new Vector2(0, 1));
                     }
                     else if (i == points[8])
                     {
-                        hexCellData.RiverUV.Add(new Vector2(1, 1));
+                        result.Add(new Vector2(1, 1));
                     }
 
                     else
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0.5f, 0.5f));
+                        result.Add(new Vector2(0.5f, 0.5f));
                     }
                 }
 
@@ -3691,48 +3437,48 @@ T2_8、P2_4、T2_9✔
                     l[0],l[1],
                     l[2],l[5],
                 };
-                for (int i = 0; i < hexCellData.RiverVertices.Count; i++)
+                for (int i = 0; i < riverVertexCount; i++)
                 {
                     bool isAscending = (incomingDirection == Enums.HexDirection.NE || incomingDirection == Enums.HexDirection.E || incomingDirection == Enums.HexDirection.SE);
                     if (i == points[0])
                     {
-                        hexCellData.RiverUV.Add(isAscending ? new Vector2(0, 0) : new Vector2(0, 1));
+                        result.Add(isAscending ? new Vector2(0, 0) : new Vector2(0, 1));
                     }
                     else if (i == points[1])
                     {
-                        hexCellData.RiverUV.Add(isAscending ? new Vector2(1, 0) : new Vector2(1, 1));
+                        result.Add(isAscending ? new Vector2(1, 0) : new Vector2(1, 1));
                     }
                     else if (i == points[2])
                     {
-                        hexCellData.RiverUV.Add(isAscending ? new Vector2(0, 1) : new Vector2(0, 0));
+                        result.Add(isAscending ? new Vector2(0, 1) : new Vector2(0, 0));
                     }
                     else if (i == points[3])
                     {
-                        hexCellData.RiverUV.Add(isAscending ? new Vector2(1, 1) : new Vector2(1, 0));
+                        result.Add(isAscending ? new Vector2(1, 1) : new Vector2(1, 0));
                     }
                     else
                     {
-                        hexCellData.RiverUV.Add(new Vector2(0.5f, 0.5f));
+                        result.Add(new Vector2(0.5f, 0.5f));
                     }
                 }
             }
         }
         else
         {
-            for (int i = 0; i < hexCellData.RiverVertices.Count; i++)
+            for (int i = 0; i < riverVertexCount; i++)
             {
-                hexCellData.RiverUV.Add(new Vector2(0.5f, 0.5f));
+                result.Add(new Vector2(0.5f, 0.5f));
             }
         }
 
-        return hexCellData.RiverUV.ToArray();
+        return result.ToArray();
     }
 
     /// <summary>
     /// 获取河水2实心区域的绘制顺序 - (河水始末地块)
     /// </summary>
     /// <param name="direction">方向</param>
-    public List<int> GetRiverWater2DrawOrder(Enums.HexDirection direction)
+    public List<int> BuildRiverWater2DrawOrder(Enums.HexDirection direction)
     {
         switch (direction)
         {
@@ -3792,7 +3538,7 @@ T2_8、P2_4、T2_9✔
     /// <summary>
     /// 获取河水3实心区域的绘制顺序 - (河水中游地块)
     /// </summary>
-    public List<int> GetRiverWater3DrawOrder(ref HexCellData hexCellData)
+    public List<int> BuildRiverWater3DrawOrder(HexCellData hexCellData)
     {
         Enums.HexDirection incomingDirection = hexCellData.RiverIncomingDirection;
         Enums.HexDirection outgoingDirection = hexCellData.RiverOutgoingDirection;
@@ -3801,8 +3547,8 @@ T2_8、P2_4、T2_9✔
         //[出入方向相邻] - 18个int
         if (intervalCount == 1 || intervalCount == 5)
         {
-            List<int> l = GetRiverWater2DrawOrder(incomingDirection);
-            l.AddRange(GetRiverWater2DrawOrder(outgoingDirection));
+            List<int> l = BuildRiverWater2DrawOrder(incomingDirection);
+            l.AddRange(BuildRiverWater2DrawOrder(outgoingDirection));
             return l;
         }
         //[出入方向相差2] - 21个int
@@ -3843,8 +3589,8 @@ T2_8、P2_4、T2_9✔
                     break;
             }
 
-            List<int> l = GetRiverWater2DrawOrder(incomingDirection);
-            l.AddRange(GetRiverWater2DrawOrder(outgoingDirection));
+            List<int> l = BuildRiverWater2DrawOrder(incomingDirection);
+            l.AddRange(BuildRiverWater2DrawOrder(outgoingDirection));
             l.AddRange(link);
             return l;
 
@@ -3888,12 +3634,12 @@ T2_8、P2_4、T2_9✔
     /// <summary>
     /// 返回地块下游过渡区域的河水坐标
     /// </summary>
-    public List<Vector3> GetOutgoingRiverVertices(ref HexCellData hexCellData, IMapDataService _mapDataService)
+    public List<Vector3> BuildOutgoingRiverVertices(CellBuildContext ctx)
     {
         //坡河水
         //坐标顺序是顺时针 - 邻居 - 自己
         List<int> points = new List<int>();
-        switch (hexCellData.RiverOutgoingDirection)
+        switch (ctx.Cell.RiverOutgoingDirection)
         {
             case Enums.HexDirection.NE:
                 points.AddRange(new int[] { 14, 13, 8, 7 });
@@ -3916,46 +3662,45 @@ T2_8、P2_4、T2_9✔
         }
 
         Vector3[] arrRectVertices = new Vector3[4];
-        if (_mapDataService.GetNeighbor(hexCellData, hexCellData.RiverOutgoingDirection) != null)
+        if (ctx.View.GetNeighbor(ctx.Cell, ctx.Cell.RiverOutgoingDirection) != null)
         {
             arrRectVertices = new Vector3[]
             {
-                _mapDataService.GetNeighbor(hexCellData, hexCellData.RiverOutgoingDirection).SolidAreaVertices[points[0]] + new Vector3(0, hexCellData.RiverDepth, 0) * ( 1 - hexCellData.RiverWaterDepth ),
-                _mapDataService.GetNeighbor(hexCellData, hexCellData.RiverOutgoingDirection).SolidAreaVertices[points[1]] + new Vector3(0, hexCellData.RiverDepth, 0) * ( 1 - hexCellData.RiverWaterDepth ),
-                hexCellData.SolidAreaVertices[points[2]] + new Vector3(0, hexCellData.RiverDepth, 0) * ( 1 - hexCellData.RiverWaterDepth ),
-                hexCellData.SolidAreaVertices[points[3]] + new Vector3(0, hexCellData.RiverDepth, 0) * ( 1 - hexCellData.RiverWaterDepth ),
+                ctx.GetNeighborSolid(ctx.Cell.RiverOutgoingDirection)[points[0]] + new Vector3(0, ctx.Cell.RiverDepth, 0) * ( 1 - ctx.Cell.RiverWaterDepth ),
+                ctx.GetNeighborSolid(ctx.Cell.RiverOutgoingDirection)[points[1]] + new Vector3(0, ctx.Cell.RiverDepth, 0) * ( 1 - ctx.Cell.RiverWaterDepth ),
+                ctx.Solid[points[2]] + new Vector3(0, ctx.Cell.RiverDepth, 0) * ( 1 - ctx.Cell.RiverWaterDepth ),
+                ctx.Solid[points[3]] + new Vector3(0, ctx.Cell.RiverDepth, 0) * ( 1 - ctx.Cell.RiverWaterDepth ),
             };
         }
 
-        hexCellData.OutgoingRiverVertices.AddRange(arrRectVertices);
-        return hexCellData.OutgoingRiverVertices;
+        
+        return arrRectVertices.ToList();
     }
 
     /// <summary>
     ///  返回地块下游过渡区域的河水坐标UV
     /// </summary>
-    public Vector2[] GetOutgoingRiverSlopUV(ref HexCellData hexCellData)
+    public Vector2[] BuildOutgoingRiverSlopUV()
     {
-        hexCellData.OutgoingRiverUV.AddRange(new Vector2[]{
+        return new Vector2[]
+        {
             new Vector2(0,1),
             new Vector2(1,1),
             new Vector2(0,0),
             new Vector2(1,0)
-
-        });
-        return hexCellData.OutgoingRiverUV.ToArray();
+        };
     }
 
     /// <summary>
     ///  返回地块下游过渡区域的河水绘制顺序
     /// </summary>
-    public int[] GetOutgoingRiverSlopDrawOrder(ref HexCellData hexCellData)
+    public int[] BuildOutgoingRiverSlopDrawOrder()
     {
-        hexCellData.OutgoingRiverDrawOrder.AddRange(new int[]{
+        return new int[]
+        {
             0,1,2,
             0,2,3,
-        });
-        return hexCellData.OutgoingRiverDrawOrder.ToArray();
+        };
     }
 
 
@@ -3963,25 +3708,25 @@ T2_8、P2_4、T2_9✔
     /// <summary>
     /// 返回湖或海实心区域坐标
     /// </summary>
-    public Vector3[] GetlakeOrSeaVertices(ref HexCellData hexCellData)
+    public Vector3[] BuildLakeOrSeaVertices(CellBuildContext ctx)
     {
-        hexCellData.lakeOrSeaVertices = hexCellData.SolidAreaVertices.GetRange(0, 25);
+        Vector3[] lakeOrSea = new Vector3[25]; System.Array.Copy(ctx.Solid, lakeOrSea, 25);
         // 视觉水面世界Y = (判定水位 + 视觉偏移) * elevationStep。
         // 偏移由 waterSurfaceOffset 配置（默认2：水面顶到判定水位之上第2层的名义高度）。
         // 注意：视觉水面与判定水位(seaLevel)是有意解耦的——判定水位决定通行/材质/海岸，
         // 视觉水面只影响画出来的海面平面，两者可不同层（见 waterSurfaceOffset 说明）。
-        float waterSurfaceY = hexCellData.CenterWorldCoordinate.y + (hexCellData.waterLevel + _config.waterSurfaceOffset) * _config.elevationStep;
-        for (int i = 0; i < hexCellData.lakeOrSeaVertices.Count; i++)
+        float waterSurfaceY = ctx.Cell.CenterWorldCoordinate.y + (ctx.Cell.waterLevel + _config.waterSurfaceOffset) * _config.elevationStep;
+        for (int i = 0; i < lakeOrSea.Length; i++)
         {
-            hexCellData.lakeOrSeaVertices[i] = new Vector3(hexCellData.lakeOrSeaVertices[i].x, waterSurfaceY, hexCellData.lakeOrSeaVertices[i].z);
+            lakeOrSea[i] = new Vector3(lakeOrSea[i].x, waterSurfaceY, lakeOrSea[i].z);
         }
-        return hexCellData.lakeOrSeaVertices.ToArray();
+        return lakeOrSea;
     }
 
     /// <summary>
     /// 设置湖或海实心区域UV
     /// </summary>
-    public Vector2[] GetlakeOrSeaUV(ref HexCellData hexCellData)
+    public Vector2[] BuildLakeOrSeaUV()
     {
         //实心区域顶点UV
         Vector2[] arrUV = new Vector2[]
@@ -4020,7 +3765,7 @@ T2_8、P2_4、T2_9✔
             new Vector2(1.0f/3, 1.0f/3),
             new Vector2(2.0f/3, 1.0f/3),
         };
-        hexCellData.lakeOrSeaUV.AddRange(arrUV);
+        
 
         return arrUV;
     }
@@ -4029,18 +3774,18 @@ T2_8、P2_4、T2_9✔
     /// <summary>
     /// 设置湖或海实心区域的顶点绘制顺序
     /// </summary>
-    public int[] GetlakeOrSeaDrawOrder(ref HexCellData hexCellData)
+    public int[] BuildLakeOrSeaDrawOrder()
     {
         List<int> arr = new List<int>();
         ///*
-        hexCellData.lakeOrSeaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NE));
-        hexCellData.lakeOrSeaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.E));
-        hexCellData.lakeOrSeaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SE));
-        hexCellData.lakeOrSeaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.SW));
-        hexCellData.lakeOrSeaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.W));
-        hexCellData.lakeOrSeaDrawOrder.AddRange(GetPlaneFace(Enums.HexDirection.NW));
+        arr.AddRange(GetPlaneFace(Enums.HexDirection.NE));
+        arr.AddRange(GetPlaneFace(Enums.HexDirection.E));
+        arr.AddRange(GetPlaneFace(Enums.HexDirection.SE));
+        arr.AddRange(GetPlaneFace(Enums.HexDirection.SW));
+        arr.AddRange(GetPlaneFace(Enums.HexDirection.W));
+        arr.AddRange(GetPlaneFace(Enums.HexDirection.NW));
 
-        arr.AddRange(hexCellData.lakeOrSeaDrawOrder);
+        
         return arr.ToArray();
     }
 
@@ -4049,62 +3794,59 @@ T2_8、P2_4、T2_9✔
     /// 返回湖或海矩形过渡区域的顶点坐标
     /// </summary>
     /// <param name="direction">哪个方向的矩形</param>
-    public List<Vector3> GetlakeOrSeaRectVertices(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<Vector3> BuildLakeOrSeaRectVertices(CellBuildContext ctx, Enums.HexDirection direction)
     {
         //顶点组顺序是原本的坡顶点组
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
+        if (direction == Enums.HexDirection.NE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.NE) != null)
         {
             //需要自己的1、2点 + NE邻居的4、5点
             //排序应为1、NE_5、NE_4、2
             Vector3[] arrRectVertices = new Vector3[]
             {
-                hexCellData.lakeOrSeaVertices[1],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).lakeOrSeaVertices[5],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).lakeOrSeaVertices[14],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).lakeOrSeaVertices[13],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).lakeOrSeaVertices[4],
-                hexCellData.lakeOrSeaVertices[2],
-                hexCellData.lakeOrSeaVertices[8],
-                hexCellData.lakeOrSeaVertices[7],
+                ctx.SelfLake[1],
+                ctx.GetNeighborLake(Enums.HexDirection.NE)[5],
+                ctx.GetNeighborLake(Enums.HexDirection.NE)[14],
+                ctx.GetNeighborLake(Enums.HexDirection.NE)[13],
+                ctx.GetNeighborLake(Enums.HexDirection.NE)[4],
+                ctx.SelfLake[2],
+                ctx.SelfLake[8],
+                ctx.SelfLake[7],
             };
-            hexCellData.lakeOrSeaNERectVertices.AddRange(arrRectVertices);
-            return hexCellData.lakeOrSeaNERectVertices;
+            return arrRectVertices.ToList();
         }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        else if (direction == Enums.HexDirection.E && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.E) != null)
         {
             //需要自己的2、3点 + E邻居的5、6点
             //排序应为2、E_6、E_5、3
             Vector3[] arrRectVertices = new Vector3[]
             {
-                hexCellData.lakeOrSeaVertices[2],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).lakeOrSeaVertices[6],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).lakeOrSeaVertices[16],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).lakeOrSeaVertices[15],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).lakeOrSeaVertices[5],
-                hexCellData.lakeOrSeaVertices[3],
-                hexCellData.lakeOrSeaVertices[10],
-                hexCellData.lakeOrSeaVertices[9],
+                ctx.SelfLake[2],
+                ctx.GetNeighborLake(Enums.HexDirection.E)[6],
+                ctx.GetNeighborLake(Enums.HexDirection.E)[16],
+                ctx.GetNeighborLake(Enums.HexDirection.E)[15],
+                ctx.GetNeighborLake(Enums.HexDirection.E)[5],
+                ctx.SelfLake[3],
+                ctx.SelfLake[10],
+                ctx.SelfLake[9],
             };
-            hexCellData.lakeOrSeaERectVertices.AddRange(arrRectVertices);
-            return hexCellData.lakeOrSeaERectVertices;
+            return arrRectVertices.ToList();
         }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction == Enums.HexDirection.SE && ctx.View.GetNeighbor(ctx.Cell, Enums.HexDirection.SE) != null)
         {
             //需要自己的3、4点 + SE邻居的6、1点
             //排序应为3、SE_1、SE_6、4
             Vector3[] arrRectVertices = new Vector3[]
             {
-                hexCellData.lakeOrSeaVertices[3],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).lakeOrSeaVertices[1],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).lakeOrSeaVertices[18],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).lakeOrSeaVertices[17],
-                _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).lakeOrSeaVertices[6],
-                hexCellData.lakeOrSeaVertices[4],
-                hexCellData.lakeOrSeaVertices[12],
-                hexCellData.lakeOrSeaVertices[11],
+                ctx.SelfLake[3],
+                ctx.GetNeighborLake(Enums.HexDirection.SE)[1],
+                ctx.GetNeighborLake(Enums.HexDirection.SE)[18],
+                ctx.GetNeighborLake(Enums.HexDirection.SE)[17],
+                ctx.GetNeighborLake(Enums.HexDirection.SE)[6],
+                ctx.SelfLake[4],
+                ctx.SelfLake[12],
+                ctx.SelfLake[11],
             };
-            hexCellData.lakeOrSeaSERectVertices.AddRange(arrRectVertices);
-            return hexCellData.lakeOrSeaSERectVertices;
+            return arrRectVertices.ToList();
         }
         else
         {
@@ -4117,8 +3859,13 @@ T2_8、P2_4、T2_9✔
     /// 返回湖或海矩形过渡区域的uv
     /// </summary>
     /// <param name="direction">哪个方向的矩形</param>
-    public List<Vector2> GetlakeOrSeaRectUV(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<Vector2> BuildLakeOrSeaRectUV(Enums.HexDirection direction)
     {
+        if (direction != Enums.HexDirection.NE && direction != Enums.HexDirection.E && direction != Enums.HexDirection.SE)
+        {
+            Debug.LogError("方向输入出错");
+            return null;
+        }
         Vector2[] arrRectUV = new Vector2[]
         {
             new Vector2(0, 0),
@@ -4130,34 +3877,20 @@ T2_8、P2_4、T2_9✔
             new Vector2(1f/3, 0),
             new Vector2(2f/3, 0),
         };
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
-        {
-            hexCellData.lakeOrSeaNERectUV.AddRange(arrRectUV);
-            return hexCellData.lakeOrSeaNERectUV;
-        }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
-        {
-            hexCellData.lakeOrSeaERectUV.AddRange(arrRectUV);
-            return hexCellData.lakeOrSeaERectUV;
-        }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
-        {
-            hexCellData.lakeOrSeaSERectUV.AddRange(arrRectUV);
-            return hexCellData.lakeOrSeaSERectUV;
-        }
-        else
-        {
-            Debug.LogError("方向输入出错");
-            return null;
-        }
+        return arrRectUV.ToList();
     }
 
     /// <summary>
     /// 返回湖或海矩形过渡区域的矩形绘制顺序
     /// </summary>
     /// <param name="direction">哪个方向的矩形</param>
-    public List<int> GetlakeOrSeaRectDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<int> BuildLakeOrSeaRectDrawOrder(Enums.HexDirection direction)
     {
+        if (direction != Enums.HexDirection.NE && direction != Enums.HexDirection.E && direction != Enums.HexDirection.SE)
+        {
+            Debug.LogError("方向输入出错");
+            return null;
+        }
         int[] arrRectDrawOrder = new int[]
         {
             0,1,2,
@@ -4167,26 +3900,7 @@ T2_8、P2_4、T2_9✔
             6,3,4,
             6,4,5,
         };
-        if (direction == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null)
-        {
-            hexCellData.lakeOrSeaNERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.lakeOrSeaNERectDrawOrder;
-        }
-        else if (direction == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
-        {
-            hexCellData.lakeOrSeaERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.lakeOrSeaERectDrawOrder;
-        }
-        else if (direction == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
-        {
-            hexCellData.lakeOrSeaSERectDrawOrder.AddRange(arrRectDrawOrder);
-            return hexCellData.lakeOrSeaSERectDrawOrder;
-        }
-        else
-        {
-            Debug.LogError("方向输入出错");
-            return null;
-        }
+        return arrRectDrawOrder.ToList();
     }
 
     /////////////////////////////////////////////////////////////////////- 三角 -/////////////////////////////////////////////////////////////////////
@@ -4195,25 +3909,26 @@ T2_8、P2_4、T2_9✔
     /// </summary>
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param>
-    public List<Vector3> GetlakeOrSeaTriVertices(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService)
+    public List<Vector3> BuildLakeOrSeaTriVertices(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1)
     {
-        if (direction0 == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null && direction1 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        List<Vector3> result = new List<Vector3>();
+        if (direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E)
         {
             //需要自己的2点 + NE邻居的4点 + E邻居的6点
             //排序应为2、NE_4、E_6
-            hexCellData.lakeOrSeaNE_ETriVertices.Add(hexCellData.lakeOrSeaVertices[2]);
-            hexCellData.lakeOrSeaNE_ETriVertices.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).lakeOrSeaVertices[4]);
-            hexCellData.lakeOrSeaNE_ETriVertices.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).lakeOrSeaVertices[6]);
-            return hexCellData.lakeOrSeaNE_ETriVertices;
+            result.Add(ctx.SelfLake[2]);
+            result.Add(ctx.GetNeighborLake(Enums.HexDirection.NE)[4]);
+            result.Add(ctx.GetNeighborLake(Enums.HexDirection.E)[6]);
+            return result;
         }
-        else if (direction0 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null && direction1 == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction0 == Enums.HexDirection.E && direction1 == Enums.HexDirection.SE)
         {
             //需要自己的3点 + E邻居的5点 + SE邻居的1点
             //排序应为3、E_5、SE_1
-            hexCellData.lakeOrSeaE_SETriVertices.Add(hexCellData.lakeOrSeaVertices[3]);
-            hexCellData.lakeOrSeaE_SETriVertices.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).lakeOrSeaVertices[5]);
-            hexCellData.lakeOrSeaE_SETriVertices.Add(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).lakeOrSeaVertices[1]);
-            return hexCellData.lakeOrSeaE_SETriVertices;
+            result.Add(ctx.SelfLake[3]);
+            result.Add(ctx.GetNeighborLake(Enums.HexDirection.E)[5]);
+            result.Add(ctx.GetNeighborLake(Enums.HexDirection.SE)[1]);
+            return result;
         }
         else
         {
@@ -4227,25 +3942,26 @@ T2_8、P2_4、T2_9✔
     /// </summary>
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param>
-    public List<Vector2> GetlakeOrSeaTriUV(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService)
+    public List<Vector2> BuildLakeOrSeaTriUV(Enums.HexDirection direction0, Enums.HexDirection direction1)
     {
-        if (direction0 == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null && direction1 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        List<Vector2> result = new List<Vector2>();
+        if (direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E)
         {
             //需要自己的2点 + NE邻居的4点 + E邻居的6点
             //排序应为2、NE_4、E_6
-            hexCellData.lakeOrSeaNE_ETriUV.Add(new Vector2(0, 0));
-            hexCellData.lakeOrSeaNE_ETriUV.Add(new Vector2(0.5f, 1));
-            hexCellData.lakeOrSeaNE_ETriUV.Add(new Vector2(0, 1));
-            return hexCellData.lakeOrSeaNE_ETriUV;
+            result.Add(new Vector2(0, 0));
+            result.Add(new Vector2(0.5f, 1));
+            result.Add(new Vector2(0, 1));
+            return result;
         }
-        else if (direction0 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null && direction1 == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction0 == Enums.HexDirection.E && direction1 == Enums.HexDirection.SE)
         {
             //需要自己的3点 + E邻居的5点 + SE邻居的1点
             //排序应为3、E_5、SE_1
-            hexCellData.lakeOrSeaE_SETriUV.Add(new Vector2(0, 0));
-            hexCellData.lakeOrSeaE_SETriUV.Add(new Vector2(0.5f, 1));
-            hexCellData.lakeOrSeaE_SETriUV.Add(new Vector2(0, 1));
-            return hexCellData.lakeOrSeaE_SETriUV;
+            result.Add(new Vector2(0, 0));
+            result.Add(new Vector2(0.5f, 1));
+            result.Add(new Vector2(0, 1));
+            return result;
         }
         else
         {
@@ -4259,25 +3975,26 @@ T2_8、P2_4、T2_9✔
     /// </summary>
     /// <param name="direction0">顺时针方向第一个夹角</param>
     /// <param name="direction1">顺时针方向第二个夹角</param>
-    public List<int> GetlakeOrSeaTriDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService)
+    public List<int> BuildLakeOrSeaTriDrawOrder(Enums.HexDirection direction0, Enums.HexDirection direction1)
     {
-        if (direction0 == Enums.HexDirection.NE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE) != null && direction1 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null)
+        List<int> result = new List<int>();
+        if (direction0 == Enums.HexDirection.NE && direction1 == Enums.HexDirection.E)
         {
             //需要自己的2点 + NE邻居的4点 + E邻居的6点
             //排序应为2、NE_4、E_6
-            hexCellData.lakeOrSeaNE_ETriDrawOrder.Add(0);
-            hexCellData.lakeOrSeaNE_ETriDrawOrder.Add(1);
-            hexCellData.lakeOrSeaNE_ETriDrawOrder.Add(2);
-            return hexCellData.lakeOrSeaNE_ETriDrawOrder;
+            result.Add(0);
+            result.Add(1);
+            result.Add(2);
+            return result;
         }
-        else if (direction0 == Enums.HexDirection.E && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E) != null && direction1 == Enums.HexDirection.SE && _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE) != null)
+        else if (direction0 == Enums.HexDirection.E && direction1 == Enums.HexDirection.SE)
         {
             //需要自己的3点 + E邻居的5点 + SE邻居的1点
             //排序应为3、E_5、SE_1
-            hexCellData.lakeOrSeaE_SETriDrawOrder.Add(0);
-            hexCellData.lakeOrSeaE_SETriDrawOrder.Add(1);
-            hexCellData.lakeOrSeaE_SETriDrawOrder.Add(2);
-            return hexCellData.lakeOrSeaE_SETriDrawOrder;
+            result.Add(0);
+            result.Add(1);
+            result.Add(2);
+            return result;
         }
         else
         {
@@ -4291,7 +4008,7 @@ T2_8、P2_4、T2_9✔
     /// <summary>
     /// 返回海岸矩形过渡区域某个方向的顶点坐标
     /// </summary>
-    public List<Vector3> GetOneDirectionCoastRectVertices(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<Vector3> BuildCoastRectVertices(CellBuildContext ctx, Enums.HexDirection direction)
     {
         //实心区域顶点沿着方向延申，形成直线，直线与地图网格的交点即为顶点。顶点按顺时针排序
         int numA, numB, numC, numD;
@@ -4327,24 +4044,24 @@ T2_8、P2_4、T2_9✔
                 neighborNumA = 0; neighborNumB = 0; neighborNumC = 0; neighborNumD = 0;
                 break;
         }
-        Vector3 p1 = hexCellData.lakeOrSeaVertices[numA];
-        Vector3 p2 = hexCellData.lakeOrSeaVertices[numB];
-        Vector3 p3 = hexCellData.lakeOrSeaVertices[numC];
-        Vector3 p4 = hexCellData.lakeOrSeaVertices[numD];
-        Vector3 v1 = GetDirectionVector3(ref hexCellData, p1, direction);
-        Vector3 v2 = GetDirectionVector3(ref hexCellData, p2, direction);
-        Vector3 v3 = GetDirectionVector3(ref hexCellData, p3, direction);
-        Vector3 v4 = GetDirectionVector3(ref hexCellData, p4, direction);
+        Vector3 p1 = ctx.SelfLake[numA];
+        Vector3 p2 = ctx.SelfLake[numB];
+        Vector3 p3 = ctx.SelfLake[numC];
+        Vector3 p4 = ctx.SelfLake[numD];
+        Vector3 v1 = GetDirectionVector3(ctx, p1, direction);
+        Vector3 v2 = GetDirectionVector3(ctx, p2, direction);
+        Vector3 v3 = GetDirectionVector3(ctx, p3, direction);
+        Vector3 v4 = GetDirectionVector3(ctx, p4, direction);
         //float maxDistance = 100f; // 最大检测距离（避免无限延伸）
 
         // 陆地侧顶点：保留 XZ（伸到相邻陆地海岸边的水平位置），但把 Y 压平到水面高度，
         // 使海岸边缘不再斜着爬到陆地海岸线，而是与实心水面同高（水陆之间的竖直落差不再由此填充）。
         float wy = p1.y; // 水面高度（lakeOrSeaVertices 各点 Y 相同）
-        HexCellData neighbor = _mapDataService.GetNeighbor(hexCellData, direction);
-        Vector3 nA = neighbor.SolidAreaVertices[neighborNumA];
-        Vector3 nB = neighbor.SolidAreaVertices[neighborNumB];
-        Vector3 nC = neighbor.SolidAreaVertices[neighborNumC];
-        Vector3 nD = neighbor.SolidAreaVertices[neighborNumD];
+        Vector3[] neighborSolid = ctx.GetNeighborSolid(direction);
+        Vector3 nA = neighborSolid[neighborNumA];
+        Vector3 nB = neighborSolid[neighborNumB];
+        Vector3 nC = neighborSolid[neighborNumC];
+        Vector3 nD = neighborSolid[neighborNumD];
 
         //返回的点排序是：自己1、对方1'、对方2'、对方3'、对方4'、自己4、自己3、自己2
         return new List<Vector3>()
@@ -4364,7 +4081,7 @@ T2_8、P2_4、T2_9✔
     /// <summary>
     /// 获取某个点，某方向的单位向量
     /// </summary>
-    private Vector3 GetDirectionVector3(ref HexCellData hexCellData, Vector3 point, Enums.HexDirection direction)
+    private Vector3 GetDirectionVector3(CellBuildContext ctx, Vector3 point, Enums.HexDirection direction)
     {
         int numA, numB;
         switch (direction)
@@ -4391,11 +4108,11 @@ T2_8、P2_4、T2_9✔
                 numA = 0; numB = 0;
                 break;
         }
-        if (hexCellData.lakeOrSeaVertices.Count != 0)
+        if (ctx.SelfLake != null && ctx.SelfLake.Length != 0)
         {
-            Vector3 zero = new Vector3(hexCellData.lakeOrSeaVertices[0].x, 0, hexCellData.lakeOrSeaVertices[0].z);
-            Vector3 A = new Vector3(hexCellData.lakeOrSeaVertices[numA].x, 0, hexCellData.lakeOrSeaVertices[numA].z);
-            Vector3 B = new Vector3(hexCellData.lakeOrSeaVertices[numB].x, 0, hexCellData.lakeOrSeaVertices[numB].z);
+            Vector3 zero = new Vector3(ctx.SelfLake[0].x, 0, ctx.SelfLake[0].z);
+            Vector3 A = new Vector3(ctx.SelfLake[numA].x, 0, ctx.SelfLake[numA].z);
+            Vector3 B = new Vector3(ctx.SelfLake[numB].x, 0, ctx.SelfLake[numB].z);
             Vector3 v = (B - A) / 2 - zero;
             return new Vector3(v.x, point.y, v.z).normalized;
         }
@@ -4440,7 +4157,7 @@ T2_8、P2_4、T2_9✔
     /// <summary>
     /// 返回海岸矩形过渡区域的uv
     /// </summary>
-    public List<Vector2> GetCoastRectUV(ref HexCellData hexCellData, Vector3[] vertices)
+    public List<Vector2> BuildCoastRectUV(Vector3[] vertices)
     {
         List<Vector2> arrRectUV = new List<Vector2>();
         for (int i = 0; i < vertices.Length; i += 8)
@@ -4458,14 +4175,13 @@ T2_8、P2_4、T2_9✔
             });
         }
 
-        hexCellData.CoastRectUV.AddRange(arrRectUV);
-        return hexCellData.CoastRectUV;
+        return arrRectUV;
     }
 
     /// <summary>
     /// 返回海岸矩形过渡区域的矩形绘制顺序
     /// </summary>
-    public List<int> GetCoastRectDrawOrder(ref HexCellData hexCellData, Vector3[] vertices)
+    public List<int> BuildCoastRectDrawOrder(Vector3[] vertices)
     {
         List<int> arrRectDrawOrder = new List<int>();
         for (int i = 0; i < vertices.Length; i += 8)
@@ -4481,15 +4197,14 @@ T2_8、P2_4、T2_9✔
             });
         }
 
-        hexCellData.CoastRectDrawOrder.AddRange(arrRectDrawOrder);
-        return hexCellData.CoastRectDrawOrder;
+        return arrRectDrawOrder;
     }
 
     ////////////////////////- 三角 -////////////////////////
     /// <summary>
     /// 返回海岸三角过渡区域某个方向的顶点坐标
     /// </summary>
-    public List<Vector3> GetOneDirectionCoastTriVertices(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    public List<Vector3> BuildCoastTriVertices(CellBuildContext ctx, Enums.HexDirection direction)
     {
         //实心区域顶点沿着方向延申，形成直线，直线与地图网格的交点即为顶点。顶点按顺时针排序
         int numA;
@@ -4535,22 +4250,29 @@ T2_8、P2_4、T2_9✔
                 break;
         }
 
-        HexCellData neighborA = _mapDataService.GetNeighbor(hexCellData, directionA);
-        HexCellData neighborB = _mapDataService.GetNeighbor(hexCellData, directionB);
+        HexCellData neighborA = ctx.View.GetNeighbor(ctx.Cell, directionA);
+        HexCellData neighborB = ctx.View.GetNeighbor(ctx.Cell, directionB);
         if (neighborA == null || neighborB == null) { return new List<Vector3>() { }; }
 
-        List<Vector3> vector3sA = neighborA.isCoast ? neighborA.lakeOrSeaVertices : neighborA.SolidAreaVertices;
-        List<Vector3> vector3sB = neighborB.isCoast ? neighborB.lakeOrSeaVertices : neighborB.SolidAreaVertices;
+        // Rendering order must not decide the profile source. Chunked mode used to set
+        // isCoast while visiting each Chunk, so identical water neighbors could provide
+        // lake vertices or terrain vertices depending on dictionary iteration order.
+        Vector3[] vector3sA = WaterLevelConfig.IsWater(neighborA)
+            ? ctx.GetNeighborLake(directionA)
+            : ctx.GetNeighborSolid(directionA);
+        Vector3[] vector3sB = WaterLevelConfig.IsWater(neighborB)
+            ? ctx.GetNeighborLake(directionB)
+            : ctx.GetNeighborSolid(directionB);
 
         // 与矩形海岸一致：另两个角保留 XZ，Y 压平到本格水面高度，使整条海岸边缘与实心水面同高
-        float wy = hexCellData.lakeOrSeaVertices[numA].y;
+        float wy = ctx.SelfLake[numA].y;
         Vector3 cA = vector3sA[neighborNumA];
         Vector3 cB = vector3sB[neighborNumB];
 
         //返回的点排序是：自己1、对方1'、对方2'
         return new List<Vector3>()
         {
-            hexCellData.lakeOrSeaVertices[numA],
+            ctx.SelfLake[numA],
             new Vector3(cA.x, wy, cA.z),
             new Vector3(cB.x, wy, cB.z),
         };
@@ -4559,7 +4281,7 @@ T2_8、P2_4、T2_9✔
     /// <summary>
     /// 返回海岸三角过渡区域的uv
     /// </summary>
-    public List<Vector2> GetCoastTriUV(ref HexCellData hexCellData, Vector3[] vertices)
+    public List<Vector2> BuildCoastTriUV(Vector3[] vertices)
     {
         List<Vector2> arrTriUV = new List<Vector2>();
         for (int i = 0; i < vertices.Length; i += 3)
@@ -4572,14 +4294,13 @@ T2_8、P2_4、T2_9✔
             });
         }
 
-        hexCellData.CoastTriUV.AddRange(arrTriUV);
-        return hexCellData.CoastTriUV;
+        return arrTriUV;
     }
 
     /// <summary>
     /// 返回海岸三角过渡区域的矩形绘制顺序
     /// </summary>
-    public List<int> GetCoastTriDrawOrder(ref HexCellData hexCellData, Vector3[] vertices)
+    public List<int> BuildCoastTriDrawOrder(Vector3[] vertices)
     {
         List<int> arrTriDrawOrder = new List<int>();
         for (int i = 0; i < vertices.Length; i += 3)
@@ -4590,8 +4311,7 @@ T2_8、P2_4、T2_9✔
             });
         }
 
-        hexCellData.CoastTriDrawOrder.AddRange(arrTriDrawOrder);
-        return hexCellData.CoastTriDrawOrder;
+        return arrTriDrawOrder;
     }
 
     /////////////////////////////////////////////////////////////////////- 六边形网格线 -/////////////////////////////////////////////////////////////////////
@@ -4606,22 +4326,23 @@ T2_8、P2_4、T2_9✔
     /// <summary>
     /// 获取网格线的顶点
     /// </summary>
-    public List<Vector3> GetGridVertices(ref HexCellData hexCellData)
+    public List<Vector3> BuildGridVertices(CellBuildContext ctx)
     {
         //一共有 12 个点 - 内圈6个、外圈6个
-        float h = hexCellData.SolidAreaVertices[0].y;
-        Vector3 center = hexCellData.SolidAreaVertices[0];
+        float h = ctx.Solid[0].y;
+        Vector3 center = ctx.Solid[0];
         //外圈6点
         Vector3[] outer = new Vector3[]
         {
-            new Vector3(hexCellData.SolidAreaVertices[1].x,h,hexCellData.SolidAreaVertices[1].z),
-            new Vector3(hexCellData.SolidAreaVertices[2].x,h,hexCellData.SolidAreaVertices[2].z),
-            new Vector3(hexCellData.SolidAreaVertices[3].x,h,hexCellData.SolidAreaVertices[3].z),
-            new Vector3(hexCellData.SolidAreaVertices[4].x,h,hexCellData.SolidAreaVertices[4].z),
-            new Vector3(hexCellData.SolidAreaVertices[5].x,h,hexCellData.SolidAreaVertices[5].z),
-            new Vector3(hexCellData.SolidAreaVertices[6].x,h,hexCellData.SolidAreaVertices[6].z),
+            new Vector3(ctx.Solid[1].x,h,ctx.Solid[1].z),
+            new Vector3(ctx.Solid[2].x,h,ctx.Solid[2].z),
+            new Vector3(ctx.Solid[3].x,h,ctx.Solid[3].z),
+            new Vector3(ctx.Solid[4].x,h,ctx.Solid[4].z),
+            new Vector3(ctx.Solid[5].x,h,ctx.Solid[5].z),
+            new Vector3(ctx.Solid[6].x,h,ctx.Solid[6].z),
         };
-        hexCellData.GridVertices.AddRange(outer);
+        List<Vector3> result = new List<Vector3>();
+        result.AddRange(outer);
 
         //内圈6点
         //这个宽度比率是指（六边形实心区域外径 / 宽度）的比率 - 1时宽度=外径、0时宽度=0
@@ -4644,16 +4365,16 @@ T2_8、P2_4、T2_9✔
             center + innerVector[4] * (1-widthRatio),
             center + innerVector[5] * (1-widthRatio),
         };
-        hexCellData.GridVertices.AddRange(inner);
+        result.AddRange(inner);
 
-        return hexCellData.GridVertices;
+        return result;
     }
 
     /// <summary>
     /// 返回网格线的uv
     /// ∵顶点是固定的，所以uv也可以硬编程
     /// </summary>
-    public List<Vector2> GetGridUV(ref HexCellData hexCellData)
+    public List<Vector2> BuildGridUV()
     {
         List<Vector2> arrGridUV = new List<Vector2>();
         arrGridUV.AddRange(new Vector2[]
@@ -4673,14 +4394,14 @@ T2_8、P2_4、T2_9✔
             new Vector2(1, 0),
         });
 
-        hexCellData.GridUV.AddRange(arrGridUV);
-        return hexCellData.GridUV;
+        
+        return arrGridUV;
     }
 
     /// <summary>
     /// 返回网格线的绘制顺序
     /// </summary>
-    public List<int> GetGridDrawOrder(ref HexCellData hexCellData)
+    public List<int> BuildGridDrawOrder()
     {
         List<int> arrGridDrawOrder = new List<int>();
 
@@ -4705,8 +4426,8 @@ T2_8、P2_4、T2_9✔
             5,6,11,
         });
 
-        hexCellData.GridDrawOrder.AddRange(arrGridDrawOrder);
-        return hexCellData.GridDrawOrder;
+        
+        return arrGridDrawOrder;
     }
 
 
@@ -4827,7 +4548,9 @@ T2_8、P2_4、T2_9✔
                 //收集边缘地块
                 edgeHexCells.Add(hexCells[i]);
                 //收集边缘点 - 去除重复点
-                List<Vector3> v = hexCells[i].SolidAreaVertices;
+                // 【动态地图-阶段一/三】渲染缓存已从 HexCellData 移除写入协议。
+                // 势力范围边界是逻辑派生几何，必须即时无状态计算，不能依赖 SolidAreaVertices 旧缓存。
+                Vector3[] v = ComputeSolidAreaVertices(hexCells[i]);
                 List<int> index = new List<int>();
                 //NE边对应1、2点
                 if (isEdgeAtNE) { index.AddRange(new int[] { 1, 2 }); }
@@ -5140,7 +4863,9 @@ T2_8、P2_4、T2_9✔
 
             edgeHexCells.Add(hexCells[i]);
 
-            List<Vector3> v = hexCells[i].SolidAreaVertices;
+            // 【动态地图-阶段一/三】Chunk/WholeMap 后端都不再写回 SolidAreaVertices；
+            // 城墙边界按当前逻辑高度即时构建，动态地图变化后也能得到最新角点。
+            Vector3[] v = ComputeSolidAreaVertices(hexCells[i]);
             List<int> index = new List<int>();
             if (isEdgeAtNE) { index.AddRange(new int[] { 1, 2 }); }
             if (isEdgeAtE)  { index.AddRange(new int[] { 2, 3 }); }
@@ -5284,16 +5009,16 @@ T2_8、P2_4、T2_9✔
         slopeOuterBoundary = BuildSlopeOuterBoundary(realOutline, rectBoundary, _config.fogConnectorSlopeWidth);
     }
 
-    private static void AddOpenEdgePoints(List<Vector3> outline, HexCellData cell, int direction)
+    private static void AddOpenEdgePoints(List<Vector3> outline, HexCellData cell, Vector3[] cellSolid, int direction)
     {
         switch (direction)
         {
-            case 0: outline.AddRange(new[] { cell.SolidAreaVertices[1], cell.SolidAreaVertices[7], cell.SolidAreaVertices[8], cell.SolidAreaVertices[2] }); break;
-            case 1: outline.AddRange(new[] { cell.SolidAreaVertices[2], cell.SolidAreaVertices[9], cell.SolidAreaVertices[10], cell.SolidAreaVertices[3] }); break;
-            case 2: outline.AddRange(new[] { cell.SolidAreaVertices[3], cell.SolidAreaVertices[11], cell.SolidAreaVertices[12], cell.SolidAreaVertices[4] }); break;
-            case 3: outline.AddRange(new[] { cell.SolidAreaVertices[4], cell.SolidAreaVertices[13], cell.SolidAreaVertices[14], cell.SolidAreaVertices[5] }); break;
-            case 4: outline.AddRange(new[] { cell.SolidAreaVertices[5], cell.SolidAreaVertices[15], cell.SolidAreaVertices[16], cell.SolidAreaVertices[6] }); break;
-            default: outline.AddRange(new[] { cell.SolidAreaVertices[6], cell.SolidAreaVertices[17], cell.SolidAreaVertices[18], cell.SolidAreaVertices[1] }); break;
+            case 0: outline.AddRange(new[] { cellSolid[1], cellSolid[7], cellSolid[8], cellSolid[2] }); break;
+            case 1: outline.AddRange(new[] { cellSolid[2], cellSolid[9], cellSolid[10], cellSolid[3] }); break;
+            case 2: outline.AddRange(new[] { cellSolid[3], cellSolid[11], cellSolid[12], cellSolid[4] }); break;
+            case 3: outline.AddRange(new[] { cellSolid[4], cellSolid[13], cellSolid[14], cellSolid[5] }); break;
+            case 4: outline.AddRange(new[] { cellSolid[5], cellSolid[15], cellSolid[16], cellSolid[6] }); break;
+            default: outline.AddRange(new[] { cellSolid[6], cellSolid[17], cellSolid[18], cellSolid[1] }); break;
         }
     }
 
@@ -5337,7 +5062,7 @@ T2_8、P2_4、T2_9✔
                 openDirections = reordered;
             }
 
-            foreach (int direction in openDirections) AddOpenEdgePoints(outline, cell, direction);
+            foreach (int direction in openDirections) AddOpenEdgePoints(outline, cell, ComputeSolidAreaVertices(cell), direction);
         }
 
         for (int i = outline.Count - 1; i > 0; i--)
@@ -5526,7 +5251,7 @@ T2_8、P2_4、T2_9✔
 
             foreach (int point in Points)
             {
-                outerBoundaryVector3.Add(outerBoundaryHex[i].SolidAreaVertices[point]);
+                outerBoundaryVector3.Add(ComputeSolidAreaVertices(outerBoundaryHex[i])[point]);
             }
         }
 
@@ -5742,6 +5467,7 @@ T2_8、P2_4、T2_9✔
 
             //选一个边缘地块，按顺时针选一条边缘边的第一个点
             HexCellData hexCellData = holeHexsList[i][0];
+            Vector3[] currentSolid = ComputeSolidAreaVertices(hexCellData);
             if (hexCellData == null)
             {
                 Debug.Log("你好，你好");
@@ -5789,7 +5515,7 @@ T2_8、P2_4、T2_9✔
                     break;
             }
             if (index == -1) { Debug.Log("BUG"); }
-            Vector3 Point = hexCellData.SolidAreaVertices[index];
+            Vector3 Point = currentSolid[index];
             Vector3 StartPoint = Point;
             //起始边
             int edgeIndex = -1;
@@ -5834,17 +5560,19 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 5)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NW).SolidAreaVertices[3];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NW))[3];
                             newIndex = 3;
                             newEdgeIndex = (int)Enums.HexDirection.E;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NW);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else if (edgeIndex == 0)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[5];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE))[5];
                             newIndex = 5;
                             newEdgeIndex = (int)Enums.HexDirection.W;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else { Debug.Log("BUG"); }
                     }
@@ -5852,14 +5580,14 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 5)
                         {
-                            newPoint = hexCellData.SolidAreaVertices[6];
+                            newPoint = currentSolid[6];
                             newIndex = 6;
                             newEdgeIndex = (int)Enums.HexDirection.W;
                             //hexCellData = hexCellData;
                         }
                         else if (edgeIndex == 0)
                         {
-                            newPoint = hexCellData.SolidAreaVertices[2];
+                            newPoint = currentSolid[2];
                             newIndex = 2;
                             newEdgeIndex = (int)Enums.HexDirection.E;
                             //hexCellData = hexCellData;
@@ -5873,17 +5601,19 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 0)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE).SolidAreaVertices[4];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE))[4];
                             newIndex = 4;
                             newEdgeIndex = (int)Enums.HexDirection.SE;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NE);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else if (edgeIndex == 1)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[6];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E))[6];
                             newIndex = 6;
                             newEdgeIndex = (int)Enums.HexDirection.NW;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else { Debug.Log("BUG"); }
                     }
@@ -5891,14 +5621,14 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 0)
                         {
-                            newPoint = hexCellData.SolidAreaVertices[1];
+                            newPoint = currentSolid[1];
                             newIndex = 1;
                             newEdgeIndex = (int)Enums.HexDirection.NW;
                             //hexCellData = hexCellData;
                         }
                         else if (edgeIndex == 1)
                         {
-                            newPoint = hexCellData.SolidAreaVertices[3];
+                            newPoint = currentSolid[3];
                             newIndex = 3;
                             newEdgeIndex = (int)Enums.HexDirection.SE;
                             //hexCellData = hexCellData;
@@ -5912,17 +5642,19 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 1)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E).SolidAreaVertices[5];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E))[5];
                             newIndex = 5;
                             newEdgeIndex = (int)Enums.HexDirection.SW;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.E);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else if (edgeIndex == 2)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[1];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE))[1];
                             newIndex = 1;
                             newEdgeIndex = (int)Enums.HexDirection.NE;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else { Debug.Log("BUG"); }
                     }
@@ -5930,14 +5662,14 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 1)
                         {
-                            newPoint = hexCellData.SolidAreaVertices[2];
+                            newPoint = currentSolid[2];
                             newIndex = 2;
                             newEdgeIndex = (int)Enums.HexDirection.NE;
                             //hexCellData = hexCellData;
                         }
                         else if (edgeIndex == 2)
                         {
-                            newPoint = hexCellData.SolidAreaVertices[4];
+                            newPoint = currentSolid[4];
                             newIndex = 4;
                             newEdgeIndex = (int)Enums.HexDirection.SW;
                             //hexCellData = hexCellData;
@@ -5951,17 +5683,19 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 2)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE).SolidAreaVertices[6];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE))[6];
                             newIndex = 6;
                             newEdgeIndex = (int)Enums.HexDirection.W;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SE);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else if (edgeIndex == 3)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SW).SolidAreaVertices[2];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SW))[2];
                             newIndex = 2;
                             newEdgeIndex = (int)Enums.HexDirection.E;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SW);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else { Debug.Log("BUG"); }
                     }
@@ -5969,14 +5703,14 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 2)
                         {
-                            newPoint = hexCellData.SolidAreaVertices[3];
+                            newPoint = currentSolid[3];
                             newIndex = 3;
                             newEdgeIndex = (int)Enums.HexDirection.E;
                             //hexCellData = hexCellData;
                         }
                         else if (edgeIndex == 3)
                         {
-                            newPoint = hexCellData.SolidAreaVertices[5];
+                            newPoint = currentSolid[5];
                             newIndex = 5;
                             newEdgeIndex = (int)Enums.HexDirection.W;
                             //hexCellData = hexCellData;
@@ -5990,17 +5724,19 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 3)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SW).SolidAreaVertices[1];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SW))[1];
                             newIndex = 1;
                             newEdgeIndex = (int)Enums.HexDirection.NW;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.SW);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else if (edgeIndex == 4)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.W).SolidAreaVertices[3];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.W))[3];
                             newIndex = 3;
                             newEdgeIndex = (int)Enums.HexDirection.SE;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.W);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else { Debug.Log("BUG"); }
                     }
@@ -6008,14 +5744,14 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 3)
                         {
-                            newPoint = hexCellData.SolidAreaVertices[4];
+                            newPoint = currentSolid[4];
                             newIndex = 4;
                             newEdgeIndex = (int)Enums.HexDirection.SE;
                             //hexCellData = hexCellData;
                         }
                         else if (edgeIndex == 4)
                         {
-                            newPoint = hexCellData.SolidAreaVertices[6];
+                            newPoint = currentSolid[6];
                             newIndex = 6;
                             newEdgeIndex = (int)Enums.HexDirection.NW;
                             //hexCellData = hexCellData;
@@ -6029,17 +5765,19 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 4)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.W).SolidAreaVertices[2];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.W))[2];
                             newIndex = 2;
                             newEdgeIndex = (int)Enums.HexDirection.NE;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.W);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else if (edgeIndex == 5)
                         {
-                            newPoint = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NW).SolidAreaVertices[4];
+                            newPoint = ComputeSolidAreaVertices(_mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NW))[4];
                             newIndex = 4;
                             newEdgeIndex = (int)Enums.HexDirection.SW;
                             hexCellData = _mapDataService.GetNeighbor(hexCellData, Enums.HexDirection.NW);
+                currentSolid = ComputeSolidAreaVertices(hexCellData);
                         }
                         else { Debug.Log("BUG"); }
                     }
@@ -6047,7 +5785,7 @@ T2_8、P2_4、T2_9✔
                     {
                         if (edgeIndex == 4)
                         {
-                            newPoint = hexCellData.SolidAreaVertices[5];
+                            newPoint = currentSolid[5];
                             newIndex = 5;
                             newEdgeIndex = (int)Enums.HexDirection.SW;
                             //hexCellData = hexCellData;
@@ -6055,7 +5793,7 @@ T2_8、P2_4、T2_9✔
                         else if (edgeIndex == 5)
                         {
                             newEdgeIndex = (int)Enums.HexDirection.NE;
-                            newPoint = hexCellData.SolidAreaVertices[1];
+                            newPoint = currentSolid[1];
                             newIndex = 1;
                             //hexCellData = hexCellData;
                         }

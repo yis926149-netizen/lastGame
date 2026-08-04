@@ -13,6 +13,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     [Inject] private IUIConfigProvider _uiConfig;
     [Inject] private GameLoop _gameLoop;
     [Inject] private LazyInject<PlayerInputHandler> _playerInputHandler;
+    [Inject(Optional = true)] private IMapRaycastService _mapRaycastService;
 
     /// <summary>允许外部覆盖 drop handler（战术卡等非默认材质）。应在 Zenject 注入之后、首次拖拽之前调用。</summary>
     public void OverrideDropHandler(ICardDropHandler handler) => _dropHandler = handler;
@@ -194,9 +195,22 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         }
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-        if (Physics.Raycast(ray, out RaycastHit hit) && hit.transform.gameObject == _mapDataService.MapGameObject)
+        RaycastHit hit;
+        bool isMapHit;
+        if (_mapRaycastService != null)
         {
-            HexCellData targetCell = _mapDataService.GetCellByWorldPosition(hit.point);
+            // 【动态地图-阶段三】统一射线服务：兼容 Chunk 后端（MapChunkView 后代）与 WholeMap 后端（地图根）
+            isMapHit = _mapRaycastService.RaycastMap(Input.mousePosition, out hit);
+        }
+        else
+        {
+            isMapHit = Physics.Raycast(ray, out hit) && hit.transform.gameObject == _mapDataService.MapGameObject;
+        }
+        if (isMapHit)
+        {
+            HexCellData targetCell = _mapRaycastService != null
+                ? _mapRaycastService.GetCellByWorldPosition(hit.point)
+                : _mapDataService.GetCellByWorldPosition(hit.point);
             if (targetCell != null)
             {
                 if (_dropHandler.HandleCardDragEnd(this, targetCell, hit.point))

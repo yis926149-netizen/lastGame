@@ -68,16 +68,19 @@ public class UnitRemovalService
     private readonly IMapDataService _mapDataService;
     private readonly IUnitRepository _unitRepository;
     private readonly UnitMovementSystem _movementSystem;
+    private readonly MapVisualEventSO _mapVisualEvent;
     private readonly HashSet<GameObject> _removedUnits = new HashSet<GameObject>();
 
     public UnitRemovalService(
         IMapDataService mapDataService,
         IUnitRepository unitRepository,
-        UnitMovementSystem movementSystem)
+        UnitMovementSystem movementSystem,
+        MapVisualEventSO mapVisualEvent = null)
     {
         _mapDataService = mapDataService;
         _unitRepository = unitRepository;
         _movementSystem = movementSystem;
+        _mapVisualEvent = mapVisualEvent;
     }
 
     public bool RemoveUnit(GameObject unit)
@@ -85,6 +88,11 @@ public class UnitRemovalService
         if (!DeactivateUnit(unit)) return false;
 
         DestroyDeactivatedUnit(unit);
+
+        // 【单位擦除层-方案A】单位销毁后刷新雾化遮罩的渲染器列表，
+        // 避免 CommandBuffer 残留已销毁单位（与建筑销毁路径一致，UnitRemovalService 原无 Raise）。
+        _mapVisualEvent?.Raise();
+
         return true;
     }
 

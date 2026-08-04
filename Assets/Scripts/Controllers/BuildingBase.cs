@@ -18,6 +18,9 @@ public abstract class BuildingBase : MonoBehaviour
     [Inject] protected EnemyModelManager _enemyModelManager;
     [Inject] protected PlayerModelManager _playerModelManager;
     [Inject(Optional = true)] protected IFactionBuffService _factionBuff;
+    [Inject(Optional = true)] protected ILogisticsService _logisticsService;
+    // 【动态地图-阶段二】统一可见性解析（永久 || 临时 VisibilityLease）：宝箱血条随 Arena lease 显示
+    [Inject(Optional = true)] protected IMapVisibilityResolver _visibilityResolver;
 
     // ── 公共字段 ──────────────────────────────────────
     [HideInInspector] public BuildingData buildingData;
@@ -38,7 +41,78 @@ public abstract class BuildingBase : MonoBehaviour
     protected virtual void Start()
     {
         ApplyFactionBuildingHpBuff();
+        EnsureSupplyGate();
+        EnsureHealthBarVisibilitySync();
     }
+
+    // 【断供方案-阶段5/决策4】血条（整个建筑 Canvas）按玩家视角可见性隐藏：
+    // 血条是 Canvas 的 child0（SpawnUIWiring.cs:52-56），兵营生产进度条是血条兄弟
+    //（BarracksSpawner.cs:193）——隐藏粒度是整个 Canvas。
+    private void EnsureHealthBarVisibilitySync()
+    {
+        if (_logisticsService == null) return;
+        _logisticsService.LogisticsChanged += RefreshHealthBarVisibility;
+        RefreshHealthBarVisibility();
+    }
+
+    private void RefreshHealthBarVisibility()
+    {
+        if (_mapDataService == null) return;
+
+        HexCellData cell = _mapDataService.GetCellByWorldPosition(transform.position);
+        if (cell == null) return;
+
+        // 【动态地图-阶段二】统一查询 IMapVisibilityResolver：永久可见性 || 临时 VisibilityLease
+        bool visible;
+        if (_visibilityResolver != null)
+        {
+            visible = _visibilityResolver.IsVisibleToFaction(cell, 0);
+        }
+        else if (_logisticsService != null)
+        {
+            visible = _logisticsService.IsVisibleToFaction(cell, 0);
+        }
+        else
+        {
+            visible = cell.IsExplored;
+        }
+
+        if (_buildingCanvas == null)
+            _buildingCanvas = GetComponentInChildren<Canvas>();
+        if (_buildingCanvas != null)
+            _buildingCanvas.gameObject.SetActive(visible);
+    }
+
+    private Canvas _buildingCanvas;
+
+    protected virtual void OnDestroy()
+    {
+        if (_logisticsService != null)
+            _logisticsService.LogisticsChanged -= RefreshHealthBarVisibility;
+    }
+
+    // 【断供方案-阶段2】统一挂载失能门控；阵营/格子首帧解析，易主由迁移函数 Retarget。
+    private void EnsureSupplyGate()
+    {
+        if (_logisticsService == null) return;
+        if (GetComponent<BuildingSupplyGate>() != null) return;
+
+        BuildingSupplyGate gate = gameObject.AddComponent<BuildingSupplyGate>();
+        gate.Initialize(_mapDataService, _logisticsService);
+    }
+
+    /// <summary>当前建筑是否功能正常（断供即失能）。供箭塔/兵营等行为查询。</summary>
+    public bool IsFunctional
+    {
+        get
+        {
+            BuildingSupplyGate gate = GetComponent<BuildingSupplyGate>();
+            return gate != null && gate.IsFunctional;
+        }
+    }
+
+    /// <summary>通知地图视觉刷新（雾化遮罩注册/血条可见性等）。</summary>
+    public void NotifyVisualChanged() => _mapVisualEvent?.Raise();
 
     private void ApplyFactionBuildingHpBuff()
     {
@@ -137,7 +211,7 @@ public abstract class BuildingBase : MonoBehaviour
     }
 
     // ── 血条同步 ──────────────────────────────────────
-    protected void SyncHealthBar()
+    public void SyncHealthBar()
     {
         // 兜底：运行时可能未正确缓存血条
         if (uiHealthBar == null)

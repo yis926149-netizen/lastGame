@@ -10,6 +10,8 @@ Shader "Custom/LakeorSea" {
         _FoamStrength ("Foam Strength", Range(0.0, 1.0)) = 0.8
         // 泡沫密度：控制岸边泡沫的条纹数量（值越大，泡沫越密集）
         _FoamDensity ("Foam Density", Range(5.0, 20.0)) = 10.0
+        // 【阶段四】水面淡出（MaterialPropertyBlock 提供，§13.4 湖海消失）
+        _FadeAlpha ("Fade Alpha", Float) = 1.0
     }
 
     SubShader {
@@ -35,6 +37,8 @@ Shader "Custom/LakeorSea" {
             uniform float _WaveStrength;
             uniform float _FoamStrength;
             uniform float _FoamDensity;
+            // 【阶段四】水面淡出（MaterialPropertyBlock 提供，§13.4）
+            uniform float _FadeAlpha;
 
             // 全局迷雾属性（由 MapRenderer.SetupFogGlobalShaderProperties 设置，
             // 与地形迷雾共用同一张贴图与色调，保证水面未探索区与地形迷雾无缝衔接）
@@ -138,8 +142,8 @@ Shader "Custom/LakeorSea" {
                 float waterEffect = saturate(finalFoam + finalWave);
                 // 叠加基础颜色，确保整体色调统一
                 fixed4 finalColor = _BaseColor + waterEffect;
-                // 保持 alpha 通道值（支持透明调节）
-                finalColor.a = _BaseColor.a;
+                // 保持 alpha 通道值（支持透明调节）；【阶段四】乘 _FadeAlpha 实现湖海淡出（§13.4）
+                finalColor.a = _BaseColor.a * _FadeAlpha;
 
                 // 【探索重构-阶段1】始终显示正常水面，不再按探索状态覆盖迷雾或压暗
                 return finalColor;

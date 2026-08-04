@@ -41,6 +41,7 @@ public class TalentCardSelectionUI : MonoBehaviour
     private TalentCardTriggerAdapter _trigger;
     private GameLoop _gameLoop;
     private CameraController _cameraController;
+    private GlobalTimerService _timer;
 
     private List<TalentCardConfigSO> _currentCards;
     private bool _wasPausedBeforeOffer;
@@ -69,11 +70,12 @@ public class TalentCardSelectionUI : MonoBehaviour
     private readonly List<SlotRef> _slots = new();
 
     [Inject]
-    private void InjectDependencies(TalentCardTriggerAdapter trigger, GameLoop gameLoop, CameraController cameraController)
+    private void InjectDependencies(TalentCardTriggerAdapter trigger, GameLoop gameLoop, CameraController cameraController, GlobalTimerService timer)
     {
         _trigger = trigger;
         _gameLoop = gameLoop;
         _cameraController = cameraController;
+        _timer = timer;
 
         if (!_subscribed && _trigger != null)
         {
@@ -312,6 +314,7 @@ public class TalentCardSelectionUI : MonoBehaviour
             SetPanelOnTop(false); // 恢复原层级
             _panelRoot?.SetActive(false);
             if (_gameLoop != null) _gameLoop.SetPaused(_wasPausedBeforeOffer);
+            _timer?.StartTimer(300f);
         });
     }
 

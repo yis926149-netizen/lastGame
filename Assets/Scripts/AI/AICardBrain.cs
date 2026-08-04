@@ -189,6 +189,8 @@ public class AICardBrain
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
         if (cell.IsHaveUnit()) return false;
+        // 金矿格不可部署建筑（单位不受限）
+        if (cell.landForm != null && cell.landForm.blockBuildingSpawn) return false;
         return cell.Player_City_Index.Key == AIIndex &&
                (_logisticsService == null || _logisticsService.IsLogisticsConnected(cell, AIIndex));
     }

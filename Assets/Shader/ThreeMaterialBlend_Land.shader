@@ -28,6 +28,8 @@ Shader "Custom/ThreeMaterialBlend_Land"
     {
         Tags { "RenderType"="Opaque" "Queue"="Geometry" "IgnoreProjector"="True" }
         LOD 200
+        // 三角过渡含竖面，保持双面渲染。
+        Cull Off
 
         CGPROGRAM
         #pragma surface surf Standard fullforwardshadows vertex:vert addshadow finalcolor:fogFinal
@@ -76,6 +78,7 @@ Shader "Custom/ThreeMaterialBlend_Land"
         void vert(inout appdata_full v, out Input o)
         {
             UNITY_INITIALIZE_OUTPUT(Input, o);
+
             o.vertexColor_R = v.color.r;
             o.vertexColor_G = v.color.g;
             FogBlend_vert(v.vertex, o.fogCoord);

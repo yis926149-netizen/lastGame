@@ -174,6 +174,9 @@ public class CostLabelRenderer : MonoBehaviour
             else
             {
                 label.SetActive(true);
+                // 【动态地图-阶段二】重显时刷新世界位置：地块高度变化后标签跟随新 RealCenterWorldCoordinate
+                // （原实现只 SetActive(true)，高度变化后标签停留在旧 Y）
+                _labelWorldPositions[cell.HexCoordinate] = cell.RealCenterWorldCoordinate;
             }
 
             var text = label.GetComponentInChildren<Text>();
@@ -196,7 +199,7 @@ public class CostLabelRenderer : MonoBehaviour
                 var capturedCell = cell;
                 button.onClick.AddListener(() =>
                 {
-                    _explorationService.TryExplore(capturedCell);
+                    _explorationService.TryExplore(capturedCell, 0);
                     RefreshLabels();
                 });
 

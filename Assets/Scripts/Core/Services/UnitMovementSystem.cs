@@ -9,18 +9,20 @@ public class UnitMovementSystem : ITickable
     private readonly MapVisualEventSO _mapVisualEvent;  // 用于触发视觉更新
     private readonly GameLoop _gameLoop;                // 用于暂停检查（批次 C）
     private readonly ILogisticsService _logisticsService; // 用于占领后重算后勤
+    private readonly IMapInteractionGate _interactionGate; // 动态地图-阶段二：事务/动画期间交互锁
 
     // 正在移动的单位列表
     private List<MovingUnit> _movingUnits = new List<MovingUnit>();
     private readonly Dictionary<Vector3, IUnitMovement> _reservedDestinations = new Dictionary<Vector3, IUnitMovement>();
     private List<Vector3> _cachedAllPoints;
 
-    public UnitMovementSystem(IMapDataService mapDataService, MapVisualEventSO mapVisualEvent, GameLoop gameLoop, [InjectOptional] ILogisticsService logisticsService = null)
+    public UnitMovementSystem(IMapDataService mapDataService, MapVisualEventSO mapVisualEvent, GameLoop gameLoop, [InjectOptional] ILogisticsService logisticsService = null, [InjectOptional] IMapInteractionGate interactionGate = null)
     {
         _mapDataService = mapDataService;
         _mapVisualEvent = mapVisualEvent;
         _gameLoop = gameLoop;
         _logisticsService = logisticsService;
+        _interactionGate = interactionGate;
     }
 
     public IReadOnlyList<Vector3> AllHexCoordinates
@@ -72,6 +74,12 @@ public class UnitMovementSystem : ITickable
 
         var destinationCell = _mapDataService.GetCell(destinationHex);
         if (destinationCell == null || (destinationCell.IsHaveUnit() && destinationCell.GetUnit() != unit.gameObject))
+        {
+            return false;
+        }
+
+        // 【动态地图-阶段二】交互锁：事务/动画期间受影响格禁止新移动请求（§12.6）
+        if (_interactionGate != null && _interactionGate.IsLocked(destinationCell, MapInteractionType.Move))
         {
             return false;
         }
@@ -252,7 +260,9 @@ public class UnitMovementSystem : ITickable
         if (destinationCell == null) return;
 
         int cellOwner = destinationCell.Player_City_Index.Key;
-        if (cellOwner < 0) return;
+        // 【断供方案-阶段3/决策10】占领只对阵营 0/1 有效；
+        // 中立（Key<0）与公共建筑伪阵营（Key>=2）豁免。
+        if (cellOwner < 0 || cellOwner >= 2) return;
 
         GameObject unit = movingUnit.Unit.gameObject;
         if (unit == null) return;
@@ -263,14 +273,26 @@ public class UnitMovementSystem : ITickable
         if (cellOwner == attackerFaction) return;
 
         var buildingEntry = destinationCell.BulidingTypeOnHex_Building;
+        GameObject capturedBuilding = null;
         if (buildingEntry.Key != Enums.BulidingType.NoBuilding && buildingEntry.Value != null)
         {
             var buildingBase = buildingEntry.Value.GetComponent<BuildingBase>();
-            if (buildingBase != null && buildingBase.Player_City_Index.Key == cellOwner)
+            // 【断供方案-阶段3/决策1a】仅功能正常（供应畅通）的建筑阻挡占领；
+            // 失能建筑不阻挡——占领继续，建筑随格易主（不摧毁、HP 回满）。
+            if (buildingBase != null &&
+                buildingBase.Player_City_Index.Key == cellOwner &&
+                buildingBase.IsFunctional)
+            {
                 return;
+            }
+            capturedBuilding = buildingEntry.Value;
         }
 
         _logisticsService.TransferOwner(destinationCell, attackerFaction);
+
+        // 失能建筑随格易主；公共建筑走 OnCaptured 全量（内部再重算一次，覆盖外一环归属）
+        if (capturedBuilding != null)
+            BuildingTransferService.TransferBuilding(capturedBuilding, attackerFaction, triggerRecalculate: true);
     }
 
     private void RestoreStartCell(MovingUnit movingUnit)
@@ -305,6 +327,148 @@ public class UnitMovementSystem : ITickable
                 _movingUnits.RemoveAt(i);
             }
         }
+    }
+
+    // ── 【动态地图-阶段二】地块变化联动（§12.4）──────────────────────
+
+    /// <summary>
+    /// 取消路径途经"已不可通行格"（movementCost == MaxValue）的移动任务。
+    /// 被取消单位经 RestoreStartCell 回到起点格并恢复占用状态；
+    /// 若起点格同样不可通行，由 EjectUnitsFromImpassableCells 兜底弹射。
+    /// </summary>
+    public void CancelMovesIntersecting(IReadOnlyCollection<HexCellData> blockedCells)
+    {
+        if (blockedCells == null || blockedCells.Count == 0) return;
+
+        var blockedSet = new HashSet<Vector3>();
+        foreach (HexCellData cell in blockedCells)
+        {
+            if (cell != null && cell.movementCost == float.MaxValue)
+                blockedSet.Add(cell.HexCoordinate);
+        }
+        if (blockedSet.Count == 0) return;
+
+        for (int i = _movingUnits.Count - 1; i >= 0; i--)
+        {
+            MovingUnit mu = _movingUnits[i];
+            if (!PathIntersects(mu.Path, blockedSet)) continue;
+
+            RestoreStartCell(mu);
+            ReleaseReservation(mu);
+            _movingUnits.RemoveAt(i);
+        }
+    }
+
+    private static bool PathIntersects(List<Vector3> path, HashSet<Vector3> blockedSet)
+    {
+        if (path == null) return false;
+        foreach (Vector3 coord in path)
+        {
+            if (blockedSet.Contains(coord)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 弹射：把站立在不可通行格上的单位迁到最近的"可通行且无占用"格（6 向 BFS）。
+    /// 纯位置迁移——不触发 TryCaptureEnemyCell、不写归属（决策 B）。
+    /// 原子迁移四套占用状态：HaveUnit / Occupant / 攻击槽（本格）/ 目的地预占。
+    /// </summary>
+    public void EjectUnitsFromImpassableCells(IReadOnlyCollection<HexCellData> cells)
+    {
+        if (cells == null) return;
+
+        foreach (HexCellData cell in cells)
+        {
+            if (cell == null || cell.movementCost != float.MaxValue) continue;
+
+            GameObject unit = cell.GetOccupant() ?? cell.GetUnit();
+            if (unit == null) continue;
+
+            if (FindNearestFreePassableCell(cell, unit, out HexCellData target))
+            {
+                MigrateOccupancy(cell, target, unit);
+            }
+            else
+            {
+                // 无可用落点（极端情况）：仍释放占位，避免"格内双单位"读错状态
+                cell.SetHaveUnit(false, null);
+                if (cell.GetOccupant() == unit) cell.SetOccupant(null);
+                cell.ReleaseAttackerSlots(unit);
+                Debug.LogWarning($"[UnitMovementSystem] Eject: 找不到可弹射落点，单位 {unit.name} 释放占用（无归属迁移）。");
+            }
+        }
+    }
+
+    /// <summary>6 向 BFS：从 cell 出发找最近"可通行（movementCost &lt; MaxValue）且无占用"格。</summary>
+    private bool FindNearestFreePassableCell(HexCellData from, GameObject unit, out HexCellData result)
+    {
+        result = null;
+        var visited = new HashSet<Vector3>();
+        var queue = new Queue<HexCellData>();
+        visited.Add(from.HexCoordinate);
+        queue.Enqueue(from);
+
+        while (queue.Count > 0)
+        {
+            HexCellData current = queue.Dequeue();
+            for (int d = 0; d < 6; d++)
+            {
+                HexCellData neighbor = _mapDataService.GetNeighbor(current, (Enums.HexDirection)d);
+                if (neighbor == null || !visited.Add(neighbor.HexCoordinate)) continue;
+
+                if (neighbor.movementCost < float.MaxValue &&
+                    !neighbor.IsHaveUnit() &&
+                    !neighbor.HasOccupant())
+                {
+                    result = neighbor;
+                    return true;
+                }
+                queue.Enqueue(neighbor);
+            }
+        }
+        return false;
+    }
+
+    /// <summary>把单位从 source 原子迁移到 target：占用状态 + transform.position。</summary>
+    private void MigrateOccupancy(HexCellData source, HexCellData target, GameObject unit)
+    {
+        source.SetHaveUnit(false, null);
+        if (source.GetOccupant() == unit) source.SetOccupant(null);
+        source.ReleaseAttackerSlots(unit);
+
+        target.SetHaveUnit(true, unit);
+        target.SetOccupant(unit);
+
+        unit.transform.position = target.RealCenterWorldCoordinate;
+    }
+
+    /// <summary>变化格上的站立单位吸附到新 RealCenterWorldCoordinate（移动中单位自然逐点跟随，跳过）。</summary>
+    public void RefreshStandingUnitPositions(IReadOnlyCollection<HexCellData> changedCells)
+    {
+        if (changedCells == null) return;
+
+        foreach (HexCellData cell in changedCells)
+        {
+            if (cell == null || cell.movementCost == float.MaxValue) continue;
+
+            GameObject unit = cell.GetOccupant() ?? cell.GetUnit();
+            if (unit == null) continue;
+            if (IsUnitMoving(unit)) continue;
+
+            unit.transform.position = cell.RealCenterWorldCoordinate;
+        }
+    }
+
+    /// <summary>查询单位是否处于移动任务中（阶段四：动画期间视觉高度跟随跳过移动中单位，§12.5）。</summary>
+    public bool IsUnitMoving(GameObject unit)
+    {
+        if (unit == null) return false;
+        foreach (MovingUnit mu in _movingUnits)
+        {
+            if (mu.Unit != null && mu.Unit.gameObject == unit) return true;
+        }
+        return false;
     }
 
     private static float HexDistance(Vector3 a, Vector3 b)

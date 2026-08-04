@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 295bc0a5ed8d4182b640a7de381a111d, type: 3}
+  m_Name: GoldMine
+  m_EditorClassIdentifier: 
+  landFormId: GoldMine
+  landFormName: "\u91D1\u77FF"
+  description: "\u5360\u9886\u5176\u6240\u5728\u7684\u5730\u5757\u65F6\uFF0C\u91D1\u5E01\u7D2F\u79EF\u901F\u5EA6+2"
+  modelPrefab: {fileID: 5251738919040108789, guid: d5426be871bab5d4c9fe284c53ab0de8, type: 3}
+  effectType: 3
+  effect:
+    defenseBonus: 0
+    healRatio: 0
+    healInterval: 0
+    goldIncomePerSecond: 2
+  blockBuildingSpawn: 1
+  spawnWeight: 3
+  markerPrefab: {fileID: 4126988599795236846, guid: 7bf42e4a65549e545b432f28366a92da, type: 3}
+  markerIcon: {fileID: 21300000, guid: c3886f397fbd9334d924c52188d4e9ef, type: 3}
+  clusterSpawn: 1
+  clusterCount: 3
+  clusterTargetSize: 5
+  clusterFillProbability: 0.413
+  clusterMinSpacing: 5
+  clusterMaxRadius: 4

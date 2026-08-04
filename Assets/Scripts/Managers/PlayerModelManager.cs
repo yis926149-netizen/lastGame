@@ -83,9 +83,13 @@ public class PlayerModelManager : MonoBehaviour
         {
             if (cell == null || cell.Player_City_Index.Key != 0) continue;
 
-            int cityIndex = cell.Player_City_Index.Value;
             SphereOfInfluence_HexC_HexCellData[cell.HexCoordinate] = cell;
 
+            // 【断供方案-阶段1/§4.3】公共建筑不伪装为城市条目：占位格不进单城字典
+            //（避免与主城 (0,0) 键冲突；总领地字典仍包含）
+            if (cell.publicBuildingRoot != null) continue;
+
+            int cityIndex = cell.Player_City_Index.Value;
             if (!newSingleCity.TryGetValue(cityIndex, out var cityDict))
             {
                 cityDict = new Dictionary<Vector3, HexCellData>();

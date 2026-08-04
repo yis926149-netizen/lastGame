@@ -27,10 +27,15 @@ public class DomainInvariantTests
         var costProvider = Substitute.For<IExplorationCostProvider>();
         costProvider.GetCost(Arg.Any<HexCellData>()).Returns(new ExplorationCost("Gold", 50));
         var rule = Substitute.For<IExplorationRule>();
-        rule.IsValid(Arg.Any<HexCellData>()).Returns(true);
+        rule.IsValid(Arg.Any<HexCellData>(), Arg.Any<int>()).Returns(true);
         var territory = Substitute.For<ITerritoryService>();
         var logistics = Substitute.For<ILogisticsService>();
         _explorationMapVisualEvent = ScriptableObject.CreateInstance<MapVisualEventSO>();
+
+        // 【地图资源配置化】基础奖励来自数据库配置（此处 5）
+        var database = ScriptableObject.CreateInstance<MapResourceDatabaseSO>();
+        database.baseExplorationGold = 5;
+        var collection = new MapResourceCollectionService(wallet, null, database);
 
         var service = new ExplorationService(
             costProvider,
@@ -38,13 +43,13 @@ public class DomainInvariantTests
             rule,
             _explorationMapVisualEvent,
             territory,
-            wallet,
-            logistics);
+            logistics,
+            collection);
         var cell = new HexCellData(Enums.HexType.NoRiver, 0, Vector3.zero, Vector3.zero, 1f);
         int rewardEventCount = 0;
-        service.ExplorationRewardTriggered += _ => rewardEventCount++;
+        service.ExplorationRewardTriggered += (_, _) => rewardEventCount++;
 
-        Assert.AreEqual(ExploreResult.Success, service.TryExplore(cell));
+        Assert.AreEqual(ExploreResult.Success, service.TryExplore(cell, 0));
         service.CompleteExploration(cell);
         service.CompleteExploration(cell);
 
@@ -52,18 +57,447 @@ public class DomainInvariantTests
         Assert.AreEqual(1, rewardEventCount);
         territory.Received(1).Claim(cell);
         logistics.Received(1).RecalculateAll();
+
+        Object.DestroyImmediate(database);
     }
 
-    [TestCase(0, Enums.ResourceType.Animals)]
-    [TestCase(1, Enums.ResourceType.Plants)]
-    [TestCase(2, Enums.ResourceType.Minerals)]
-    [TestCase(3, Enums.ResourceType.Chest)]
-    [TestCase(4, Enums.ResourceType.None)]
-    [TestCase(5, Enums.ResourceType.None)]
-    [TestCase(17, Enums.ResourceType.None)]
-    public void MapRandomResourceRoll_ExcludesHealthPack(int roll, Enums.ResourceType expected)
+    // ── 【地图资源配置化】生成权重与奖励规则 ──────────────
+    [Test]
+    public void ResourceSpawnRule_WeightedRoll_MatchesLegacyDistribution()
     {
-        Assert.AreEqual(expected, MapGenerator.MapRandomResourceRoll(roll));
+        var database = CreateResourceDatabase(emptyWeight: 14);
+        var animals = AddResource(database, "Animals", 1);
+        var plants = AddResource(database, "Plants", 1);
+        var minerals = AddResource(database, "Minerals", 1);
+        var chest = AddResource(database, "Chest", 1);
+
+        try
+        {
+            // 掷点 0~13 → 空白；14~17 → 四种资源（复现改造前 Next(0,18)/roll<4 的 4/18 分布）
+            for (int roll = 0; roll < 14; roll++)
+                Assert.IsNull(ResourceSpawnRule.RollResource(database, roll), $"roll={roll} 应为空白");
+            Assert.AreSame(animals, ResourceSpawnRule.RollResource(database, 14));
+            Assert.AreSame(plants, ResourceSpawnRule.RollResource(database, 15));
+            Assert.AreSame(minerals, ResourceSpawnRule.RollResource(database, 16));
+            Assert.AreSame(chest, ResourceSpawnRule.RollResource(database, 17));
+            Assert.AreEqual(18, ResourceSpawnRule.TotalWeight(database));
+        }
+        finally
+        {
+            DestroyResourceDatabase(database);
+        }
+    }
+
+    [Test]
+    public void ResourceSpawnRule_ZeroTotalWeight_ReturnsNull()
+    {
+        var database = CreateResourceDatabase(emptyWeight: 0);
+
+        try
+        {
+            Assert.AreEqual(0, ResourceSpawnRule.TotalWeight(database));
+            Assert.IsNull(ResourceSpawnRule.RollResource(database, new System.Random(1)));
+        }
+        finally
+        {
+            Object.DestroyImmediate(database);
+        }
+    }
+
+    [Test]
+    public void ResourceRewardRule_ComputesBaseAndBonus()
+    {
+        var resource = ScriptableObject.CreateInstance<MapResourceSO>();
+        resource.explorationGoldBonus = 20;
+
+        try
+        {
+            Assert.AreEqual(5, ResourceRewardRule.ComputeExplorationReward(5, null));
+            Assert.AreEqual(25, ResourceRewardRule.ComputeExplorationReward(5, resource));
+            Assert.AreEqual(0, ResourceRewardRule.ComputeExplorationReward(0, null));
+        }
+        finally
+        {
+            Object.DestroyImmediate(resource);
+        }
+    }
+
+    [Test]
+    public void HarvestForGold_ConsumesResourceOnce()
+    {
+        var wallet = new GoldWallet();
+        wallet.InitPlayer(0);
+        var database = CreateResourceDatabase(emptyWeight: 14);
+        database.baseExplorationGold = 5;
+        var chest = AddResource(database, "Chest", 1);
+        chest.explorationGoldBonus = 30;
+        var collection = new MapResourceCollectionService(wallet, null, database);
+
+        var cell = new HexCellData(Enums.HexType.NoRiver, 0, Vector3.zero, Vector3.zero, 1f);
+        cell.resource = chest;
+
+        try
+        {
+            int first = collection.HarvestForGold(cell, 0);
+            int second = collection.HarvestForGold(cell, 0);
+
+            Assert.AreEqual(35, first); // 基础 5 + 宝箱 30
+            Assert.AreEqual(5, second); // 资源已原子消费，第二次只有基础奖励
+            Assert.AreEqual(40, wallet.Gold); // 100 + 35 + 5
+        }
+        finally
+        {
+            DestroyResourceDatabase(database);
+        }
+    }
+
+    [Test]
+    public void TryCollectForUnit_AppliesConfiguredEffects()
+    {
+        var wallet = new GoldWallet();
+        wallet.InitPlayer(0);
+        var database = CreateResourceDatabase(emptyWeight: 14);
+        var collection = new MapResourceCollectionService(wallet, null, database);
+
+        var animals = AddResource(database, "Animals", 1);
+        animals.pickupEffectType = ResourcePickupEffectType.AttackBoost;
+        animals.pickupEffect.attackBonus = 0.7f;
+
+        var minerals = AddResource(database, "Minerals", 1);
+        minerals.pickupEffectType = ResourcePickupEffectType.DefenseBoost;
+        minerals.pickupEffect.defenseBonus = 0.25f;
+
+        var chest = AddResource(database, "Chest", 1);
+        chest.pickupEffectType = ResourcePickupEffectType.Gold;
+        chest.pickupEffect.goldAmount = 50;
+
+        var unitData = new UnitData(0, "Test", 3, 100, 1, 10, 3, 2);
+        var character = new CharacterData(0, null, null, unitData);
+
+        try
+        {
+            var animalCell = new HexCellData(Enums.HexType.NoRiver, 0, Vector3.zero, Vector3.zero, 1f);
+            animalCell.resource = animals;
+            Assert.IsTrue(collection.TryCollectForUnit(animalCell, character, 0));
+            Assert.AreEqual(0.7f, character.Resource_Animals);
+            Assert.IsNull(animalCell.resource); // 原子消费
+            Assert.IsFalse(collection.TryCollectForUnit(animalCell, character, 0)); // 第二次无资源
+
+            var mineralCell = new HexCellData(Enums.HexType.NoRiver, 1, Vector3.one, Vector3.one, 1f);
+            mineralCell.resource = minerals;
+            collection.TryCollectForUnit(mineralCell, character, 0);
+            Assert.AreEqual(0.25f, character.Resource_Minerals);
+
+            // 宝箱：玩家 +50；AI（阵营 1）无效（与改造前 PlayerIndex==0 行为一致）
+            character.currentHp = 50;
+            var plantCell = new HexCellData(Enums.HexType.NoRiver, 2, Vector3.one * 2, Vector3.one * 2, 1f);
+            var plants = AddResource(database, "Plants", 1);
+            plants.pickupEffectType = ResourcePickupEffectType.Heal;
+            plants.pickupEffect.healRatio = 0.25f;
+            plantCell.resource = plants;
+            collection.TryCollectForUnit(plantCell, character, 0);
+            Assert.AreEqual(75, character.currentHp); // 50 + 25% * 100
+
+            var chestCell = new HexCellData(Enums.HexType.NoRiver, 3, Vector3.one * 3, Vector3.one * 3, 1f);
+            chestCell.resource = chest;
+            collection.TryCollectForUnit(chestCell, character, 0);
+            Assert.AreEqual(50, wallet.Gold);
+
+            var aiChestCell = new HexCellData(Enums.HexType.NoRiver, 4, Vector3.one * 4, Vector3.one * 4, 1f);
+            aiChestCell.resource = chest;
+            collection.TryCollectForUnit(aiChestCell, character, 1);
+            Assert.AreEqual(50, wallet.Gold); // AI 拾取宝箱不加金币
+        }
+        finally
+        {
+            DestroyResourceDatabase(database);
+        }
+    }
+
+    private static MapResourceDatabaseSO CreateResourceDatabase(int emptyWeight)
+    {
+        var database = ScriptableObject.CreateInstance<MapResourceDatabaseSO>();
+        database.emptySpawnWeight = emptyWeight;
+        return database;
+    }
+
+    private static MapResourceSO AddResource(MapResourceDatabaseSO database, string id, int weight)
+    {
+        var resource = ScriptableObject.CreateInstance<MapResourceSO>();
+        resource.resourceId = id;
+        resource.spawnWeight = weight;
+        database.resources.Add(resource);
+        return resource;
+    }
+
+    private static void DestroyResourceDatabase(MapResourceDatabaseSO database)
+    {
+        if (database != null)
+        {
+            if (database.resources != null)
+            {
+                foreach (var r in database.resources)
+                {
+                    if (r != null) Object.DestroyImmediate(r);
+                }
+            }
+            Object.DestroyImmediate(database);
+        }
+    }
+
+    // ── 【地图地貌配置化】生成权重与效果规则 ──────────────
+    [Test]
+    public void LandFormSpawnRule_WeightedRoll_MatchesLegacyDistribution()
+    {
+        var database = CreateLandFormDatabase(emptyWeight: 10);
+        var forest = AddLandForm(database, "Forest", 1);
+        var stone = AddLandForm(database, "Stone", 1);
+        var bigBones = AddLandForm(database, "BigBones", 1);
+        var fromLand = AddLandForm(database, "FromLand", 1);
+
+        try
+        {
+            // 锁定旧固定种子映射：0~3 依次为四种地貌，4~13 为空白（旧代码 Next(0,14)+Clamp）
+            Assert.AreSame(forest, LandFormSpawnRule.RollLandForm(database, 0));
+            Assert.AreSame(stone, LandFormSpawnRule.RollLandForm(database, 1));
+            Assert.AreSame(bigBones, LandFormSpawnRule.RollLandForm(database, 2));
+            Assert.AreSame(fromLand, LandFormSpawnRule.RollLandForm(database, 3));
+            for (int roll = 4; roll < 14; roll++)
+                Assert.IsNull(LandFormSpawnRule.RollLandForm(database, roll), $"roll={roll} 应为空白");
+            Assert.AreEqual(14, LandFormSpawnRule.TotalWeight(database));
+        }
+        finally
+        {
+            DestroyLandFormDatabase(database);
+        }
+    }
+
+    [Test]
+    public void LandFormEffectRule_None_HasNoEffect()
+    {
+        var forest = ScriptableObject.CreateInstance<MapLandFormSO>();
+        forest.effectType = LandFormEffectType.None;
+        forest.effect.defenseBonus = 99f; // 残留数值不应产生效果
+
+        try
+        {
+            Assert.AreEqual(0f, LandFormEffectRule.GetDefenseBonus(forest));
+            Assert.IsFalse(LandFormEffectRule.TryGetPeriodicHeal(forest, out _, out _));
+            Assert.AreEqual(0f, LandFormEffectRule.GetDefenseBonus(null));
+        }
+        finally
+        {
+            Object.DestroyImmediate(forest);
+        }
+    }
+
+    [Test]
+    public void LandFormEffectRule_DefenseBonus_UsesConfiguredValue()
+    {
+        var bigBones = ScriptableObject.CreateInstance<MapLandFormSO>();
+        bigBones.effectType = LandFormEffectType.DefenseBonus;
+        bigBones.effect.defenseBonus = 0.3f;
+
+        try
+        {
+            Assert.AreEqual(0.3f, LandFormEffectRule.GetDefenseBonus(bigBones));
+            Assert.IsFalse(LandFormEffectRule.TryGetPeriodicHeal(bigBones, out _, out _));
+        }
+        finally
+        {
+            Object.DestroyImmediate(bigBones);
+        }
+    }
+
+    [Test]
+    public void LandFormEffectRule_PeriodicHeal_UsesConfiguredValues()
+    {
+        var fromLand = ScriptableObject.CreateInstance<MapLandFormSO>();
+        fromLand.effectType = LandFormEffectType.PeriodicHeal;
+        fromLand.effect.healRatio = 0.1f;
+        fromLand.effect.healInterval = 5f;
+
+        try
+        {
+            Assert.AreEqual(0f, LandFormEffectRule.GetDefenseBonus(fromLand));
+            Assert.IsTrue(LandFormEffectRule.TryGetPeriodicHeal(fromLand, out float ratio, out float interval));
+            Assert.AreEqual(0.1f, ratio);
+            Assert.AreEqual(5f, interval);
+        }
+        finally
+        {
+            Object.DestroyImmediate(fromLand);
+        }
+    }
+
+    [Test]
+    public void LandFormEffectRule_GoldIncomeBoost_UsesConfiguredValue()
+    {
+        var goldMine = ScriptableObject.CreateInstance<MapLandFormSO>();
+        goldMine.effectType = LandFormEffectType.GoldIncomeBoost;
+        goldMine.effect.goldIncomePerSecond = 2f;
+
+        try
+        {
+            Assert.IsTrue(LandFormEffectRule.TryGetGoldIncomeBonus(goldMine, out float bonus));
+            Assert.AreEqual(2f, bonus);
+            Assert.AreEqual(0f, LandFormEffectRule.GetDefenseBonus(goldMine));
+
+            // 非金矿地貌无加成
+            var forest = ScriptableObject.CreateInstance<MapLandFormSO>();
+            forest.effectType = LandFormEffectType.None;
+            Assert.IsFalse(LandFormEffectRule.TryGetGoldIncomeBonus(forest, out _));
+            Object.DestroyImmediate(forest);
+        }
+        finally
+        {
+            Object.DestroyImmediate(goldMine);
+        }
+    }
+
+    [Test]
+    public void LandFormEffectRule_SumGoldIncomeBonus_CountsOwnedMinesOnly()
+    {
+        var goldMine = ScriptableObject.CreateInstance<MapLandFormSO>();
+        goldMine.effectType = LandFormEffectType.GoldIncomeBoost;
+        goldMine.effect.goldIncomePerSecond = 2f;
+
+        try
+        {
+            // 玩家占领 2 个金矿格 + 1 个普通格；AI 占领 1 个金矿格
+            var playerMineA = CreateCell(new Vector3(0, 0, 0));
+            playerMineA.landForm = goldMine;
+            playerMineA.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+
+            var playerMineB = CreateCell(new Vector3(1, -1, 0));
+            playerMineB.landForm = goldMine;
+            playerMineB.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+
+            var plain = CreateCell(new Vector3(2, -2, 0));
+            plain.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+
+            var aiMine = CreateCell(new Vector3(3, -3, 0));
+            aiMine.landForm = goldMine;
+            aiMine.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(1, 0);
+
+            // 金矿但未占领（中立）不计入
+            var neutralMine = CreateCell(new Vector3(4, -4, 0));
+            neutralMine.landForm = goldMine;
+
+            var cells = new System.Collections.Generic.List<HexCellData>
+            {
+                playerMineA, playerMineB, plain, aiMine, neutralMine
+            };
+
+            Assert.AreEqual(4f, LandFormEffectRule.SumGoldIncomeBonus(cells, 0)); // 2 格 × 2
+            Assert.AreEqual(2f, LandFormEffectRule.SumGoldIncomeBonus(cells, 1)); // 1 格 × 2
+        }
+        finally
+        {
+            Object.DestroyImmediate(goldMine);
+        }
+    }
+
+    [Test]
+    public void GoldIncomeService_GetIncomePerTick_IncludesOwnedGoldMine()
+    {
+        var goldMine = ScriptableObject.CreateInstance<MapLandFormSO>();
+        goldMine.effectType = LandFormEffectType.GoldIncomeBoost;
+        goldMine.effect.goldIncomePerSecond = 2f;
+
+        try
+        {
+            var playerMine = CreateCell(Vector3.zero);
+            playerMine.landForm = goldMine;
+            playerMine.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+
+            var map = Substitute.For<IMapDataService>();
+            map.GetAllCells().Returns(new System.Collections.Generic.List<HexCellData> { playerMine });
+
+            var buffs = Substitute.For<IFactionBuffService>();
+            buffs.GetStatMultiplier(Arg.Any<int>(), "gold").Returns(1f);
+
+            var wallet = new GoldWallet { PassiveIncomePerTick = 2 };
+            // 【断供方案-阶段6.5】金矿加成需"归属 + 后勤畅通"：把金矿格注册为玩家主城 → 连通 → 计加成
+            var logistics = new LogisticsService(map);
+            logistics.RegisterMainCity(0, playerMine);
+            var income = new GoldIncomeService(wallet, buffs, null, map, logistics);
+
+            Assert.AreEqual(4, income.GetIncomePerTick(0)); // 基础 2 + 金矿 2
+            Assert.AreEqual(2, income.GetIncomePerTick(1)); // AI 未占领金矿
+        }
+        finally
+        {
+            Object.DestroyImmediate(goldMine);
+        }
+    }
+
+    [Test]
+    public void GoldIncomeService_GetIncomePerTick_CutOffGoldMinePauses()
+    {
+        var goldMine = ScriptableObject.CreateInstance<MapLandFormSO>();
+        goldMine.effectType = LandFormEffectType.GoldIncomeBoost;
+        goldMine.effect.goldIncomePerSecond = 2f;
+
+        try
+        {
+            var playerMine = CreateCell(Vector3.zero);
+            playerMine.landForm = goldMine;
+            playerMine.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+
+            // 主城与金矿格不相邻 → 金矿断供 → 暂停产金
+            var mainCity = CreateCell(new Vector3(10, -10, 0));
+            mainCity.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+
+            var map = Substitute.For<IMapDataService>();
+            map.GetAllCells().Returns(new System.Collections.Generic.List<HexCellData> { playerMine, mainCity });
+
+            var buffs = Substitute.For<IFactionBuffService>();
+            buffs.GetStatMultiplier(Arg.Any<int>(), "gold").Returns(1f);
+
+            var wallet = new GoldWallet { PassiveIncomePerTick = 2 };
+            var logistics = new LogisticsService(map);
+            logistics.RegisterMainCity(0, mainCity);
+            var income = new GoldIncomeService(wallet, buffs, null, map, logistics);
+
+            // 断供金矿不计加成；恢复连通后重新计入（连通语义由后勤 BFS 保证，此处直接断言断供态）
+            Assert.AreEqual(2, income.GetIncomePerTick(0));
+        }
+        finally
+        {
+            Object.DestroyImmediate(goldMine);
+        }
+    }
+
+    private static MapLandFormDatabaseSO CreateLandFormDatabase(int emptyWeight)
+    {
+        var database = ScriptableObject.CreateInstance<MapLandFormDatabaseSO>();
+        database.emptySpawnWeight = emptyWeight;
+        return database;
+    }
+
+    private static MapLandFormSO AddLandForm(MapLandFormDatabaseSO database, string id, int weight)
+    {
+        var landForm = ScriptableObject.CreateInstance<MapLandFormSO>();
+        landForm.landFormId = id;
+        landForm.spawnWeight = weight;
+        database.landForms.Add(landForm);
+        return landForm;
+    }
+
+    private static void DestroyLandFormDatabase(MapLandFormDatabaseSO database)
+    {
+        if (database != null)
+        {
+            if (database.landForms != null)
+            {
+                foreach (var f in database.landForms)
+                {
+                    if (f != null) Object.DestroyImmediate(f);
+                }
+            }
+            Object.DestroyImmediate(database);
+        }
     }
 
     [Test]
@@ -359,11 +793,14 @@ public class LogisticsServiceTests
         var map = new HexMapService();
         HexCellData aiRoot = CreateLogisticsCell(Vector3.zero, 1);
         HexCellData bridge = CreateLogisticsCell(new Vector3(0, -1, 1), 1);
-        HexCellData rear = CreateLogisticsCell(new Vector3(0, -2, 2), 1);
+        // 【断供方案】断供区与玩家网络相邻会被立即吞并，故用中立格隔开以测试"断供隐藏"
+        HexCellData neutral = CreateLogisticsCell(new Vector3(0, -2, 2), -1);
+        HexCellData rear = CreateLogisticsCell(new Vector3(0, -3, 3), 1);
         aiRoot.ExploreBy(1);
         bridge.ExploreBy(1);
+        neutral.ExploreBy(1);
         rear.ExploreBy(1);
-        InitializeLogisticsMap(map, aiRoot, bridge, rear);
+        InitializeLogisticsMap(map, aiRoot, bridge, neutral, rear);
         var service = new LogisticsService(map);
         service.RegisterMainCity(1, aiRoot);
         service.RecalculateAll();
@@ -375,6 +812,108 @@ public class LogisticsServiceTests
 
         Assert.IsFalse(service.IsVisibleToFaction(rear, 0));
         Assert.IsFalse(service.IsVisibleToFaction(rear, 1));
+    }
+
+    // ══════════════ 断供方案-阶段4：区域吞并 ══════════════
+
+    [Test]
+    public void RecalculateAll_AnnexesUnsuppliedRegionAdjacentToOtherNetwork()
+    {
+        var map = new HexMapService();
+        HexCellData playerRoot = CreateLogisticsCell(Vector3.zero, 0);
+        HexCellData bridge = CreateLogisticsCell(new Vector3(0, -1, 1), 1);
+        HexCellData aiRear = CreateLogisticsCell(new Vector3(0, -2, 2), 1);
+        HexCellData aiFarRear = CreateLogisticsCell(new Vector3(0, -3, 3), 1);
+        InitializeLogisticsMap(map, playerRoot, bridge, aiRear, aiFarRear);
+        var service = new LogisticsService(map);
+        service.RegisterMainCity(0, playerRoot);
+        service.RegisterMainCity(1, bridge);
+        service.RecalculateAll();
+
+        // 切桥：bridge 被玩家占领，aiRear/aiFarRear 断供且与玩家网络相邻 → 整区域吞并
+        bridge.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+        service.RecalculateAll();
+
+        Assert.IsTrue(service.IsOwnedBy(aiRear, 0));
+        Assert.IsTrue(service.IsOwnedBy(aiFarRear, 0));
+        Assert.IsTrue(service.IsLogisticsConnected(aiRear, 0));
+        // 吞并自动写入探索 → 对新主双方可见
+        Assert.IsTrue(service.IsVisibleToFaction(aiRear, 0));
+        Assert.IsTrue(service.IsVisibleToFaction(aiRear, 1));
+    }
+
+    [Test]
+    public void RecalculateAll_DoesNotAnnexRegionWithoutAdjacencyToNetwork()
+    {
+        var map = new HexMapService();
+        HexCellData playerRoot = CreateLogisticsCell(Vector3.zero, 0);
+        HexCellData neutral = CreateLogisticsCell(new Vector3(0, -1, 1), -1);
+        HexCellData aiRear = CreateLogisticsCell(new Vector3(0, -2, 2), 1);
+        HexCellData aiRoot = CreateLogisticsCell(new Vector3(0, -4, 4), 1);
+        InitializeLogisticsMap(map, playerRoot, neutral, aiRear, aiRoot);
+        var service = new LogisticsService(map);
+        service.RegisterMainCity(0, playerRoot);
+        service.RegisterMainCity(1, aiRoot);
+        service.RecalculateAll();
+
+        // aiRear 断供（与 aiRoot 不相邻、与玩家网络间隔中立格）→ 不吞并
+        Assert.IsFalse(service.IsOwnedBy(aiRear, 0));
+        Assert.IsTrue(service.IsOwnedBy(aiRear, 1));
+        Assert.IsFalse(service.IsLogisticsConnected(aiRear, 1));
+    }
+
+    [Test]
+    public void RecalculateAll_ExemptsPseudoFactionCellsFromAnnexation()
+    {
+        var map = new HexMapService();
+        HexCellData playerRoot = CreateLogisticsCell(Vector3.zero, 0);
+        // 中立公共建筑伪阵营（Key = 2），紧邻玩家网络
+        HexCellData publicBuildingCell = CreateLogisticsCell(new Vector3(0, -1, 1), 2);
+        InitializeLogisticsMap(map, playerRoot, publicBuildingCell);
+        var service = new LogisticsService(map);
+        service.RegisterMainCity(0, playerRoot);
+        service.RecalculateAll();
+
+        // Key >= 2 不参与断供检测/吞并（决策 10）
+        Assert.IsTrue(service.IsOwnedBy(publicBuildingCell, 2));
+    }
+
+    [Test]
+    public void IsVisibleToFaction_PseudoFactionCellUsesViewerDiscovery()
+    {
+        var map = new HexMapService();
+        // 中立公共建筑伪阵营（Key = 2）：按观察方永久发现状态判断（A7 修复）
+        HexCellData publicBuildingCell = CreateLogisticsCell(Vector3.zero, 2);
+        publicBuildingCell.ExploreBy(1);
+        InitializeLogisticsMap(map, publicBuildingCell);
+        var service = new LogisticsService(map);
+
+        Assert.IsFalse(service.IsVisibleToFaction(publicBuildingCell, 0));
+        Assert.IsTrue(service.IsVisibleToFaction(publicBuildingCell, 1));
+    }
+
+    [Test]
+    public void RecalculateAll_AnnexationFiresLogisticsChangedOnce()
+    {
+        var map = new HexMapService();
+        HexCellData playerRoot = CreateLogisticsCell(Vector3.zero, 0);
+        HexCellData bridge = CreateLogisticsCell(new Vector3(0, -1, 1), 1);
+        HexCellData aiRear = CreateLogisticsCell(new Vector3(0, -2, 2), 1);
+        InitializeLogisticsMap(map, playerRoot, bridge, aiRear);
+        var service = new LogisticsService(map);
+        service.RegisterMainCity(0, playerRoot);
+        service.RegisterMainCity(1, bridge);
+        service.RecalculateAll();
+
+        int events = 0;
+        service.LogisticsChanged += () => events++;
+
+        // 切桥 → 吞并 aiRear（递归重算）→ 整个流程只触发一次事件
+        bridge.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+        service.RecalculateAll();
+
+        Assert.AreEqual(1, events);
+        Assert.IsTrue(service.IsOwnedBy(aiRear, 0));
     }
 
     [Test]

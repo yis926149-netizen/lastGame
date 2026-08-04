@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 295bc0a5ed8d4182b640a7de381a111d, type: 3}
+  m_Name: Stone
+  m_EditorClassIdentifier: 
+  landFormId: Stone
+  landFormName: 石头
+  description: 纯视觉地貌，无任何效果（原地形高度 +1 设计未实现，本次明确不提供）。
+  modelPrefab: {fileID: 6759037398801056679, guid: c6d7e9e2b282a79448ea21d277267695, type: 3}
+  effectType: 0
+  effect:
+    defenseBonus: 0
+    healRatio: 0
+    healInterval: 0
+  spawnWeight: 1

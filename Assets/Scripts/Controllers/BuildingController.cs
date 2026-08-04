@@ -293,6 +293,21 @@ public class BuildingController : BuildingBase
         UITool.TrySetSliderFillColor(uiHealthBar, healthColor);
     }
 
+    // 【断供方案-阶段3】建筑易主视觉切换：tag/父节点/血条颜色（占领与吞并共用）
+    public void ApplyTransferVisual(int newFaction)
+    {
+        if (newFaction == 0)
+            SetCityVisual("PlayerBuilding", "PlayerBuilding", Color.green);
+        else
+            SetCityVisual("EnemyBuilding", "EnemyBuilding", Color.red);
+    }
+
+    // 【断供方案-阶段3】从玩家按类型索引字典中移除该建筑（易主/销毁共用）
+    public void RemoveFromPlayerIndexes()
+    {
+        RemoveFromPlayerBuildingIndexes(gameObject);
+    }
+
     //建筑死亡
     public void BuildingDestroyed()
     {
@@ -325,7 +340,8 @@ public class BuildingController : BuildingBase
         if (_logisticsService == null || cell == null) return;
 
         int cellOwner = cell.Player_City_Index.Key;
-        if (cellOwner < 0) return;
+        // 【断供方案-阶段3/决策10】占领只对阵营 0/1 有效；中立与公共建筑伪阵营（Key>=2）豁免
+        if (cellOwner < 0 || cellOwner >= 2) return;
 
         if (!cell.IsHaveUnit()) return;
         GameObject unit = cell.GetUnit();

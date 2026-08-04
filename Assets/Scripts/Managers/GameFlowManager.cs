@@ -21,7 +21,9 @@ public class GameFlowManager : MonoBehaviour, IInitializable
     [Inject] private GoldWallet _goldWallet;
     [Inject] private EnemyModelManager _enemyModelManager;
     [Inject] private PublicBuildingGenerator _publicBuildingGenerator;
+    [Inject] private LandFormMarkerManager _landFormMarkerManager;
     [Inject] private MapGenerationConfigSO _config;
+    [Inject] private ArenaEventManager _arenaEventManager;
 
     // ── PlayerIndex 分配器（决策#22/#27）─────────────
     private int _nextPlayerIndex = 0;
@@ -42,7 +44,16 @@ public class GameFlowManager : MonoBehaviour, IInitializable
 
         // 1. 地图生成
         mapGenerator.Generate();
+
+        // 1.1 【动态地图-阶段三】渲染后端按配置在 MapRender 内分派（Chunked = ChunkMapRenderer 分块渲染）
         mapRenderer.MapRender();
+
+        // 1.2 【竞技场-阶段二】预留区标记（IsUnexplorable × 37）——
+        // 必须在公共建筑生成与玩家出生点选择之前，供两者排除预留区
+        _arenaEventManager.OnMapInitialized();
+
+        // 1.5 【金矿提示图标】地图数据落定后为金矿堆创建提示浮标
+        _landFormMarkerManager.CreateAllMarkers();
 
         // 2. 分配 PlayerIndex：玩家固定0（决策#22）
         _nextPlayerIndex = 0;
@@ -82,7 +93,9 @@ public class GameFlowManager : MonoBehaviour, IInitializable
             if (cell != null &&
                 cell.HexType != Enums.HexType.LakeOrSea &&
                 cell.Player_City_Index.Equals(new KeyValuePair<int, int>(-1, -1)) &&
-                _config.playerZone.Contains(cell.HexCoordinate.z))
+                _config.playerZone.Contains(cell.HexCoordinate.z) &&
+                // 【竞技场-阶段二】主城出生点排除预留区外 2 环（玩法文档 §7.3）
+                !_arenaEventManager.IsNearReservedZone(cell, 2))
             {
                 candidates.Add(cell);
             }

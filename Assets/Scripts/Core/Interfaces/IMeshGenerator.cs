@@ -1,374 +1,276 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 public interface IMeshGenerator
 {
     // ==============================
-    // 地块实心区域
+    // 地块实心区域（无状态，阶段一）
+    // 输出不再写回 HexCellData 渲染缓存；RealCenterWorldCoordinate 由调用方同步。
     // ==============================
 
     /// <summary>
-    /// 返回地块实心区域的坐标（包括河道顶点）
+    /// 无状态构建地块实心区域：44 顶点 + 中心点（不写回 HexCellData）。
     /// </summary>
-    List<Vector3> GetSolidAreaVertices(ref HexCellData hexCellData);
+    SolidAreaMeshData BuildSolidArea(HexCellData hexCellData, IReadOnlyMapView view);
 
     /// <summary>
-    /// 设置地块实心区域的UV（包括河道顶点）
+    /// 实心区域 UV（44 个，含河道）。
     /// </summary>
-    List<Vector2> GetSolidAreaVerticesUV(ref HexCellData hexCellData);
-
-    /// <returns></returns>
-    /// <summary>
-    /// 设置地块实心区域的顶点绘制顺序（无河道地块）
-    /// </summary>
-    List<int> GetSolidAreaVerticesDrawOrder1(ref HexCellData hexCellData);
+    List<Vector2> BuildSolidAreaUV(HexCellData hexCellData);
 
     /// <summary>
-    /// 设置地块实心区域的顶点绘制顺序（河道始末地块）
+    /// 实心区域顶点绘制顺序（无河道地块）。
     /// </summary>
-    List<int> GetSolidAreaVerticesDrawOrder2(ref HexCellData hexCellData, Enums.HexDirection direction);
+    List<int> BuildSolidAreaDrawOrder1(HexCellData hexCellData);
 
     /// <summary>
-    /// 设置地块实心区域的顶点绘制顺序（河道中流地块）
+    /// 实心区域顶点绘制顺序（河道始末地块）。
     /// </summary>
-    List<int> GetSolidAreaVerticesDrawOrder3(ref HexCellData hexCellData, Enums.HexDirection incomingDirection, Enums.HexDirection outgoingDirection);
+    List<int> BuildSolidAreaDrawOrder2(HexCellData hexCellData, Enums.HexDirection direction);
+
+    /// <summary>
+    /// 实心区域顶点绘制顺序（河道中流地块）。
+    /// </summary>
+    List<int> BuildSolidAreaDrawOrder3(HexCellData hexCellData, Enums.HexDirection incomingDirection, Enums.HexDirection outgoingDirection);
 
     // ==============================
-    // 矩形过渡区域
+    // 矩形过渡区域（无状态，阶段一）
+    // 跨格依赖（邻居 44 点）经 CellBuildContext.Solids / View 读取。
     // ==============================
-    //
-    ///////////////////- 坡 -///////////////////
 
     /// <summary>
-    /// 返回矩形过渡区域的顶点坐标
+    /// 矩形过渡区域（坡）顶点坐标。
     /// </summary>
-    /// <param name="direction">哪个方向的矩形</param>
-    /// <returns></returns>
-    List<Vector3> GetRectVertices(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
+    List<Vector3> BuildRectVertices(CellBuildContext ctx, Enums.HexDirection direction);
 
     /// <summary>
-    /// 返回矩形过渡区域的uv
+    /// 矩形过渡区域（坡）uv。
     /// </summary>
-    /// <param name="direction">哪个方向的矩形</param>
-    /// <returns></returns>
-    List<Vector2> GetRectUV(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
+    List<Vector2> BuildRectUV(CellBuildContext ctx, Enums.HexDirection direction);
 
     /// <summary>
-    /// 返回矩形过渡区域的矩形绘制顺序
+    /// 矩形过渡区域（坡）绘制顺序。
     /// </summary>
-    /// <param name="direction">哪个方向的矩形</param>
-    /// <returns></returns>
-    List<int> GetRectDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
+    List<int> BuildRectDrawOrder(CellBuildContext ctx, Enums.HexDirection direction);
 
     /// <summary>
-    /// 返回矩形坡河道过渡区域的矩形绘制顺序
+    /// 矩形坡河道过渡区域的绘制顺序。
     /// </summary>
-    /// <param name="direction">哪个方向的矩形</param>
-    /// <returns></returns>
-    List<int> GetRectSlopeRiverDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
-
-    ///////////////////- 阶梯 -///////////////////
-    
-    /// <summary>
-    /// 两边的顶点不变
-    /// 中间的点通过插值获取
-    /// 插值规律 - 在竖直Y方向上插n个值，在水平X方向上插2n个值，插值均分起始点和终末点
-    /// </summary>
-    /// <param name="direction"></param>
-    /// <returns>获取矩形阶梯的顶点</returns>
-    List<Vector3> GetRectStepVertices(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
+    List<int> BuildRectSlopeRiverDrawOrder(CellBuildContext ctx, Enums.HexDirection direction);
 
     /// <summary>
-    /// 获取矩形阶梯的uv(新的、简化的方法)
+    /// 矩形过渡区域（阶梯）顶点坐标。
     /// </summary>
-    /// <param name="direction">方向</param>
-    /// <returns></returns>
-    List<Vector2> GetRectStepUV(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
+    List<Vector3> BuildRectStepVertices(CellBuildContext ctx, Enums.HexDirection direction);
 
     /// <summary>
-    /// 获取矩形阶梯的绘制顺序
+    /// 矩形阶梯 uv。
     /// </summary>
-    /// <param name="direction">方向</param>
-    /// <returns></returns>
-    List<int> GetRectStepDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
+    List<Vector2> BuildRectStepUV(CellBuildContext ctx, IReadOnlyList<Vector3> rectVertices);
 
     /// <summary>
-    /// 返回矩形矩形河道过渡区域的矩形绘制顺序
+    /// 矩形阶梯绘制顺序。
     /// </summary>
-    /// <param name="direction">哪个方向的矩形</param>
-    /// <returns></returns>
-    List<int> GetRectStepRiverDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
+    List<int> BuildRectStepDrawOrder(CellBuildContext ctx, IReadOnlyList<Vector3> rectVertices);
+
+    /// <summary>
+    /// 矩形阶梯河道过渡区域的绘制顺序。
+    /// </summary>
+    List<int> BuildRectStepRiverDrawOrder(CellBuildContext ctx, IReadOnlyList<Vector3> rectVertices);
 
     // ==============================
-    // 三角过渡区域（方法三、四等）
+    // 三角过渡区域（无状态，阶段一）
     // ==============================
-    //
-    ///////////////////- 方法一 -///////////////////
-    
-    /// <summary>
-    /// 返回三角过渡区域的顶点坐标
-    /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param>
-    /// <returns></returns>
-    List<Vector3> GetTriVertices(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService);
 
     /// <summary>
-    /// 返回三角形过渡区域的uv
+    /// 三角过渡区域（方法一）顶点坐标。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param>
-    /// <returns></returns>
-    List<Vector2> GetTriUV(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService);
+    List<Vector3> BuildTriVertices(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1);
 
     /// <summary>
-    /// 返回三角形过渡区域的绘制顺序
+    /// 三角过渡区域（方法一）uv。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param>
-    /// <returns></returns>
-    List<int> GetTriDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService);
-
-    ///////////////////- 方法三 -///////////////////
+    List<Vector2> BuildTriUV(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1);
 
     /// <summary>
-    /// 返回三角过渡区域 - 方法3 - 的顶点坐标
+    /// 三角过渡区域（方法一）绘制顺序。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param>
-    /// <returns></returns>
-    List<Vector3> GetTriStep3Vertices(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService);
+    List<int> BuildTriDrawOrder(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1);
 
     /// <summary>
-    /// 返回三角过渡区域 - 方法3 - 的uv
+    /// 三角过渡区域（方法三）顶点坐标（依赖本格/邻居矩形过渡顶点组，见 CellBuildContext.RectVertices）。
+    /// isSlope 输出方法三的坡边判定（供 BuildTriStep3DrawOrder 使用）。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param>
-    /// <returns></returns>
-    List<Vector2> GetTriStep3UV(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1);
+    List<Vector3> BuildTriStep3Vertices(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1, out int[] isSlope);
 
     /// <summary>
-    /// 返回三角过渡区域 - 方法3 - 的绘制顺序
+    /// 三角过渡区域（方法三）uv。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param>
-    /// <returns></returns>
-    List<int> GetTriStep3DrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1);
-
-    ///////////////////- 方法四 -///////////////////
+    List<Vector2> BuildTriStep3UV(CellBuildContext ctx);
 
     /// <summary>
-    /// 返回三角过渡区域 - 方法4 - 的顶点坐标
+    /// 三角过渡区域（方法三）绘制顺序。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param>
-    /// <returns></returns>
-    List<Vector3> GetTriStep4Vertices(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService);
+    List<int> BuildTriStep3DrawOrder(CellBuildContext ctx, int[] isSlope, Enums.HexDirection direction0, Enums.HexDirection direction1);
 
     /// <summary>
-    /// 返回三角过渡区域 - 方法4 - 的uv - （旧的，复杂的方法）
+    /// 三角过渡区域（方法四）顶点坐标（依赖矩形过渡顶点组）。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param> //顶点排序是梯1、梯2
-    List<Vector2> GetTriStep4UV_Old(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1);
+    List<Vector3> BuildTriStep4Vertices(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1);
 
     /// <summary>
-    /// 返回三角过渡区域 - 方法4 - 的uv - （新的，简单的方法）
+    /// 三角过渡区域（方法四）uv（新的、简单的方法）。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param> //顶点排序是梯1、梯2
-    List<Vector2> GetTriStep4UV(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1);
+    List<Vector2> BuildTriStep4UV(IReadOnlyList<Vector3> triVertices);
 
     /// <summary>
-    /// 返回三角过渡区域 - 方法4 - 的绘制顺序
+    /// 三角过渡区域（方法四）绘制顺序。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param>
-    /// <returns></returns>
-    List<int> GetTriStep4DrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService);
+    List<int> BuildTriStep4DrawOrder(CellBuildContext ctx, IReadOnlyList<Vector3> triVertices, Enums.HexDirection direction0, Enums.HexDirection direction1);
 
     // ==============================
-    // 河流
+    // 河流（无状态，阶段一）
     // ==============================
-    //
-    //河水的地块管理：自己的实心区域 + 河流的下游过渡区域 
-    //
-    ///////////////////- 地块实心区域 -///////////////////
 
     /// <summary>
-    /// 返回地块实心区域的河水坐标
+    /// 地块实心区域的河水坐标（19 点）。
     /// </summary>
-    Vector3[] GetRiverVertices(ref HexCellData hexCellData);
+    Vector3[] BuildRiverVertices(CellBuildContext ctx);
 
     /// <summary>
-    ///  返回地块实心区域的河水坐标UV
+    /// 地块实心区域的河水坐标 UV。drawOrder 为河水绘制顺序（BuildRiverWater2/3DrawOrder 输出）。
+    /// riverVertexCount 为 BuildRiverVertices 输出的顶点数。
     /// </summary>
-    Vector2[] GetRiverUV(ref HexCellData hexCellData, List<int> l);
+    Vector2[] BuildRiverUV(CellBuildContext ctx, List<int> drawOrder, int riverVertexCount);
 
     /// <summary>
-    /// 获取河水2实心区域的绘制顺序 - (河水始末地块)
+    /// 河水实心区域绘制顺序（河水始末地块）。
     /// </summary>
-    /// <param name="direction">方向</param>
-    List<int> GetRiverWater2DrawOrder(Enums.HexDirection direction);
+    List<int> BuildRiverWater2DrawOrder(Enums.HexDirection direction);
 
     /// <summary>
-    /// 获取河水3实心区域的绘制顺序 - (河水中游地块)
+    /// 河水实心区域绘制顺序（河水中游地块）。
     /// </summary>
-    List<int> GetRiverWater3DrawOrder(ref HexCellData hexCellData);
-
-    ///////////////////- 矩形区域 -///////////////////
-    //河水不分坡和阶梯
+    List<int> BuildRiverWater3DrawOrder(HexCellData hexCellData);
 
     /// <summary>
-    /// 返回地块下游过渡区域的河水坐标
+    /// 地块下游过渡区域的河水坐标（4 点；无河流方向时返回 4 个零向量，与旧行为一致）。
     /// </summary>
-    List<Vector3> GetOutgoingRiverVertices(ref HexCellData hexCellData, IMapDataService _mapDataService);
+    List<Vector3> BuildOutgoingRiverVertices(CellBuildContext ctx);
 
     /// <summary>
-    ///  返回地块下游过渡区域的河水坐标UV
+    /// 地块下游过渡区域的河水 UV。
     /// </summary>
-    Vector2[] GetOutgoingRiverSlopUV(ref HexCellData hexCellData);
+    Vector2[] BuildOutgoingRiverSlopUV();
 
     /// <summary>
-    ///  返回地块下游过渡区域的河水绘制顺序
+    /// 地块下游过渡区域的河水绘制顺序。
     /// </summary>
-    int[] GetOutgoingRiverSlopDrawOrder(ref HexCellData hexCellData);
+    int[] BuildOutgoingRiverSlopDrawOrder();
 
     // ==============================
-    // 湖海
+    // 湖海（无状态，阶段一）
+    // lake：本格湖海实心 25 点（水面高度）；neighborLake：方向邻居湖海 25 点。
     // ==============================
-    //
-    ///////////////////- 实心区域 -///////////////////
-    
-    /// <summary>
-    /// 返回湖或海实心区域坐标
-    /// </summary>
-    /// <returns></returns>
-    Vector3[] GetlakeOrSeaVertices(ref HexCellData hexCellData);
 
     /// <summary>
-    /// 设置湖或海实心区域UV
+    /// 湖或海实心区域坐标（25 点，水面高度）。
     /// </summary>
-    Vector2[] GetlakeOrSeaUV(ref HexCellData hexCellData);
-
-    /// <returns></returns>
-    /// <summary>
-    /// 设置湖或海实心区域的顶点绘制顺序
-    /// </summary>
-    int[] GetlakeOrSeaDrawOrder(ref HexCellData hexCellData);
-
-    ///////////////////- 矩形区域 -///////////////////
+    Vector3[] BuildLakeOrSeaVertices(CellBuildContext ctx);
 
     /// <summary>
-    /// 返回湖或海矩形过渡区域的顶点坐标
+    /// 湖或海实心区域 UV。
     /// </summary>
-    /// <param name="direction">哪个方向的矩形</param>
-    List<Vector3> GetlakeOrSeaRectVertices(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
+    Vector2[] BuildLakeOrSeaUV();
 
     /// <summary>
-    /// 返回湖或海矩形过渡区域的uv
+    /// 湖或海实心区域绘制顺序。
     /// </summary>
-    /// <param name="direction">哪个方向的矩形</param>
-    List<Vector2> GetlakeOrSeaRectUV(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
+    int[] BuildLakeOrSeaDrawOrder();
 
     /// <summary>
-    /// 返回湖或海矩形过渡区域的矩形绘制顺序
+    /// 湖或海矩形过渡区域顶点坐标。
     /// </summary>
-    /// <param name="direction">哪个方向的矩形</param>
-    List<int> GetlakeOrSeaRectDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
-
-    ///////////////////- 三角 -///////////////////
+    List<Vector3> BuildLakeOrSeaRectVertices(CellBuildContext ctx, Enums.HexDirection direction);
 
     /// <summary>
-    /// 返回湖或海三角过渡区域的顶点坐标
+    /// 湖或海矩形过渡区域 uv。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param>
-    List<Vector3> GetlakeOrSeaTriVertices(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService);
+    List<Vector2> BuildLakeOrSeaRectUV(Enums.HexDirection direction);
 
     /// <summary>
-    /// 返回湖或海三角形过渡区域的uv
+    /// 湖或海矩形过渡区域绘制顺序。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param>
-    List<Vector2> GetlakeOrSeaTriUV(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService);
+    List<int> BuildLakeOrSeaRectDrawOrder(Enums.HexDirection direction);
 
     /// <summary>
-    /// 返回湖或海三角形过渡区域的绘制顺序
+    /// 湖或海三角过渡区域顶点坐标。
     /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param>
-    List<int> GetlakeOrSeaTriDrawOrder(ref HexCellData hexCellData, Enums.HexDirection direction0, Enums.HexDirection direction1, IMapDataService _mapDataService);
+    List<Vector3> BuildLakeOrSeaTriVertices(CellBuildContext ctx, Enums.HexDirection direction0, Enums.HexDirection direction1);
+
+    /// <summary>
+    /// 湖或海三角过渡区域 uv。
+    /// </summary>
+    List<Vector2> BuildLakeOrSeaTriUV(Enums.HexDirection direction0, Enums.HexDirection direction1);
+
+    /// <summary>
+    /// 湖或海三角过渡区域绘制顺序。
+    /// </summary>
+    List<int> BuildLakeOrSeaTriDrawOrder(Enums.HexDirection direction0, Enums.HexDirection direction1);
 
     // ==============================
-    // 湖海海岸
+    // 湖海海岸（无状态，阶段一）
     // ==============================
-    ///
-    ///////////////////- 矩形 -///////////////////
 
     /// <summary>
-    /// 返回海岸矩形过渡区域某个方向的顶点坐标
+    /// 海岸矩形过渡区域某个方向的顶点坐标。
     /// </summary>
-    List<Vector3> GetOneDirectionCoastRectVertices(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
+    List<Vector3> BuildCoastRectVertices(CellBuildContext ctx, Enums.HexDirection direction);
 
     /// <summary>
-    /// 返回海岸矩形过渡区域的uv
+    /// 海岸矩形过渡区域 uv。
     /// </summary>
-    /// <param name="direction">哪个方向的矩形</param>
-    List<Vector2> GetCoastRectUV(ref HexCellData hexCellData, Vector3[] vertices);
+    List<Vector2> BuildCoastRectUV(Vector3[] vertices);
 
     /// <summary>
-    /// 返回海岸矩形过渡区域的矩形绘制顺序
+    /// 海岸矩形过渡区域绘制顺序。
     /// </summary>
-    List<int> GetCoastRectDrawOrder(ref HexCellData hexCellData, Vector3[] vertices);
-
-    ///////////////////- 三角 -///////////////////
-
-    ///
-    /// <summary>
-    /// 返回海岸三角过渡区域某个方向的顶点坐标
-    /// </summary>
-    List<Vector3> GetOneDirectionCoastTriVertices(ref HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService);
+    List<int> BuildCoastRectDrawOrder(Vector3[] vertices);
 
     /// <summary>
-    /// 返回海岸三角过渡区域的uv
+    /// 海岸三角过渡区域某个方向的顶点坐标。
+    /// 邻居若为水（isCoast）取 lake 数组，否则取 solid 数组（与旧行为一致）。
     /// </summary>
-    List<Vector2> GetCoastTriUV(ref HexCellData hexCellData, Vector3[] vertices);
-
+    List<Vector3> BuildCoastTriVertices(CellBuildContext ctx, Enums.HexDirection direction);
 
     /// <summary>
-    /// 返回海岸三角过渡区域的矩形绘制顺序
+    /// 海岸三角过渡区域 uv。
     /// </summary>
-    List<int> GetCoastTriDrawOrder(ref HexCellData hexCellData, Vector3[] vertices);
+    List<Vector2> BuildCoastTriUV(Vector3[] vertices);
 
+    /// <summary>
+    /// 海岸三角过渡区域绘制顺序。
+    /// </summary>
+    List<int> BuildCoastTriDrawOrder(Vector3[] vertices);
 
     // ==============================
-    // 网格线
+    // 网格线（无状态，阶段一）
     // ==============================
-    /*
-    //这里的六边形网格线只包裹实心区域
-    //网格线高度 = 地块中心点高度
-    //然后通过渲染队列，使其显示在最上层
-    //然后通过透明度控制，使其半透明
-    //网格线是一个独立的网格
-    */
 
     /// <summary>
-    /// 获取网格线的顶点
+    /// 网格线顶点（12 点：外圈 6 + 内圈 6）。
     /// </summary>
-    List<Vector3> GetGridVertices(ref HexCellData hexCellData);
+    List<Vector3> BuildGridVertices(CellBuildContext ctx);
 
     /// <summary>
-    /// 返回网格线的uv
-    /// ∵顶点是固定的，所以uv也可以硬编程
+    /// 网格线 uv。
     /// </summary>
-    List<Vector2> GetGridUV(ref HexCellData hexCellData);
+    List<Vector2> BuildGridUV();
 
     /// <summary>
-    /// 返回网格线的绘制顺序
+    /// 网格线绘制顺序。
     /// </summary>
-    List<int> GetGridDrawOrder(ref HexCellData hexCellData);
+    List<int> BuildGridDrawOrder();
 
     // ==============================
     // 移动显示器的路径连线
@@ -389,7 +291,6 @@ public interface IMeshGenerator
     /// 返回连线的绘制顺序
     /// </summary>
     List<int> GetAdjacentHexLineDrawOrder();
-
 
     // ==============================
     // 势力范围

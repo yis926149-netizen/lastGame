@@ -6,13 +6,18 @@ using UnityEngine;
 //   攻击范围 range = 0（走到目标相邻格后进入同格攻击）。
 //   CanAttack：相邻格内有敌方单位/建筑时为 true。
 //   DoCombat：CombatResolver 瞬间结算伤害 + PlayAttackAnim 表现动画 + MarkAttacked 开始冷却。
-//   ChooseNextPath：朝最近可见目标返回完整路径；无目标时前沿游走（单步路径）。
+//   ChooseNextPath：
+//     1. 警戒范围（3格）内有敌方单位 → 追击
+//     2. 无近敌 → 向最近敌方建筑（主城优先）行军
+//     3. 无法到达任何建筑 → 随机前沿游走（兜底）
 //
 // 【批次 D】DoCombat 改用 CombatResolver + PlayAttackAnim，移除旧 MoveToAttack 路径。
 //****************************************
 
 public class MeleeStrategy : IUnitStrategy
 {
+    private const int AlertRange = 3; // 步兵警戒范围（格）
+
     public List<Vector3> ChooseNextPath(UnitBrainBase brain)
     {
         if (brain?.Owner?.model == null || brain.MapData == null || brain.Movement == null)
@@ -23,6 +28,7 @@ public class MeleeStrategy : IUnitStrategy
         List<Vector3> allPoints = new List<Vector3>(mapData.GetAllHexCoordinates());
         Vector3 startHex = mapData.WorldToHexCoordinate(brain.Owner.model.transform.position);
 
+        // 1. 公共建筑方向提示（已发现但未占领）
         Vector3? directionHint = brain.FindApproximateDirectionToHiddenBuilding();
         if (directionHint.HasValue && movement.CalculateMinMovementCostBetweenTwoHexes(
                 allPoints, startHex, directionHint.Value,
@@ -32,24 +38,86 @@ public class MeleeStrategy : IUnitStrategy
             return new List<Vector3> { directionPath[0] };
         }
 
-        Vector3? targetHex = brain.FindNearestEnemy() ?? brain.FindNearestEnemyBuilding();
+        // 2. 警戒范围（3格）内有任何敌方目标（单位/宝箱/建筑）→ 追击最近者
+        //    （索敌链第二优先级：敌方单位 > 宝箱 > 敌方建筑，玩法文档 §4.2）
+        Vector3? bestAlertTarget = null;
+        float bestAlertDist = float.MaxValue;
 
-        if (targetHex.HasValue)
+        Vector3? nearestEnemy = brain.FindNearestEnemy();
+        if (nearestEnemy.HasValue)
         {
-            if (movement.CalculateMinMovementCostBetweenTwoHexes(
-                    allPoints, startHex, targetHex.Value,
-                    Enums.MovementPurpose.MoveToAttack, out _, out List<Vector3> path)
-                && path != null && path.Count > 0)
+            float dist = HexDistance(startHex, nearestEnemy.Value);
+            if (dist <= AlertRange && dist < bestAlertDist)
             {
-                return path;  // 返回完整路径
+                bestAlertDist = dist;
+                bestAlertTarget = nearestEnemy;
             }
         }
 
-        // 无目标时前沿游走：返回单步路径
+        Vector3? nearestChest = brain.FindNearestChest();
+        if (nearestChest.HasValue)
+        {
+            float dist = HexDistance(startHex, nearestChest.Value);
+            if (dist <= AlertRange && dist < bestAlertDist)
+            {
+                bestAlertDist = dist;
+                bestAlertTarget = nearestChest;
+            }
+        }
+
+        Vector3? nearestBuilding = brain.FindNearestEnemyBuilding();
+        if (nearestBuilding.HasValue)
+        {
+            float dist = HexDistance(startHex, nearestBuilding.Value);
+            if (dist <= AlertRange && dist < bestAlertDist)
+            {
+                bestAlertDist = dist;
+                bestAlertTarget = nearestBuilding;
+            }
+        }
+
+        if (bestAlertTarget.HasValue)
+        {
+            if (movement.CalculateMinMovementCostBetweenTwoHexes(
+                    allPoints, startHex, bestAlertTarget.Value,
+                    Enums.MovementPurpose.MoveToAttack, out _, out List<Vector3> path)
+                && path != null && path.Count > 0)
+            {
+                return path;
+            }
+        }
+
+        // 3. 无警戒范围内目标 → 向宝箱行军（宝箱 > 敌方建筑）
+        Vector3? chest = brain.FindNearestChest();
+        if (chest.HasValue)
+        {
+            if (movement.CalculateMinMovementCostBetweenTwoHexes(
+                    allPoints, startHex, chest.Value,
+                    Enums.MovementPurpose.MoveToAttack, out _, out List<Vector3> chestPath)
+                && chestPath != null && chestPath.Count > 0)
+            {
+                return chestPath;
+            }
+        }
+
+        // 4. 无宝箱/无法到达 → 向最近敌方建筑（主城等）行军
+        Vector3? enemyBuilding = brain.FindNearestEnemyBuilding();
+        if (enemyBuilding.HasValue)
+        {
+            if (movement.CalculateMinMovementCostBetweenTwoHexes(
+                    allPoints, startHex, enemyBuilding.Value,
+                    Enums.MovementPurpose.MoveToAttack, out _, out List<Vector3> marchPath)
+                && marchPath != null && marchPath.Count > 0)
+            {
+                return marchPath;
+            }
+        }
+
+        // 5. 无法到达任何目标 → 随机前沿游走（兜底）
         Vector3? frontierStep = ChooseFrontierStep(brain, allPoints, startHex);
         if (frontierStep.HasValue)
             return new List<Vector3> { frontierStep.Value };
-        
+
         return null;
     }
 
@@ -111,6 +179,11 @@ public class MeleeStrategy : IUnitStrategy
             brain.MarkAttacked();
             return;
         }
+    }
+
+    private static float HexDistance(Vector3 a, Vector3 b)
+    {
+        return (Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y) + Mathf.Abs(a.z - b.z)) * 0.5f;
     }
 
     private static string TargetTagInCell(HexCellData cell, bool selfIsPlayer)

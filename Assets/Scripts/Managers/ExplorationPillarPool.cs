@@ -1,9 +1,13 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Zenject;
 
 public class ExplorationPillarPool : MonoBehaviour
 {
+	/// <summary>探索动画的奖励触发点（石柱溶解30% / 飞盘撞击），与 CompleteExploration 同点触发，供金币等表现层对齐播放。</summary>
+	public event Action<HexCellData> ExplorationRewardPoint;
+
 	[Header("特效方案选择")]
 	[SerializeField] private ExplorationEffectStyle _effectStyle = ExplorationEffectStyle.PillarRise;
 
@@ -123,16 +127,24 @@ public class ExplorationPillarPool : MonoBehaviour
 	{
 		var pillar = GetPillar();
 		pillar.Play(cell.RealCenterWorldCoordinate,
-			onDissolveStart: () => { _explorationService.CompleteExploration(cell); },
-			onComplete: (effect) => { ReturnPillarToPool(effect); });
+			onDissolveStart: () =>
+			{
+				_explorationService.CompleteExploration(cell);
+				ExplorationRewardPoint?.Invoke(cell);
+			},
+			onComplete: ReturnPillarToPool);
 	}
 
 	private void PlayDiskEffect(HexCellData cell)
 	{
 		var disk = GetDisk();
 		disk.Play(cell.RealCenterWorldCoordinate,
-			onImpact: () => { _explorationService.CompleteExploration(cell); },
-			onComplete: (effect) => { ReturnDiskToPool(effect); });
+			onImpact: () =>
+			{
+				_explorationService.CompleteExploration(cell);
+				ExplorationRewardPoint?.Invoke(cell);
+			},
+			onComplete: ReturnDiskToPool);
 	}
 
 	private ExplorationPillarEffect GetPillar()

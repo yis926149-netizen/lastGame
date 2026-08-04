@@ -62,6 +62,7 @@ MonoBehaviour:
   transitionGenerationMode: 1
   fogMaterial: {fileID: 2100000, guid: 7c0c32e927d412345a7e325cfc9b0756, type: 2}
   fogCoverWidth: 27.5
+  fogConnectorSlopeWidth: 1
   fogMemoryColor: {r: 0.6415094, g: 0.5533312, b: 0.32983267, a: 1}
   shadingStyle: 0
   fogPixelSize: 0
@@ -71,3 +72,9 @@ MonoBehaviour:
   fogEdgeStyle: 2
   fogEdgeSoftness: 0.8
   fogEdgeAnimSpeed: 2
+  mapRenderMode: 1
+  enableExperimentalChunkRenderer: 1
+  ArenaActivateTime: 90
+  ArenaFloorHeight: 3
+  ArenaWallHeight: 4
+  centralChestModel: {fileID: 8526569099747661489, guid: 685fc0a37029f7449809a785ca062099, type: 3}

@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1b2d8edb4de14df897f3b66776054121, type: 3}
+  m_Name: Chest
+  m_EditorClassIdentifier: 
+  resourceId: Chest
+  resourceName: 宝箱
+  description: 玩家拾取后获得金币。
+  modelPrefab: {fileID: 8526569099747661489, guid: 685fc0a37029f7449809a785ca062099, type: 3}
+  reapEffectPrefab: {fileID: 885321283475858434, guid: 76a067704a681494cb3476b59acd386c, type: 3}
+  pickupSfxName: Coin8
+  pickupEffectType: 4
+  pickupEffect:
+    attackBonus: 0
+    healRatio: 0
+    defenseBonus: 0
+    goldAmount: 50
+  explorationGoldBonus: 30
+  spawnWeight: 1

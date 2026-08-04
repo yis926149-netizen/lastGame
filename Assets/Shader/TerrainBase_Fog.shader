@@ -13,6 +13,8 @@ Shader "Custom/TerrainBase_Fog"
     {
         Tags { "RenderType"="Opaque" "Queue"="Geometry" }
         LOD 200
+        // 地形含竖面/过渡面，保持双面渲染。
+        Cull Off
 
         CGPROGRAM
         #pragma surface surf Standard fullforwardshadows vertex:vert addshadow finalcolor:fogFinal
@@ -46,6 +48,7 @@ Shader "Custom/TerrainBase_Fog"
         void vert(inout appdata_full v, out Input o)
         {
             UNITY_INITIALIZE_OUTPUT(Input, o);
+
             o.vertexColor_R = v.color.r;
             o.vertexColor_G = v.color.g;
             FogBlend_vert(v.vertex, o.fogCoord);

@@ -37,14 +37,14 @@ public class UIConfigProvider : IUIConfigProvider
     public Sprite GetMovementPointsIcon() => _uiConfig.movementPointsIcon;
     public Sprite GetMeleeAttackPointsIcon() => _uiConfig.meleeAttackPointsIcon;
 
-    public List<Canvas> RuntimeCanvases { get; } = new List<Canvas>(); // ‘À–– ±¥Ê¥¢
+    public List<Canvas> RuntimeCanvases { get; } = new List<Canvas>(); // ÔøΩÔøΩÔøΩÔøΩ ±ÔøΩÊ¥¢
 
     public void AddRuntimeCanvas(Canvas canvas)
     {
         RuntimeCanvases.Add(canvas);
     }
 
-    public GameObject NextCardPlaceholder { get; set; } // ‘À–– ±¥Ê¥¢
+    public GameObject NextCardPlaceholder { get; set; } // ÔøΩÔøΩÔøΩÔøΩ ±ÔøΩÊ¥¢
     public Vector3 CardSize => _cardSize;
     public Vector3 NextCardSize => _nextCardSize;
 

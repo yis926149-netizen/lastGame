@@ -14,11 +14,11 @@ public class HexCellData
     public Enums.HexType HexType;
     //地形类型
     public Enums.TerrainType terrainType;
-    //地貌类型
-    public Enums.LandFormType landFormType = Enums.LandFormType.None;
+    //【地图地貌配置化】地块上的地貌配置（SO 引用，单一事实源；null = 无地貌）
+    public MapLandFormSO landForm;
     public GameObject landFormModel;
-    //资源类型
-    public Enums.ResourceType resourceType = Enums.ResourceType.None;
+    // 【地图资源配置化】地块上的资源配置（SO 引用，单一事实源）
+    public MapResourceSO resource;
     public GameObject resourceModel;
     //对应的六边形网格线
     public GameObject GridMesh;
@@ -276,6 +276,17 @@ public class HexCellData
         if (dir >= 0 && dir < 6) _attackerSlots[dir] = null;
     }
 
+    /// <summary>【动态地图-阶段二】释放本格上属于指定单位的所有进攻槽（弹射迁移用）。</summary>
+    public void ReleaseAttackerSlots(GameObject unit)
+    {
+        if (unit == null) return;
+        for (int i = 0; i < _attackerSlots.Length; i++)
+        {
+            if (_attackerSlots[i] == unit)
+                _attackerSlots[i] = null;
+        }
+    }
+
     /// <summary>
     /// 根据两个六边形坐标计算进攻方向槽（0-5，对应 NE/E/SE/SW/W/NW）。
     /// 从 fromHex 进入 toHex 时的方向。匹配失败返回 -1。
@@ -313,8 +324,7 @@ public class HexCellData
             movementCost = float.MaxValue;
         }
         // 【探索重构-阶段2】未探索格不再通过 movementCost 隐式阻挡寻路（方案C：探索不限制移动）
-        // 地貌有树林：寻路权重 + 1
-        if (landFormType == Enums.LandFormType.Forest) { movementCost += 1; }
+        // 【地图地貌配置化】森林移动惩罚已取消（原构造内判断因 landForm 尚未赋值而从未生效）
     }
 
     //设置该地块已探索
@@ -350,21 +360,11 @@ public class HexCellData
         return HaveUnit.Value;
     }
 
-    //获取地块上的资源
-    public Enums.ResourceType GetResource()
+    //获取地块上的资源（【地图资源配置化】TakeResource 原子式取走并清空，防止重复结算）
+    public MapResourceSO TakeResource()
     {
-        return resourceType;
-    }
-
-    //收割地块上的资源
-    public void ReapResource()
-    {
-        resourceType = Enums.ResourceType.None;
-    }
-
-    //获取地块上的地貌
-    public Enums.LandFormType GetLandForm()
-    {
-        return landFormType;
+        MapResourceSO taken = resource;
+        resource = null;
+        return taken;
     }
 }

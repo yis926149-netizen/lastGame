@@ -25,6 +25,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
     [Inject] private ITerritoryService _territoryService;
     [Inject] private GoldWallet _goldWallet;  // 【探索重构-阶段5.5】部署合法性检查
     [Inject] private PublicBuildingMarkerManager _publicBuildingMarkerManager;
+    [Inject(Optional = true)] private IMapInteractionGate _interactionGate; // 动态地图-阶段二：事务/动画期间交互锁
 
     private ICardView _nextCardView;
     private List<ICardView> _cardViews = new List<ICardView>();
@@ -240,7 +241,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
         if (_gameLoop != null && _gameLoop.IsPaused)
             return false;
 
-        if (!IsReleaseValid(view.CardID, targetCell))
+        if (!IsReleaseValid(view.Data?.NormalCardConfig, targetCell))
             return false;
 
         NormalCardConfigSO config = view.Data?.NormalCardConfig;
@@ -272,9 +273,11 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
 
     public void OnCardDragCancel(ICardView view) { }
 
-    private bool IsReleaseValid(int cardID, HexCellData cell)
+    private bool IsReleaseValid(NormalCardConfigSO config, HexCellData cell)
     {
         if (cell == null || _movementSystem.IsDestinationReserved(cell.HexCoordinate)) return false;
+        // 【动态地图-阶段二】交互锁：事务/动画期间受影响格禁止部署（§12.6）
+        if (_interactionGate != null && _interactionGate.IsLocked(cell, MapInteractionType.Deploy)) return false;
         // 【探索重构-阶段7】部署需在势力范围内 + 有足够金币
         if (!_territoryService.IsInPlayerTerritory(cell)) return false;
         if (_logisticsService != null && !_logisticsService.IsLogisticsConnected(cell, 0)) return false;
@@ -282,6 +285,8 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
         if (cell.IsHaveUnit()) return false;
+        // 金矿格不可部署建筑（单位不受限）
+        if (config is BuildingConfigSO && cell.landForm != null && cell.landForm.blockBuildingSpawn) return false;
         return true;
     }
 

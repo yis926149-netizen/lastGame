@@ -14,6 +14,9 @@ public class EndGame : MonoBehaviour
     [Inject] private PlayerModelManager _playerModelManager;
     [Inject] private AudioManager _audioManager;
     [Inject] private GameLoop _gameLoop;
+    [Inject] private IMapDataService _mapDataService;
+    [Inject] private GlobalTimerService _globalTimer;
+    [Inject] private ArenaEventManager _arenaEventManager;
 
     public bool isEndThisGame = false;
     public bool neverWin;
@@ -33,6 +36,39 @@ public class EndGame : MonoBehaviour
     private bool _playerHasOwnedCity;
     private BuildingController _playerMainCity;
     private BuildingController _aiMainCity;
+
+    private void Start()
+    {
+        if (_globalTimer != null)
+            _globalTimer.OnTimeout += HandleTimeout;
+    }
+
+    private void HandleTimeout()
+    {
+        if (!_initializationComplete || isEndThisGame) return;
+
+        int playerCells = 0;
+        int aiCells = 0;
+
+        foreach (var cell in _mapDataService.GetAllCells())
+        {
+            if (cell == null) continue;
+            int owner = cell.Player_City_Index.Key;
+            if (owner == 0) playerCells++;
+            else if (owner >= 1) aiCells++;
+        }
+
+        EndGameResult result;
+        if (playerCells > aiCells)
+            result = EndGameResult.Victory;
+        else if (aiCells > playerCells)
+            result = EndGameResult.Defeat;
+        else
+            result = EndGameResult.Draw;
+
+        Debug.Log($"[EndGame] Timeout: Player={playerCells} AI={aiCells} → {result}");
+        BeginEndGame(result);
+    }
 
 
 
@@ -154,6 +190,9 @@ public class EndGame : MonoBehaviour
         _gameLoop.SetPaused(true);
         _audioManager.StopBGM();
 
+        // 【竞技场-阶段二】对局结束强制收尾：释放 VisibilityLease、注销并销毁宝箱
+        _arenaEventManager?.Shutdown();
+
         var animation = CurrentEndAnimation;
         if (animation == null)
         {
@@ -206,6 +245,8 @@ public class EndGame : MonoBehaviour
     private void OnDisable()
     {
         CancelInvoke();
+        if (_globalTimer != null)
+            _globalTimer.OnTimeout -= HandleTimeout;
     }
 }
 

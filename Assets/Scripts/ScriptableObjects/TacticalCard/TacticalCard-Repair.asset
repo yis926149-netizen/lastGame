@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ad3c5a06d0860d34c9df40acb3279950, type: 3}
+  m_Name: TacticalCard-Repair
+  m_EditorClassIdentifier: 
+  cardId: 1
+  cardName: Repair
+  description: "\u7FA4\u4F53\u56DE\u8840"
+  cardSprite: {fileID: 21300000, guid: af9a40b11c74fba45b01505053d46125, type: 3}
+  effectType: 0
+  effect:
+    healRatio: 0.3
+    attackMultiplier: 0
+    speedMultiplier: 0
+    duration: 0
