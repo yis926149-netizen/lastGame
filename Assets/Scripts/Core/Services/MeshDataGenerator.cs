@@ -156,30 +156,6 @@ public class MeshGeneratorService : IMeshGenerator
             HexMetrics.Perturb(withoutPerturb[18]) + Y_Perturb,
             //*/
             
-            /*
-            //本体六边形的7个点
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[0]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[1]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[2]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[3]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[4]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[5]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[6]),
-            //分割边缘的12个新点
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[7]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[8]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[9]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[10]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[11]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[12]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[13]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[14]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[15]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[16]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[17]),
-            HexMetrics.Perturb(SolidAreaVerticesWithoutPerturb[18]),
-            */
-
             //河道的25个点：[同平面的6个河道点](顺时针排序) - [河道底部的7个点](含0'点顺时针排序) - [河道底部拆分的12个点](顺时针排序)
             //同平面除0点的6个河道点：地块中心点 + 位移向量
             //位移向量：外径向量 * 比例值
@@ -2081,7 +2057,6 @@ public class MeshGeneratorService : IMeshGenerator
                     }
 
                 }
-                //v = ERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     vector3s.Add(v[i]);
@@ -2122,7 +2097,6 @@ public class MeshGeneratorService : IMeshGenerator
                     }
 
                 }
-                //List<Vector3> v = Map.GetNeighbor(this, Map.HexDirection.SE).GetNERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     vector3s.Add(v[i]);
@@ -2141,7 +2115,6 @@ public class MeshGeneratorService : IMeshGenerator
                     }
 
                 }
-                //v = SERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     vector3s.Add(v[i]);
@@ -2187,7 +2160,6 @@ public class MeshGeneratorService : IMeshGenerator
                     }
 
                 }
-                //List<Vector3> v = NERectVertices;
 
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
                 {
@@ -2207,7 +2179,6 @@ public class MeshGeneratorService : IMeshGenerator
                     }
 
                 }
-                //v = ERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     vector3s.Add(v[i]);
@@ -2249,7 +2220,6 @@ public class MeshGeneratorService : IMeshGenerator
                         v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                     }
                 }
-                //List<Vector3> v = ERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
                 {
                     vector3s.Add(v[i]);
@@ -2268,7 +2238,6 @@ public class MeshGeneratorService : IMeshGenerator
                     }
 
                 }
-                //v = SERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     vector3s.Add(v[i]);
@@ -2312,7 +2281,6 @@ public class MeshGeneratorService : IMeshGenerator
                     }
 
                 }
-                //List<Vector3> v = NERectVertices; 
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
                 {
                     vector3s.Add(v[i]);
@@ -2331,7 +2299,6 @@ public class MeshGeneratorService : IMeshGenerator
                     }
 
                 }
-                //v =  Map.GetNeighbor(this, Map.HexDirection.NE).GetSERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
                 {
                     vector3s.Add(v[i]);
@@ -2371,7 +2338,6 @@ public class MeshGeneratorService : IMeshGenerator
                     }
 
                 }
-                //List<Vector3> v = ERectVertices; 
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
                 {
                     vector3s.Add(v[i]);
@@ -2390,7 +2356,6 @@ public class MeshGeneratorService : IMeshGenerator
                     }
 
                 }
-                //v = Map.GetNeighbor(this, Map.HexDirection.SE).GetNERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     vector3s.Add(v[i]);
@@ -2845,7 +2810,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.NE, Enums.HexDirection.SE)[i]);
                 }
-                //List<Vector3> v = Map.GetNeighbor(this, Map.HexDirection.NE).GetSERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
                 {
                     vector3s.Add(v[i]);
@@ -2856,7 +2820,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                 }
-                //v = ERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     vector3s.Add(v[i]);
@@ -2874,7 +2837,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetRectVertices(Enums.HexDirection.NE)[i]);
                 }
-                //List<Vector3> v = NERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
                 {
                     reverseVector3s.Add(v[i]);
@@ -2888,7 +2850,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                 }
-                //v = ERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     reverseVector3s.Add(v[i]);
@@ -2909,7 +2870,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetRectVertices(Enums.HexDirection.NE)[i]);
                 }
-                //List<Vector3> v = NERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
                 {
                     vector3s.Add(v[i]);
@@ -2920,7 +2880,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.NE, Enums.HexDirection.SE)[i]);
                 }
-                //v = Map.GetNeighbor(this, Map.HexDirection.NE).GetSERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
                 {
                     reverseVector3s.Add(v[i]);
@@ -2943,7 +2902,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.SE, Enums.HexDirection.NE)[i]);
                 }
-                //List<Vector3> v = Map.GetNeighbor(this, Map.HexDirection.SE).GetNERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     reverseVector3s.Add(v[i]);
@@ -2957,7 +2915,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetRectVertices(Enums.HexDirection.SE)[i]);
                 }
-                //v = SERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     vector3s.Add(v[i]);
@@ -2975,7 +2932,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                 }
-                //List<Vector3> v = ERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
                 {
                     reverseVector3s.Add(v[i]);
@@ -2989,7 +2945,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetRectVertices(Enums.HexDirection.SE)[i]);
                 }
-                //v = SERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     reverseVector3s.Add(v[i]);
@@ -3010,7 +2965,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetRectVertices(Enums.HexDirection.E)[i]);
                 }
-                //List<Vector3> v = ERectVertices;
                 for (int i = (v.Count * 3 / 4); i < v.Count; i++)
                 {
                     vector3s.Add(v[i]);
@@ -3021,7 +2975,6 @@ T2_8、P2_4、T2_9✔
                 {
                     v.Add(ctx.GetNeighborRectVertices(Enums.HexDirection.SE, Enums.HexDirection.NE)[i]);
                 }
-                //v = Map.GetNeighbor(this, Map.HexDirection.SE).GetNERectVertices;
                 for (int i = 0; i < (v.Count * 1 / 4); i++)
                 {
                     vector3s.Add(v[i]);
@@ -3032,12 +2985,6 @@ T2_8、P2_4、T2_9✔
         return vector3s;
         
     }
-
-    /// <summary>
-    /// 返回三角过渡区域 - 方法4 - 的uv - （旧的，复杂的方法）
-    /// </summary>
-    /// <param name="direction0">顺时针方向第一个夹角</param>
-    /// <param name="direction1">顺时针方向第二个夹角</param> //顶点排序是梯1、梯2
 
     /// <summary>
     /// 返回三角过渡区域 - 方法4 - 的uv - （新的，简单的方法）
@@ -4863,7 +4810,7 @@ T2_8、P2_4、T2_9✔
 
             edgeHexCells.Add(hexCells[i]);
 
-            // 【动态地图-阶段一/三】Chunk/WholeMap 后端都不再写回 SolidAreaVertices；
+            // Chunk 后端不再写回 SolidAreaVertices；
             // 城墙边界按当前逻辑高度即时构建，动态地图变化后也能得到最新角点。
             Vector3[] v = ComputeSolidAreaVertices(hexCells[i]);
             List<int> index = new List<int>();

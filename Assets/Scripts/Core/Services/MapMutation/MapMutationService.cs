@@ -18,9 +18,20 @@ using Debug = UnityEngine.Debug;
 //  3. 并行动画：Commit 只完成与新动画 Chunk 相交的旧动画，不相交动画并行（§阶段五-并行动画）；
 //  4. 分帧提交：CommitSliced 把脏 Chunk 几何构建拆到多帧（§阶段五-分帧提交）。
 // 同时实现 IMapInteractionGate 语义：事务/动画期间锁定受影响格。
+//
+// 【动画管线设计约束-2026-08-05（波浪测试反哺，详见 动态地图/动态地图变化与分块重建方案.md 末章）】
+// ① 动画事务的视觉刷新必须按阶段感知，禁止 Commit 帧吸附到终态：
+//    动画路径不调用 RefreshStandingUnitPositions（提前吸附 = 全图第二层跳变）；
+//    RefreshCellObjects 传 snapToFinalPosition=false，地貌/资源模型经
+//    MapVisualTransitionService.RegisterCellVisualFollowers 逐格跟随。
+// ② 纯视觉脉冲事务模式：动画 Commit 只用于生成 oldY/targetY 缓存，调用方应在 Commit 返回后
+//    立即恢复逻辑 Height/RealCenterWorldCoordinate——动画期间逻辑数据保持原值，
+//    只有 Chunk 顶点缓存驱动视觉；任何系统读 Cell 数据都不应看到临时目标高度。
+// ③ 旧"同步提交假设"的视觉刷新（浮标重建/MapVisualEventSO.Raise）只适用于 Duration=0 提交；
+//    带 Stagger 的动画提交需逐个评估是否跳过（Wave 测试已跳过两者）。
 //****************************************
 
-public class MapMutationService : ITickable
+public class MapMutationService
 {
     private readonly IMapRenderBackend _renderBackend;
     private readonly UnitMovementSystem _unitMovementSystem;
@@ -104,8 +115,7 @@ public class MapMutationService : ITickable
     }
 
     /// <summary>
-    /// 提交事务。阶段二强制 Duration=0（同一同步调用内完成 Prepare/Commit/Finalize）。
-    /// 阶段四：Duration&gt;0 且后端支持动画时走动画路径——Commit 原子提交逻辑，动画由
+    /// 提交事务。Duration&gt;0 且后端支持动画时走动画路径——Commit 原子提交逻辑，动画由
     /// MapVisualTransitionService 驱动（TransitionStarted → Finalized/Cancelled），
     /// 交互锁保持到动画结束（§20-5），RemovedVisualHandle 在 Finalize 统一销毁。
     /// 阶段五：提交前只强制完成与新动画 Chunk 相交的旧动画，不相交动画并行（§阶段五-并行动画）。
@@ -178,38 +188,40 @@ public class MapMutationService : ITickable
             _unitMovementSystem.CancelMovesIntersecting(changedSet);
             _unitMovementSystem.EjectUnitsFromImpassableCells(changedSet);
 
-            // 3. 渲染重建：动画路径构建带 UV2/UV3 的 staging；否则按后端能力分派
+            // 3. 渲染重建：动画路径构建带 UV2/UV3 的 staging；否则构建普通 Chunk staging
             PreparedChunkGeometry chunkStaging = null;
             if (animated)
             {
                 chunkStaging = _renderBackend.PrepareAnimatedChunkGeometry(changedSet, oldHeights, staggerDelays);
                 _renderBackend.CommitAnimatedChunkGeometry(chunkStaging);
             }
-            else if (_renderBackend.SupportsChunkedRebuild)
+            else
             {
                 chunkStaging = _renderBackend.PrepareChunkGeometry(changedSet);
                 _renderBackend.CommitChunkGeometry(chunkStaging);
             }
-            else
-            {
-                var staging = _renderBackend.PrepareWholeMapGeometry();
-                _renderBackend.CommitWholeMapGeometry(staging);
-            }
 
             // 4. 站立单位高度吸附（依赖 RealCenterWorldCoordinate 已同步）
-            _unitMovementSystem.RefreshStandingUnitPositions(changedSet);
+            // 动画期间由 MapVisualTransitionService 按每格进度跟随；立即吸附到终点会造成
+            // 单位随全图一起瞬移，尤其在 Wave 测试的全图 Height 提升中明显。
+            if (!animated)
+                _unitMovementSystem.RefreshStandingUnitPositions(changedSet);
 
             // 5. 变化格对象刷新（地貌/资源模型移除或归位 + 网格线重建）
-            _renderBackend.RefreshCellObjects(changedSet, removed);
+            _renderBackend.RefreshCellObjects(changedSet, removed, snapToFinalPosition: !animated);
 
-            // 6. 地貌浮标：第一版全量重建标记（§二十-8）
-            _landFormMarkerManager.CreateAllMarkers();
+            // 6. 地貌浮标：Wave 测试最终会恢复原高度；动画中按目标高度重建会制造整批浮标瞬移。
+            // 其他模式维持原有全量重建行为。
+            if (!animated || options.Stagger != MapTransitionStagger.Wave)
+                _landFormMarkerManager.CreateAllMarkers();
 
             // 7. 路径失效（公共建筑 Reveal 同款）：Brain 按新地形重决策
             _gameLoop.InvalidateAllBrainPaths();
 
-            // 8. 兼容广播（仅一次）：驱动迷雾目标/费用标签/浮标等旧订阅者
-            if (_mapVisualEvent != null)
+            // 8. 兼容广播（仅一次）：驱动迷雾目标/费用标签/势力范围等旧订阅者。
+            // Wave 是往返能力测试，逻辑高度会恢复；此处广播会让势力范围等覆盖层按最终
+            // RealCenterWorldCoordinate 整体瞬移，形成与地形波浪并存的“全图突变”。
+            if (_mapVisualEvent != null && (!animated || options.Stagger != MapTransitionStagger.Wave))
                 _mapVisualEvent.Raise();
 
             // 9. 强类型事件（Committed + AffectedChunks 诊断）
@@ -237,6 +249,7 @@ public class MapMutationService : ITickable
                     removed,
                     ev => MapChanged?.Invoke(ev));
                 lockDeferredToAnimation = true;
+                _visualTransition.RegisterCellVisualFollowers(changedSet);
             }
             else
             {
@@ -244,10 +257,10 @@ public class MapMutationService : ITickable
                 removed.DestroyAll();
             }
 
-            // 【阶段五-诊断】批量提交日志 + 脏 Chunk 高亮
+            // 【阶段五-诊断】批量提交日志 + 脏格高亮
             sw.Stop();
             LogCommitSummary(commitId, _pending.Count, changedSet.Count, affectedChunks?.Count ?? 0, dirtyFlags, sw.ElapsedMilliseconds);
-            HighlightDirtyChunks(changedSet, affectedChunks);
+            HighlightChangedCells(changedSet);
         }
         catch
         {
@@ -293,7 +306,7 @@ public class MapMutationService : ITickable
     /// <summary>
     /// 分帧提交：数据写入/单位处理同步原子完成，脏 Chunk 几何构建拆到多帧（每帧 maxChunksPerFrame 个），
     /// 全部构建完成后统一 Commit + 收尾 + 事件。返回提交结果；事件在最后一帧发布。
-    /// 仅 Chunked 后端支持（WholeMap 降级为同步 Commit）；不支持动画组合（第一版）。
+    /// 不支持动画组合（第一版）。
     /// 交互锁从开始保持到全部完成（等价动画锁语义，§20-5）。
     /// </summary>
     public MapCommitResult CommitSliced(MapTransitionOptions options = null, int maxChunksPerFrame = 2)
@@ -302,11 +315,6 @@ public class MapMutationService : ITickable
         {
             Debug.LogWarning("[MapMutationService] CommitSliced 被调用但没有活动事务，忽略。");
             return null;
-        }
-        if (!_renderBackend.SupportsChunkedRebuild)
-        {
-            Debug.LogWarning("[MapMutationService] 当前后端不支持分帧提交（需 Chunked），已降级为同步 Commit。");
-            return Commit(options);
         }
         if (options != null && options.Duration > 0f)
         {
@@ -409,7 +417,7 @@ public class MapMutationService : ITickable
 
             sw.Stop();
             LogCommitSummary(s.CommitId, s.ChangedSet.Count, s.ChangedSet.Count, affectedChunks.Count, s.DirtyFlags, sw.ElapsedMilliseconds);
-            HighlightDirtyChunks(s.ChangedSet, affectedChunks);
+            HighlightChangedCells(s.ChangedSet);
             _slicedState = null;
         }
         catch (Exception e)
@@ -428,9 +436,6 @@ public class MapMutationService : ITickable
         _slicedState.MaxChunksPerFrame = int.MaxValue;
         TickSlicedCommit();
     }
-
-    /// <summary>ITickable：分帧提交推进（MapSlicedCommitExecutor 每帧调用；此处无其他每帧职责）。</summary>
-    public void Tick() => TickSlicedCommit();
 
     /// <summary>分帧提交状态（内部）。</summary>
     private sealed class SlicedCommitState
@@ -553,7 +558,6 @@ public class MapMutationService : ITickable
 
     private IReadOnlyList<ChunkIndex> TryComputeDirtyChunkIndices(IReadOnlyCollection<HexCellData> changedSet)
     {
-        if (!_renderBackend.SupportsChunkedRebuild) return null;
         try
         {
             return _renderBackend.ComputeDirtyChunkIndices(changedSet);
@@ -580,8 +584,8 @@ public class MapMutationService : ITickable
                   $"脏位 {MapMutationDiagnostics.FormatDirtyFlags(dirtyFlags)}、耗时 {elapsedMs}ms。");
     }
 
-    /// <summary>脏 Chunk 高亮（DebugDirtyChunk 通道）；由下一次提交覆盖或 ClearDirtyChunkHighlight 清除。</summary>
-    private void HighlightDirtyChunks(IReadOnlyCollection<HexCellData> changedCells, IReadOnlyList<ChunkIndex> affectedChunks)
+    /// <summary>脏格高亮（DebugDirtyChunk 通道）；由下一次提交覆盖或 ClearDirtyChunkHighlight 清除。</summary>
+    private void HighlightChangedCells(IReadOnlyCollection<HexCellData> changedCells)
     {
         if (!MapMutationDiagnostics.EnableDirtyChunkHighlight || _highlightRenderer == null) return;
         _highlightRenderer.SetHighlightedCells(

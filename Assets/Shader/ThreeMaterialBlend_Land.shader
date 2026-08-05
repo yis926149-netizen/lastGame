@@ -71,24 +71,17 @@ Shader "Custom/ThreeMaterialBlend_Land"
         {
             float2 uv_MainTexA;    // 三材质 + 遮罩共用这一套 UV
             float2 fogCoord;       // 迷雾整图归一化 UV（不能叫 uv_FogTex，见 TerrainBase_Fog 注释）
-            float  vertexColor_R;  // 顶点色 .r = 探索状态(0/1)
-            float  vertexColor_G;  // 顶点色 .g = 当前视野(0/1)，记忆区压暗用
         };
 
         void vert(inout appdata_full v, out Input o)
         {
             UNITY_INITIALIZE_OUTPUT(Input, o);
 
-            o.vertexColor_R = v.color.r;
-            o.vertexColor_G = v.color.g;
             FogBlend_vert(v.vertex, o.fogCoord);
         }
 
         void surf (Input IN, inout SurfaceOutputStandard o)
         {
-            // 未探索地块不投射阴影（仅在 shadow caster pass 中 clip）
-            FogBlend_shadowClip(IN.vertexColor_R);
-
             // 1. 采样RGB三通道遮罩，获取三种材质的基础权重
             fixed4 mask = tex2D(_MaskTex, IN.uv_MainTexA);
             half weightA = mask.r; // R通道 = 材质A权重
@@ -146,17 +139,12 @@ Shader "Custom/ThreeMaterialBlend_Land"
             // 5. 土地材质优化：无自发光+不透明
             o.Emission = 0;
             o.Alpha = 1.0; // 三角形Mesh无需透明，强制不透明
-
-            // 6. 迷雾混合
-            o.Albedo = FogBlend_surf(IN.fogCoord, IN.vertexColor_R, o.Albedo, o.Emission);
-            o.Smoothness = FogBlend_alpha(IN.vertexColor_R, o.Smoothness);
-            o.Metallic = FogBlend_alpha(IN.vertexColor_R, o.Metallic);
         }
 
         // 未探索片元最终颜色 = 纯迷雾自发光，消除面片交界的光照接缝
         void fogFinal(Input IN, SurfaceOutputStandard o, inout fixed4 color)
         {
-            FogBlend_final(IN.vertexColor_R, IN.vertexColor_G, o.Emission, color, IN.fogCoord);
+            FogBlend_final(color, IN.fogCoord);
         }
         ENDCG
     }

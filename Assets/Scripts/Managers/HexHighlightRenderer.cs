@@ -3,10 +3,10 @@ using UnityEngine;
 using Zenject;
 
 //****************************************
-// 【动态地图-阶段三】单格高亮渲染器（§二十-4：HexHighlightRenderer 替代 cell.GridMesh）。
+// 单格高亮渲染器：Chunk 地图的统一高亮入口。
 // 按需高亮的格生成小型动态 mesh（六边形轮廓线 + 半透明填充），多通道互不干扰。
 // 玩家输入（拖拽高亮 PlayerInputHandler.cs:93-124）与 UI（可达高亮 UIController.cs:369-400）
-// 一律改为提交"高亮格集合"，不再直接操作 cell.GridMesh。
+// 调用方提交"高亮格集合"，不依赖逐格 GameObject。
 //****************************************
 
 public enum HexHighlightChannel
@@ -141,11 +141,17 @@ public sealed class HexHighlightRenderer : MonoBehaviour
 
     private CellBuildContext MakeBuildContext(HexCellData cell)
     {
+        SolidAreaMeshData solid = _meshGenerator.BuildSolidArea(cell, _view);
+        var solids = new Dictionary<int, Vector3[]>
+        {
+            [cell.GenerateOrder] = solid.Vertices
+        };
         return new CellBuildContext
         {
             Cell = cell,
             View = _view,
-            Solids = new Dictionary<int, Vector3[]>(),
+            Solid = solid.Vertices,
+            Solids = solids,
             LakeOrSeas = new Dictionary<int, Vector3[]>(),
             RectVertices = new Dictionary<(int, Enums.HexDirection), List<Vector3>>(),
             InterpCount = cell.interpCount

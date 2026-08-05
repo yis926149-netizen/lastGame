@@ -37,8 +37,6 @@ Shader "Custom/TerrainBase_Fog"
             float2 fogCoord;       // 迷雾整图归一化 UV（vert 里由世界 XZ 计算）。
                                    // 注意：不能叫 uv_FogTex —— surface shader 会把 uv_<纹理名> 字段
                                    // 自动填成该纹理的 mesh UV，覆盖 vert 赋的世界 UV，导致每面片各铺一张。
-            float  vertexColor_R;  // 顶点色 .r = 探索状态(0/1)
-            float  vertexColor_G;  // 顶点色 .g = 当前视野(0/1)，记忆区压暗用
         };
 
         half _Glossiness;
@@ -49,24 +47,16 @@ Shader "Custom/TerrainBase_Fog"
         {
             UNITY_INITIALIZE_OUTPUT(Input, o);
 
-            o.vertexColor_R = v.color.r;
-            o.vertexColor_G = v.color.g;
             FogBlend_vert(v.vertex, o.fogCoord);
         }
 
         void surf(Input IN, inout SurfaceOutputStandard o)
         {
-            // 未探索地块不投射阴影（仅在 shadow caster pass 中 clip）
-            FogBlend_shadowClip(IN.vertexColor_R);
-
             fixed4 c = tex2D(_MainTex, IN.uv_MainTex) * _Color;
 
-            // 迷雾混合：exploration=1 显示地形，=0 显示迷雾并叠加自发光
-            fixed3 emission = fixed3(0, 0, 0);
-            o.Albedo = FogBlend_surf(IN.fogCoord, IN.vertexColor_R, c.rgb, emission);
-            o.Emission = emission;
-            o.Smoothness = FogBlend_alpha(IN.vertexColor_R, _Glossiness);
-            o.Metallic = FogBlend_alpha(IN.vertexColor_R, _Metallic);
+            o.Albedo = c.rgb;
+            o.Smoothness = _Glossiness;
+            o.Metallic = _Metallic;
             o.Alpha = c.a;
 
             // 基础地形材质无独立法线贴图，复用 uv_MainTex 采样，省一套插值器；
@@ -77,7 +67,7 @@ Shader "Custom/TerrainBase_Fog"
         // 未探索片元最终颜色 = 纯迷雾自发光，消除面片交界的光照接缝
         void fogFinal(Input IN, SurfaceOutputStandard o, inout fixed4 color)
         {
-            FogBlend_final(IN.vertexColor_R, IN.vertexColor_G, o.Emission, color, IN.fogCoord);
+            FogBlend_final(color, IN.fogCoord);
         }
         ENDCG
     }

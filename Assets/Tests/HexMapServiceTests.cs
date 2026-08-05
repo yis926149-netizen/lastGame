@@ -56,12 +56,9 @@ public class HexMapServiceTests
         }
 
         var hexVertices = new Vector3[0]; // �����в���Ҫ
-        var verticesList = new List<Vector3>();
-        var mesh = new Mesh();
-        var gridGo = new GameObject();
 
         _service = _container.Resolve<IMapDataService>() as HexMapService;
-        _service.Initialize(hexToCell, orderToCell, centerWorld, worldToHex, new GameObject(), hexVertices, verticesList, mesh, gridGo);
+        _service.Initialize(hexToCell, orderToCell, centerWorld, worldToHex, new GameObject(), hexVertices);
     }
 
     [Test]

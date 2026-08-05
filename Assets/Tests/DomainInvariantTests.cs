@@ -675,10 +675,7 @@ public class DomainInvariantTests
             new System.Collections.Generic.List<Vector3>(),
             new System.Collections.Generic.Dictionary<Vector3, Vector3>(),
             null,
-            new Vector3[0],
-            null,
-            null,
-            null);
+            new Vector3[0]);
         var sphere = new System.Collections.Generic.Dictionary<Vector3, HexCellData>();
         var owner = new System.Collections.Generic.KeyValuePair<int, int>(1, 4);
 
@@ -969,9 +966,6 @@ public class LogisticsServiceTests
             new System.Collections.Generic.List<Vector3>(),
             new System.Collections.Generic.Dictionary<Vector3, Vector3>(),
             null,
-            new Vector3[0],
-            null,
-            null,
-            null);
+            new Vector3[0]);
     }
 }

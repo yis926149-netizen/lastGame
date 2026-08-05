@@ -36,15 +36,6 @@ public interface IMapDataService
         GameObject mapGameObject,
 
         //��ͼ����
-        Vector3[] hexVertices,
-
-        //��ͼ����ʱ����
-        List<Vector3> verticesList,
-        Mesh mesh,
-        GameObject gridGameObject
-
+        Vector3[] hexVertices
     );
-
-    // ������ʱ�������µ�ͼ����ʱ���ݣ������б���mesh���������
-    void UpdateRuntimeData(List<Vector3> verticesList, Mesh mesh, GameObject gridGameObject);
 }

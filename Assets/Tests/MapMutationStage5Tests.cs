@@ -31,7 +31,6 @@ public class MapMutationStage5Tests
     {
         _mapData = Substitute.For<IMapDataService>();
         _backend = Substitute.For<IMapRenderBackend>();
-        _backend.SupportsChunkedRebuild.Returns(true);
         _backend.SupportsAnimatedTransition.Returns(true);
 
         _cellA = new HexCellData(Enums.HexType.NoRiver, 0, new Vector3(0, 0, 0), Vector3.zero, 2f)
@@ -369,21 +368,6 @@ public class MapMutationStage5Tests
 
         _backend.Received(3).PrepareChunkGeometrySlice(Arg.Any<IReadOnlyList<ChunkIndex>>());
         _backend.Received(1).CommitChunkGeometry(Arg.Any<PreparedChunkGeometry>());
-    }
-
-    [Test]
-    public void CommitSliced_WholeMapBackend_FallsBackToSyncCommit()
-    {
-        _backend.SupportsChunkedRebuild.Returns(false);
-        _backend.PrepareWholeMapGeometry().Returns(new PreparedWholeMapGeometry());
-
-        _service.BeginTransaction();
-        _service.Apply(_cellA, HexCellPatch.HeightPatch(5f));
-        var result = _service.CommitSliced(new MapTransitionOptions(), maxChunksPerFrame: 1);
-
-        Assert.NotNull(result);
-        Assert.IsFalse(_service.HasSlicedCommitPending, "WholeMap 后端应降级为同步提交");
-        _backend.Received(1).PrepareWholeMapGeometry();
     }
 
     [Test]

@@ -44,12 +44,10 @@ Shader "Custom/River" {
         struct Input {
             float2 uv_MainTex;
             float2 fogCoord;
-            float  vertexColor_R;
         };
 
         void vert(inout appdata_full v, out Input o) {
             UNITY_INITIALIZE_OUTPUT(Input, o);
-            o.vertexColor_R = v.color.r;
             FogBlend_vert(v.vertex, o.fogCoord);
         }
 
@@ -82,7 +80,7 @@ Shader "Custom/River" {
         }
 
         void fogFinal(Input IN, SurfaceOutputStandard o, inout fixed4 color) {
-            FogBlend_final(IN.vertexColor_R, 0.0, half3(0,0,0), color, IN.fogCoord);
+            FogBlend_final(color, IN.fogCoord);
         }
         ENDCG
     }

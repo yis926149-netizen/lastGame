@@ -4,14 +4,25 @@ using UnityEngine;
 using Zenject;
 
 //****************************************
-// 【动态地图-阶段三】ChunkMapRenderer：8×8 offset-grid 分块渲染后端（§六/§九/§十一）。
-// - 双后端并存：WholeMap / Chunked 由 MapGenerationConfigSO.mapRenderMode 配置切换（§二十-2）。
-// - 每个 Chunk 持有 Terrain/Water/River 的 active/staging Mesh 双缓冲 + MeshCollider +
-//   cell→顶点范围映射（迷雾顶点色回写，§6-1）+ 材质缓存（§6-2）。
+// ChunkMapRenderer：唯一的 8×8 offset-grid 分块渲染后端（§六/§九/§十一）。
+// - 每个 Chunk 持有 Terrain/Water/River 的 active/staging Mesh 双缓冲 + MeshCollider + 材质缓存。
 // - 脏范围规则：改格 → 收集该格 + 一环邻居 → 所属 Chunk 去重（§七）。
 // - 两阶段构建：阶段 1 为目标 Chunk + halo 预生成矩形 profile；阶段 2 生成目标 Chunk 自有几何（§九）。
 // - 卡牌射线兼容：Chunk 根挂 MapChunkView，落点经 GetComponentInParent&lt;MapChunkView&gt; 判定（§11）。
 // 阶段三范围：支持 FlatAll 法线（§二十-11），非 FlatAll 打运行时警告、不保证无缝。
+//
+// 【动画管线设计约束-2026-08-05（波浪测试反哺，详见 动态地图/动态地图变化与分块重建方案.md 末章）】
+// ① 动画 Commit 首帧必须是旧高度：任何动画 staging 在提交 Renderer 前，顶点 Y 先写为旧高度
+//    （ApplyAnimationStartVertices），目标高度只存 UV2.y——双缓冲目标网格先可见一帧即"全图突变"。
+// ② 纯视觉脉冲（staging.AnimationReturnsToStart=true）不得提交 staging mesh：
+//    仅提取 targetY/delay 写入 CPU 缓存，在当前稳定 mesh 上原地动画。提交重建 mesh 会替换
+//    UV0/法线/submesh/材质槽，实机"动画中地图变色"（MPB/材质屏蔽均无效的根因）。
+// ③ 顶点动画在 CPU 侧执行（SetChunkAnimationProgress 每帧写 mesh.vertices）；
+//    每帧所有顶点基线无条件取 UV2.x 旧高度，仅有效窗口内插值 UV2.y，禁止沿用 AnimBaseVerts.y。
+// ④ MaterialPropertyBlock 是整块替换语义：动画 Chunk 写入前必须确认该 Renderer 无其他
+//    逐 Renderer 参数（迷雾/色调）；纯视觉脉冲路径完全不写 MPB、不切材质、不写 clip。
+// ⑤ 高度类、拓扑不变动画的权威旧视觉 = 当前显示 mesh 的逐顶点快照
+//    （BindWaveStartVerticesFromActiveMesh），禁止用数据模型差值反推（会与真实显示漂移）。
 //****************************************
 
 public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
@@ -20,18 +31,19 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
 
     // 【动态地图-阶段四】每 Chunk 动画进度属性（MaterialPropertyBlock，§20-10）
     private static readonly int ChunkProgressId = Shader.PropertyToID("_ChunkProgress");
+    // 【顶出方案-修订】每 Chunk clip 平面参数（动画期间恒定，Commit 时一次性设置，
+    // 由 SetChunkClipPlane 写入，surf/ShadowCaster 共用，§13.2 顶出 clip）
+    private static readonly int ChunkAnimBaseYId = Shader.PropertyToID("_ChunkAnimBaseY");
+    private static readonly int ChunkAnimRiseHeightId = Shader.PropertyToID("_ChunkAnimRiseHeight");
 
     [Inject] private IMapDataService _mapDataService;
     [Inject] private MapGenerationConfigSO _config;
     [Inject] private IMeshGenerator _meshGenerator;
     [Inject] private MapVisualEventSO _mapVisualEvent;
-    [Inject] private GoldWallet _goldWallet;
-    [Inject(Id = "TargetUICanvas")] private Canvas _targetUICanvas;
-    [Inject] private IExplorationService _explorationService;
     [Inject(Optional = true)] private ILogisticsService _logisticsService;
     [Inject(Optional = true)] private IMapVisibilityResolver _visibilityResolver;
 
-    /// <summary>地图根（WholeMap 后端把 mesh 挂这里；Chunk 后端仅用其作为 Chunk 根父节点）。</summary>
+    /// <summary>可选的 Chunk 根父节点；为空时挂到本组件下。</summary>
     public Transform ChunkRootParent;
 
     // Chunk 运行时数据：ChunkIndex → 渲染宿主
@@ -52,29 +64,46 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     private readonly Dictionary<(Material, Material), Material> _rectMaterialCache = new Dictionary<(Material, Material), Material>();
     private readonly Dictionary<(Material, Material, Material), Material> _triMaterialCache = new Dictionary<(Material, Material, Material), Material>();
 
-    // 迷雾状态（与 MapRenderer 同构：过渡管理器 + 限频；全局遮罩贴图由 MapRenderer 统一维护）
+    // 【阶段四修订】动画专用 *_Transition 材质缓存（§十九-21：动画 Shader 必须独立命名、
+    // 独立材质，绝不修改三套稳定 Shader；仅在动画期间按 Chunk 切换使用）。
+    // 与稳定材质一一对应：基础三材质各一份 Transition 变体，矩形/三角按组合键缓存。
+    private Material _terrainBaseMaterial0Transition;
+    private Material _terrainBaseMaterial1Transition;
+    private Material _terrainBaseMaterial2Transition;
+    private readonly Dictionary<(Material, Material), Material> _rectTransitionCache = new Dictionary<(Material, Material), Material>();
+    private readonly Dictionary<(Material, Material, Material), Material> _triTransitionCache = new Dictionary<(Material, Material, Material), Material>();
+
+    // 【阶段四修订-审查修复】Transition Shader 引用惰性缓存（每种只 Shader.Find 一次，
+    // 与稳定路径 ResolveTerrainMaterials 的 null 保护模式一致，避免每次动画 Commit 重复字符串查找）
+    private Shader _transitionBaseShader;
+    private Shader _transitionRectShader;
+    private Shader _transitionTriShader;
+
+    // 迷雾状态：过渡管理器 + 限频。全局遮罩贴图由 MapPresentationBootstrap 创建绑定，
+    // Chunk 后端负责盖章重建（RebuildFogMask）。
     private readonly FogTransitionManager _fogTransition = new FogTransitionManager();
     private float _fogRefreshTimer;
     private const float FogRefreshInterval = 1f / 20f;
     private bool _fogInitialized;
     private bool _isSubscribed;
+    /// <summary>【迷雾修复-2026-08-04】后勤连通性事件订阅状态（开局主城迷雾刷新的关键路径）。</summary>
+    private bool _isLogisticsSubscribed;
 
-    public bool SupportsChunkedRebuild => true;
+    /// <summary>【迷雾修复-2026-08-04】探索遮罩贴图盖章缓冲（Chunk 后端自行重建 _FogMaskTex 用）。</summary>
+    private Color32[] _fogMaskData;
 
     /// <summary>【动态地图-阶段四】Chunked 后端支持 Shader 顶点动画（§20-10）。</summary>
     public bool SupportsAnimatedTransition => true;
 
     // ── 生命周期 ─────────────────────────────────────────────
 
-    private void Awake()
+    [Inject]
+    private void InitializeAfterInjection()
     {
         Subscribe();
     }
 
-    private void OnEnable()
-    {
-        Subscribe();
-    }
+    private void OnEnable() => Subscribe();
 
     private void Update()
     {
@@ -85,7 +114,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             if (_fogRefreshTimer >= FogRefreshInterval)
             {
                 _fogRefreshTimer = 0f;
-                UpdateExplorationVisuals();
                 RebuildFogMask();
                 _fogTransition.ClearDirty();
             }
@@ -99,6 +127,11 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             _mapVisualEvent.OnMapVisualChanged.RemoveListener(OnMapVisualChanged);
             _isSubscribed = false;
         }
+        if (_isLogisticsSubscribed && _logisticsService != null)
+        {
+            _logisticsService.LogisticsChanged -= OnLogisticsChanged;
+            _isLogisticsSubscribed = false;
+        }
     }
 
     private void Subscribe()
@@ -108,6 +141,16 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             _mapVisualEvent.OnMapVisualChanged.AddListener(OnMapVisualChanged);
             _isSubscribed = true;
         }
+        // 订阅后勤连通性变化：
+        // GameFlowManager 开局时序为 PlayerInit(标记主城探索+Raise) → RecalculateAll，
+        // Raise 时后勤尚未连通、主城格不可见；若此处不订阅 LogisticsChanged，
+        // 后勤重算后主城可见性变化将永远无法触发迷雾目标刷新，主城初始地块迷雾
+        // 直到下一次探索/竞技场等事件才消散。
+        if (!_isLogisticsSubscribed && _logisticsService != null)
+        {
+            _logisticsService.LogisticsChanged += OnLogisticsChanged;
+            _isLogisticsSubscribed = true;
+        }
     }
 
     private void OnMapVisualChanged()
@@ -115,10 +158,14 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         UpdateFogTransitionTargets();
     }
 
-    // ── 首帧全量构建（由 MapRenderer.MapRender 在 Chunked 模式下分派调用）──────────
+    private void OnLogisticsChanged()
+    {
+        UpdateFogTransitionTargets();
+    }
 
-    /// <summary>首次全量渲染入口（Chunked 模式替代 MapRenderer 的网格构建部分；
-    /// 迷雾全局属性/地貌/资源/费用标签由 MapRenderer.MapRender 统一处理）。</summary>
+    // ── 首帧全量构建 ──────────────────────────────────────────
+
+    /// <summary>首次全量 Chunk 渲染入口。</summary>
     public void ChunkMapRender(Vector3[] hexVertices)
     {
         if (hexVertices == null || hexVertices.Length == 0) return;
@@ -160,22 +207,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
 
         _fogInitialized = false;
         UpdateFogTransitionTargets();
-    }
-
-    // ── IMapRenderBackend：WholeMap 全量路径（Chunked 后端退化为全 Chunk 重建）────
-
-    public PreparedWholeMapGeometry PrepareWholeMapGeometry()
-    {
-        // Chunked 后端：全量 = 所有 Chunk 都是脏 Chunk。产出 staging 由 CommitWholeMapGeometry 逐 Chunk 提交。
-        var all = new List<HexCellData>(_mapDataService.GetAllCells());
-        PreparedChunkGeometry chunkStaging = PrepareChunkGeometry(all);
-        return new PreparedWholeMapGeometry { Chunked = chunkStaging };
-    }
-
-    public void CommitWholeMapGeometry(PreparedWholeMapGeometry geometry)
-    {
-        if (geometry?.Chunked == null) return;
-        CommitChunkGeometry(geometry.Chunked);
     }
 
     // ── IMapRenderBackend：脏 Chunk 路径 ─────────────────────
@@ -318,11 +349,15 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
 
         _view = new MapDataReadOnlyView(_mapDataService);
         List<ChunkIndex> dirtyChunks = ComputeDirtyChunks(changedCells);
+        float riseWindow = 0f;
+        if (staggerDelays != null)
+            staggerDelays.TryGetValue(MapVisualTransitionService.RiseWindowKey, out riseWindow);
         var anim = new AnimatedChunkBuildData
         {
             OldHeights = oldHeights,
             StaggerDelays = staggerDelays,
-            ElevationStep = _config != null ? _config.elevationStep : 1f
+            ElevationStep = _config != null ? _config.elevationStep : 1f,
+            RiseWindow = riseWindow
         };
         var result = new PreparedChunkGeometry();
         foreach (ChunkIndex index in dirtyChunks)
@@ -334,23 +369,113 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         return result;
     }
 
-    /// <summary>提交动画 staging，并把该 Chunk 的 MaterialPropertyBlock 进度置 0（动画起点）。</summary>
+    /// <summary>提交动画 staging，并把该 Chunk 的 MaterialPropertyBlock 进度置 0（动画起点）。
+    /// 【阶段四修订】同时把脏 Chunk 的 Terrain 材质切换为 *_Transition 变体（含 UV2/UV3 顶点动画通道），
+    /// 并保存稳定材质数组供 Finalize 恢复（§十九-21：动画 Shader 独立命名，稳定渲染不受影响）。</summary>
     public void CommitAnimatedChunkGeometry(PreparedChunkGeometry geometry)
     {
         if (geometry == null) return;
+
+        // Wave 是纯视觉脉冲，不能提交按 Height+Delta 重建的 staging mesh。即使不切 Shader/MPB，
+        // CommitChunkGeometry 仍会替换 UV0、法线、submesh 与材质槽，导致动画中地形颜色变化。
+        // 直接保留当前稳定 mesh，只从 staging 读取 targetY 与 delay 数据驱动 CPU 顶点动画。
+        if (geometry.Chunks.Count > 0 && geometry.Chunks.All(c => c != null && c.AnimationReturnsToStart))
+        {
+            CommitWavePulseData(geometry);
+            return;
+        }
 
         // 阶段四：湖海/河流淡出（§13.4 方案C 简化）——提交前捕获旧水面/河流 mesh 克隆为幽灵，
         // 动画期间经 MPB 淡出，Finalize 销毁。仅当"旧有水而新无"（竞技场清湖海/河流）时创建。
         foreach (ChunkStagingGeometry staging in geometry.Chunks)
         {
             if (!_chunks.TryGetValue(staging.Index, out ChunkRenderData chunk)) continue;
+            BindWaveStartVerticesFromActiveMesh(chunk, staging);
             CaptureFadeGhosts(chunk, staging);
+            // 【顶出方案-修订】提交前捕获旧地形 mesh 快照（TerrainGhost）：新平台 clip 平面
+            // 之上（keep-below）由它完整可见，消除"先变平再升起"的拓扑突变观感；Finalize 销毁。
+            // 净下降/波浪测试模式在方法内自行跳过。
+            CaptureTerrainGhost(chunk, staging);
         }
+
+        // 动画 mesh 在第一次可见前先落到旧高度。目标高度保存在 UV2.y，避免双缓冲把目标
+        // 几何先显示一帧，随后才被 SetChunkAnimationProgress(0) 拉回旧高度而产生整体跳变。
+        foreach (ChunkStagingGeometry staging in geometry.Chunks)
+            ApplyAnimationStartVertices(staging);
 
         CommitChunkGeometry(geometry);
         if (geometry == null) return;
         foreach (ChunkStagingGeometry staging in geometry.Chunks)
+        {
+            // 切换动画材质：保存稳定材质 → 换 *_Transition 变体 → clip 平面参数 → MPB 进度置 0
+            if (_chunks.TryGetValue(staging.Index, out ChunkRenderData chunk))
+            {
+                // Wave 是纯 CPU 顶点脉冲，不需要 *_Transition Shader（clip 平面恒开，无顶出需求）；
+                // 换材质反而引入 keep-below clip 参数导致颜色变化。非 Wave 模式仍正常切换。
+                if (!staging.AnimationReturnsToStart)
+                    SwitchToTransitionMaterials(chunk, staging);
+                // Wave 使用稳定 Shader + CPU 顶点动画，不能调用 SetPropertyBlock：该 API 会整块
+                // 替换 Renderer 现有 MPB，清掉迷雾/色调等逐 Renderer 参数，表现为动画中变色。
+                if (!staging.AnimationReturnsToStart)
+                    SetChunkClipPlane(chunk, staging);
+                // 【CPU动画-2026-08-05】缓存动画顶点数据（mesh.uv2/uv3/vertices 一次性读取，
+                // SetChunkAnimationProgress 每帧据此逐顶点插值写 mesh.vertices）
+                if (chunk.TerrainFilter != null && chunk.TerrainFilter.sharedMesh != null)
+                {
+                    Mesh m = chunk.TerrainFilter.sharedMesh;
+                    chunk.AnimUV2Cache = m.uv2;
+                    chunk.AnimUV3Cache = m.uv3;
+                    chunk.AnimBaseVerts = m.vertices;
+                    chunk.AnimVertexBuffer = null;
+                    chunk.AnimationReturnsToStart = staging.AnimationReturnsToStart;
+                }
+                SetChunkAnimationProgress(staging.Index, 0f);
+            }
+        }
+    }
+
+    private void CommitWavePulseData(PreparedChunkGeometry geometry)
+    {
+        foreach (ChunkStagingGeometry staging in geometry.Chunks)
+        {
+            if (!_chunks.TryGetValue(staging.Index, out ChunkRenderData chunk)) continue;
+            Mesh mesh = chunk.TerrainFilter != null ? chunk.TerrainFilter.sharedMesh : null;
+            TerrainGeometry terrain = staging.Terrain;
+            if (mesh == null || terrain?.UV2s == null || terrain.UV3s == null ||
+                mesh.vertexCount != terrain.UV2s.Length || terrain.UV2s.Length != terrain.UV3s.Length)
+            {
+                Debug.LogWarning($"[ChunkMapRenderer] Wave 跳过不兼容 Chunk {staging.Index}：" +
+                                 $"activeVerts={mesh?.vertexCount ?? -1}, targetUV2={terrain?.UV2s?.Length ?? -1}, " +
+                                 $"targetUV3={terrain?.UV3s?.Length ?? -1}。为保持材质/UV 稳定，不回退目标 mesh 提交。");
+                continue;
+            }
+
+            Vector3[] stableVertices = mesh.vertices;
+            int count = stableVertices.Length;
+            var uv2 = new Vector2[count];
+            for (int i = 0; i < count; i++)
+                uv2[i] = new Vector2(stableVertices[i].y, terrain.UV2s[i].y);
+
+            chunk.AnimUV2Cache = uv2;
+            chunk.AnimUV3Cache = (Vector2[])terrain.UV3s.Clone();
+            chunk.AnimBaseVerts = stableVertices;
+            chunk.AnimVertexBuffer = null;
+            chunk.AnimationReturnsToStart = true;
             SetChunkAnimationProgress(staging.Index, 0f);
+        }
+    }
+
+    /// <summary>【阶段四修订】把 Chunk 的 Terrain 材质切换为 *_Transition 变体，并保存稳定材质数组。
+    /// 【顶出方案-修订】不在这里处理阴影：三套 *_Transition Shader 内置手动 ShadowCaster pass，
+    /// 与 surf 执行同一 clip 平面，阴影几何与可见几何一致（"隐形地形黑块"由 Shader 侧解决）。</summary>
+    private void SwitchToTransitionMaterials(ChunkRenderData chunk, ChunkStagingGeometry staging)
+    {
+        if (chunk.TerrainRenderer == null) return;
+        Material[] stable = chunk.TerrainRenderer.sharedMaterials;
+        if (stable == null || stable.Length == 0) return;
+
+        chunk.StableTerrainMaterials = stable;
+        chunk.TerrainRenderer.sharedMaterials = ResolveTransitionMaterials(staging.Terrain, stable);
     }
 
     /// <summary>捕获旧水面/河流幽灵（克隆 mesh + 共享材质 + _FadeAlpha=1，动画期间淡出）。</summary>
@@ -373,7 +498,117 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         }
     }
 
+    /// <summary>
+    /// 【顶出方案-修订】捕获旧地形 mesh 快照：Commit 前把当前 Terrain mesh 克隆为独立渲染层，
+    /// 挂在本 Chunk 根下并整体下沉 0.02 世界单位——新平台 clip 平面之上（keep-below）由它完整
+    /// 显示旧拓扑（坡面/水岸/海床），消除"先变平再升起"的突变；下沉量保证与新平台不 Z-fighting
+    /// （新平台恒在前）。材质共享稳定材质（不实例化，无泄漏）；mesh 为独占克隆，Finalize 时销毁
+    /// （DestroyGhost 显式销毁克隆 mesh，防幽灵泄漏）。正常投阴影：阴影几何与可见几何一致。
+    /// 幂等：已存在旧快照（动画中途）不再重复捕获。
+    /// 【波浪/下降修订-2026-08-05】净下降或测试开关禁用顶出时跳过快照：下降动画中旧地形
+    /// （更高）会盖住回落的新地形；波浪模式无顶出观感需求（低格/水域格也不会被 clip 裁掉）。
+    /// </summary>
+    private void CaptureTerrainGhost(ChunkRenderData chunk, ChunkStagingGeometry staging)
+    {
+        if (chunk.TerrainGhost != null) return;
+        if (chunk.TerrainFilter == null || chunk.TerrainRenderer == null) return;
+        if (!chunk.TerrainRenderer.enabled) return;
+        if (MapMutationDiagnostics.DisableKeepBelowClip || HasNetDescent(staging)) return;
+
+        Mesh oldMesh = chunk.TerrainFilter.sharedMesh;
+        if (oldMesh == null || oldMesh.vertexCount == 0) return;
+
+        var go = new GameObject("TerrainGhost");
+        go.transform.SetParent(chunk.Root.transform, false);
+        go.transform.localPosition = new Vector3(0f, -0.02f, 0f); // 轻微下沉防 Z-fighting
+        int mapLayer = LayerMask.NameToLayer("Map");
+        if (mapLayer >= 0) go.layer = mapLayer;
+
+        var filter = go.AddComponent<MeshFilter>();
+        filter.sharedMesh = Object.Instantiate(oldMesh);
+
+        var renderer = go.AddComponent<MeshRenderer>();
+        renderer.sharedMaterials = chunk.TerrainRenderer.sharedMaterials; // 稳定材质（未切换 Transition）
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+        renderer.receiveShadows = true;
+
+        chunk.TerrainGhost = go;
+    }
+
+    /// <summary>
+    /// 【顶出方案-修订】按本 Chunk 动画 staging 的 UV2 数据计算 clip 平面参数并写入 MPB：
+    /// _ChunkAnimBaseY = 全部动画顶点最低 startY；_ChunkAnimRiseHeight = 最高 targetY - 最低 startY。
+    /// keep-below clip：progress=0 时线位于最低起点 Y（新平台整体隐藏，只露 TerrainGhost）；
+    /// progress=1 时线位于最高目标 Y（新平台完全可见）。动画期间恒定，由 _ChunkProgress 逐帧驱动。
+    /// 【波浪/下降修订-2026-08-05】净下降（minStart &gt; maxTarget）或测试开关禁用顶出时，
+    /// 必须把 clip 平面钉死在"不裁"位置：Shader 默认 _ChunkAnimRiseHeight=1 会在
+    /// progress&gt;0 后裁掉全部地形（clip 线 = base + progress*rise，地形高度 &gt; 线即被丢弃）。
+    /// </summary>
+    private void SetChunkClipPlane(ChunkRenderData chunk, ChunkStagingGeometry staging)
+    {
+        if (chunk.TerrainRenderer == null) return;
+
+        EvaluateAnimClip(staging, out bool hasAnimData, out bool pinOpen, out float minStart, out float maxTarget);
+        if (!hasAnimData) return; // 无动画顶点数据：不写 MPB，保留 Shader 默认参数
+
+        if (pinOpen)
+        {
+            // 净下降/测试模式：clip 线钉在 +1000（高于任何地形顶点），全程不裁。
+            // Shader keep-below 语义：clip(animClipY - worldPos.y + 0.02) ——
+            // 只有 worldPos.y ≤ animClipY 的片元保留。animClipY=+1000 时恒成立，等价于不裁。
+            // 注意：-1000 是错误的（低于地形 → 全部片元被裁 → 地图消失）。
+            chunk.AnimationBlock.SetFloat(ChunkAnimBaseYId, 1000f);
+            chunk.AnimationBlock.SetFloat(ChunkAnimRiseHeightId, 0f);
+            chunk.TerrainRenderer.SetPropertyBlock(chunk.AnimationBlock);
+            return;
+        }
+
+        chunk.AnimationBlock.SetFloat(ChunkAnimBaseYId, minStart);
+        chunk.AnimationBlock.SetFloat(ChunkAnimRiseHeightId, maxTarget - minStart);
+        chunk.TerrainRenderer.SetPropertyBlock(chunk.AnimationBlock);
+    }
+
     private static readonly int FadeAlphaId = Shader.PropertyToID("_FadeAlpha");
+
+    /// <summary>
+    /// 【顶出方案-修订】扫描动画 staging 的 UV2 顶点数据，一次性给出 keep-below clip 决策
+    /// （评审 2026-08-05：规则单点维护，SetChunkClipPlane 与 HasNetDescent 共用，消除双份扫描漂移）：
+    /// hasAnimData=false → 无动画顶点数据（调用方不写 MPB，保留 Shader 默认）；
+    /// pinOpen=true → clip 平面钉死"恒不裁"（净下降 minStart&gt;maxTarget / NaN 数据 / DisableKeepBelowClip 测试开关）；
+    /// 否则 (minStart, maxTarget) 为正常 clip 区间（最低 startY → 最高 targetY）。
+    /// </summary>
+    private static void EvaluateAnimClip(
+        ChunkStagingGeometry staging,
+        out bool hasAnimData,
+        out bool pinOpen,
+        out float minStart,
+        out float maxTarget)
+    {
+        minStart = float.MaxValue;
+        maxTarget = float.MinValue;
+        Vector2[] uv2s = staging?.Terrain?.UV2s;
+        hasAnimData = uv2s != null && uv2s.Length > 0;
+        if (!hasAnimData)
+        {
+            pinOpen = false;
+            return;
+        }
+        foreach (Vector2 uv2 in uv2s)
+        {
+            if (uv2.x < minStart) minStart = uv2.x;
+            if (uv2.y > maxTarget) maxTarget = uv2.y;
+        }
+        pinOpen = float.IsNaN(minStart) || float.IsNaN(maxTarget) || minStart > maxTarget ||
+                  MapMutationDiagnostics.DisableKeepBelowClip;
+    }
+
+    /// <summary>净下降判定：动画顶点整体向下（全部旧高度 &gt; 全部新高度，含 NaN/测试开关的钉死场景）。
+    /// 规则由 EvaluateAnimClip 单点给出（与 SetChunkClipPlane 同一份），供 TerrainGhost 分支使用。</summary>
+    private static bool HasNetDescent(ChunkStagingGeometry staging)
+    {
+        EvaluateAnimClip(staging, out bool hasAnimData, out bool pinOpen, out _, out _);
+        return hasAnimData && pinOpen;
+    }
 
     /// <summary>淡出幽灵的缓存属性块（避免动画帧逐帧分配，§18.3）。</summary>
     private readonly Dictionary<GameObject, UnityEngine.MaterialPropertyBlock> _ghostBlocks =
@@ -393,13 +628,56 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         return go;
     }
 
-    /// <summary>逐帧驱动 Chunk 动画进度：MaterialPropertyBlock 设置 _ChunkProgress（§20-10）。</summary>
+    /// <summary>
+    /// 逐帧驱动 Chunk 动画进度。
+    /// 【CPU动画-2026-08-05】顶点动画在 C# 侧执行：按 mesh.uv2/uv3 缓存逐顶点插值写 mesh.vertices
+    /// （shader 端 vert 已不再变形——surface shader 编译对未在 Input 声明的 UV 通道读取不可靠，
+    /// 由三次实机实验确认：无条件插值无效、无条件 +5 有效）。MPB 的 _ChunkProgress 仍写入，
+    /// 供 surf/ShadowCaster 的 keep-below clip 平面使用（§13.2）。
+    /// </summary>
     public void SetChunkAnimationProgress(ChunkIndex index, float progress)
     {
         if (!_chunks.TryGetValue(index, out ChunkRenderData chunk)) return;
         if (chunk.TerrainRenderer == null) return;
-        chunk.AnimationBlock.SetFloat(ChunkProgressId, progress);
-        chunk.TerrainRenderer.SetPropertyBlock(chunk.AnimationBlock);
+
+        // CPU 顶点动画：从 Commit 时缓存的 UV2/UV3 数据插值（与 shader 旧公式同语义）
+        if (chunk.AnimUV2Cache != null && chunk.AnimUV3Cache != null && chunk.AnimBaseVerts != null &&
+            chunk.AnimUV2Cache.Length == chunk.AnimUV3Cache.Length &&
+            chunk.AnimBaseVerts.Length == chunk.AnimUV2Cache.Length &&
+            chunk.TerrainFilter != null && chunk.TerrainFilter.sharedMesh != null &&
+            chunk.TerrainFilter.sharedMesh.vertexCount == chunk.AnimUV2Cache.Length)
+        {
+            int count = chunk.AnimUV2Cache.Length;
+            if (chunk.AnimVertexBuffer == null || chunk.AnimVertexBuffer.Length != count)
+                chunk.AnimVertexBuffer = new Vector3[count];
+            Vector3[] verts = chunk.AnimVertexBuffer;
+            for (int i = 0; i < count; i++)
+            {
+                verts[i] = chunk.AnimBaseVerts[i];
+                // UV3.x=延迟起点、UV3.y=延迟终点。Wave 在窗口内执行 0→1→0 脉冲，
+                // 形成移动波带；其他模式保持 0→1。
+                float delayStart = chunk.AnimUV3Cache[i].x;
+                float delayEnd = chunk.AnimUV3Cache[i].y;
+                if (delayEnd > delayStart + 0.0001f)
+                {
+                    float t = Mathf.Clamp01((progress - delayStart) / (delayEnd - delayStart));
+                    if (chunk.AnimationReturnsToStart)
+                    {
+                        float pulse = 1f - Mathf.Abs(t * 2f - 1f);
+                        t = pulse * pulse * (3f - 2f * pulse);
+                    }
+                    verts[i].y = Mathf.Lerp(chunk.AnimUV2Cache[i].x, chunk.AnimUV2Cache[i].y, t);
+                }
+            }
+            chunk.TerrainFilter.sharedMesh.vertices = verts;
+        }
+
+        // Wave 不使用 Transition Shader/clip，且必须保留 Renderer 原有 MPB（迷雾/颜色参数）。
+        if (!chunk.AnimationReturnsToStart)
+        {
+            chunk.AnimationBlock.SetFloat(ChunkProgressId, progress);
+            chunk.TerrainRenderer.SetPropertyBlock(chunk.AnimationBlock);
+        }
 
         // 湖海/河流幽灵淡出（§13.4）：alpha = 1 - progress
         UpdateGhostFade(chunk.FadeWaterGhost, progress);
@@ -420,26 +698,63 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         renderer.SetPropertyBlock(block);
     }
 
-    /// <summary>动画结束收尾：进度定格 1（顶点停在最终位置），销毁幽灵，并清理属性块。幂等。</summary>
+    /// <summary>动画结束收尾：进度定格 1（顶点停在最终位置），销毁幽灵，恢复稳定材质，并清理属性块。幂等。</summary>
     public void FinalizeChunkAnimation(ChunkIndex index)
     {
         if (!_chunks.TryGetValue(index, out ChunkRenderData chunk)) return;
         if (chunk.TerrainRenderer == null) return;
-        chunk.AnimationBlock.SetFloat(ChunkProgressId, 1f);
-        chunk.TerrainRenderer.SetPropertyBlock(chunk.AnimationBlock);
+        bool returnsToStart = chunk.AnimationReturnsToStart;
+        if (!returnsToStart)
+        {
+            chunk.AnimationBlock.SetFloat(ChunkProgressId, 1f);
+            chunk.TerrainRenderer.SetPropertyBlock(chunk.AnimationBlock);
+        }
+
+        // 【CPU动画-2026-08-05】顶点定格最终位置（progress=1 插值 → targetY），随后清理动画缓存。
+        // Complete 路径直接调本方法，不会先 SetChunkAnimationProgress(1)，必须在此补写一次。
+        if (chunk.AnimUV2Cache != null && chunk.TerrainFilter != null)
+        {
+            SetChunkAnimationProgress(index, 1f);
+            chunk.AnimUV2Cache = null;
+            chunk.AnimUV3Cache = null;
+            chunk.AnimBaseVerts = null;
+            chunk.AnimVertexBuffer = null;
+            chunk.AnimationReturnsToStart = false;
+        }
+
+        // 【阶段四修订】恢复稳定材质（退出 *_Transition 动画 Shader；UV2/UV3 数据留在 mesh 内但
+        // 稳定 Shader 不读取，且下次非动画重建经 mesh.Clear(false) 自动清除，§FillMeshData）
+        if (chunk.StableTerrainMaterials != null)
+        {
+            chunk.TerrainRenderer.sharedMaterials = chunk.StableTerrainMaterials;
+            chunk.StableTerrainMaterials = null;
+        }
 
         if (chunk.FadeWaterGhost != null)
         {
-            _ghostBlocks.Remove(chunk.FadeWaterGhost);
-            Object.Destroy(chunk.FadeWaterGhost);
-            chunk.FadeWaterGhost = null;
+            DestroyGhost(ref chunk.FadeWaterGhost, _ghostBlocks);
         }
         if (chunk.FadeRiverGhost != null)
         {
-            _ghostBlocks.Remove(chunk.FadeRiverGhost);
-            Object.Destroy(chunk.FadeRiverGhost);
-            chunk.FadeRiverGhost = null;
+            DestroyGhost(ref chunk.FadeRiverGhost, _ghostBlocks);
         }
+        // 【顶出方案-修订】销毁旧地形快照（含独占克隆 mesh，防泄漏）
+        if (chunk.TerrainGhost != null)
+        {
+            DestroyGhost(ref chunk.TerrainGhost, _ghostBlocks);
+        }
+    }
+
+    private static void DestroyGhost(
+        ref GameObject ghost,
+        Dictionary<GameObject, UnityEngine.MaterialPropertyBlock> blocks)
+    {
+        if (ghost == null) return;
+        blocks?.Remove(ghost);
+        Mesh mesh = ghost.GetComponent<MeshFilter>()?.sharedMesh;
+        if (mesh != null) Object.Destroy(mesh);
+        Object.Destroy(ghost);
+        ghost = null;
     }
 
     // ── 脏 Chunk 计算（§七：改格 + 一环邻居 → 所属 Chunk 去重）──────
@@ -556,6 +871,12 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         /// <summary>GenerateOrder → 错峰延迟 [0,1]。缺失 = 0。</summary>
         public IReadOnlyDictionary<int, float> StaggerDelays;
 
+        /// <summary>【阶梯修正-2026-08-05】Wave 模式行上升窗口（时间线比例，来自保留键
+        /// MapVisualTransitionService.RiseWindowKey；行数≥2 时 = 行间距 × 波前厚度（约 3 行），
+        /// 任意时刻约 3 行同时上升中——整行刚性平板仍可辨，但波前有厚度、推进放慢）。
+        /// 0 = 非 Wave 模式：UV3.y 写 1，顶点公式回退 (1-delay) 原语义。</summary>
+        public float RiseWindow;
+
         /// <summary>世界 Y 换算系数（elevationStep，§20-10：Height 级差 → 世界 Y 差）。</summary>
         public float ElevationStep = 1f;
 
@@ -567,12 +888,20 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             return (cell.Height - oldH) * ElevationStep;
         }
 
-        /// <summary>格子的错峰延迟 [0,1]。</summary>
+        /// <summary>格子的错峰延迟起点 [0,1]。</summary>
         public float Delay(HexCellData cell)
         {
             if (cell == null) return 0f;
             if (StaggerDelays == null || !StaggerDelays.TryGetValue(cell.GenerateOrder, out float d)) return 0f;
             return d;
+        }
+
+        /// <summary>格子的错峰延迟终点 [0,1]：Wave 模式 = Delay + RiseWindow（整行同窗，快升快停）；
+        /// 非 Wave = 1（顶点公式 (p-start)/(end-start) 即回退 (1-delay) 原语义）。</summary>
+        public float DelayEnd(HexCellData cell)
+        {
+            float d = Delay(cell);
+            return RiseWindow > 0f ? d + RiseWindow : 1f;
         }
     }
 
@@ -596,9 +925,10 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         PreBuildRectProfiles(solidList, profileList);
 
         var staging = new ChunkStagingGeometry { Index = chunk.Index };
-        staging.Terrain = BuildChunkTerrain(chunkCells, profileList, staging.CellRanges, anim);
-        staging.River = BuildChunkRiver(chunkCells, staging.CellRanges);
-        staging.Water = BuildChunkWater(chunkCells, profileList, staging.CellRanges);
+        staging.AnimationReturnsToStart = anim != null && anim.RiseWindow > 0f;
+        staging.Terrain = BuildChunkTerrain(chunkCells, profileList, anim);
+        staging.River = BuildChunkRiver(chunkCells);
+        staging.Water = BuildChunkWater(chunkCells, profileList);
         return staging;
     }
 
@@ -686,47 +1016,39 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
 
     // ── 地形构建（阶段 2：只输出目标 Chunk 自有几何）────────────
 
-    private MapRenderer.TerrainGeometry BuildChunkTerrain(
+    private TerrainGeometry BuildChunkTerrain(
         List<HexCellData> chunkCells,
         List<HexCellData> profileCells,
-        Dictionary<int, CellVertexRanges> cellRanges,
         AnimatedChunkBuildData anim = null)
     {
         var verticesList = new List<Vector3>();
         var uvList = new List<Vector2>();
-        var allColors = new List<Color>();
-        // 【阶段四】动画通道（§20-10）：UV2=(startVertexY,targetVertexY)、UV3=(staggerDelay,participates)
+        // 【阶段四】动画通道（§20-10）：UV2=(startVertexY,targetVertexY)、UV3=(delayStart,delayEnd)
         var uv2List = anim != null ? new List<Vector2>() : null;
         var uv3List = anim != null ? new List<Vector2>() : null;
         var highDrawOrderList = new List<int>();
         var flatDrawOrderList = new List<int>();
         var seafloorDrawOrderList = new List<int>();
         var subList = new List<List<int>> { highDrawOrderList, flatDrawOrderList, seafloorDrawOrderList };
-        var rectangleVertexRanges = new List<(int start, int count)>();
-        var triangleVertexRanges = new List<(int start, int count)>();
 
         // 实心区域（只输出目标 Chunk 格）
         foreach (HexCellData hexCellData in chunkCells)
         {
             Vector3[] solid = _solidVertices[hexCellData.GenerateOrder];
-            CellVertexRanges ranges = GetOrCreateCellRanges(cellRanges, hexCellData);
-            ranges.SolidStart = verticesList.Count;
-            ranges.SolidCount = solid.Length;
-
-            Color cellColor = FogVertexColor(hexCellData);
+            int solidStart = verticesList.Count;
             verticesList.AddRange(solid);
             uvList.AddRange(_meshGenerator.BuildSolidAreaUV(hexCellData));
-            for (int c = 0; c < solid.Length; c++) allColors.Add(cellColor);
 
             if (anim != null)
             {
                 float delta = anim.DeltaY(hexCellData);
                 float delay = anim.Delay(hexCellData);
+                float delayEnd = anim.DelayEnd(hexCellData);
                 for (int c = 0; c < solid.Length; c++)
                 {
                     float y = solid[c].y;
                     uv2List.Add(new Vector2(y - delta, y));
-                    uv3List.Add(new Vector2(delay, 1f));
+                    uv3List.Add(new Vector2(delay, delayEnd));
                 }
             }
 
@@ -738,7 +1060,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 3 => _meshGenerator.BuildSolidAreaDrawOrder3(hexCellData, d[0], d[1]),
                 _ => _meshGenerator.BuildSolidAreaDrawOrder1(hexCellData)
             };
-            MainMeshDrawOrderElementAddRule(hexCellData, ints, ref subList, ranges.SolidStart);
+            MainMeshDrawOrderElementAddRule(hexCellData, ints, ref subList, solidStart);
         }
 
         // 矩形过渡（只输出目标 Chunk 格；profile 已在阶段 1 预生成）
@@ -746,8 +1068,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         Enums.HexDirection[] dirs = { Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE };
         foreach (HexCellData hexCellData in chunkCells)
         {
-            Color cellColor = FogVertexColor(hexCellData);
-            CellVertexRanges ranges = cellRanges[hexCellData.GenerateOrder];
             foreach (Enums.HexDirection dir in dirs)
             {
                 if (_mapDataService.GetNeighbor(hexCellData, dir) == null) continue;
@@ -765,9 +1085,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                         List<Vector3> rectVerts = _meshGenerator.BuildRectVertices(ctx, dir);
                         verticesList.AddRange(rectVerts);
                         uvList.AddRange(_meshGenerator.BuildRectUV(ctx, dir));
-                        int addedCount = verticesList.Count - preCount;
-                        for (int c = 0; c < addedCount; c++) allColors.Add(cellColor);
-                        ranges.TransitionRanges.Add((preCount, addedCount));
                         OtherMeshDrawOrderElementAddRule(hexCellData, _meshGenerator.BuildRectSlopeRiverDrawOrder(ctx, dir), ref ints, IndexOffset);
                         _rectVerticesByCell[(hexCellData.GenerateOrder, dir)] = rectVerts;
                         if (anim != null)
@@ -779,9 +1096,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                         List<Vector3> rectVerts = _meshGenerator.BuildRectStepVertices(ctx, dir);
                         verticesList.AddRange(rectVerts);
                         uvList.AddRange(_meshGenerator.BuildRectStepUV(ctx, rectVerts));
-                        int addedCount = verticesList.Count - preCount;
-                        for (int c = 0; c < addedCount; c++) allColors.Add(cellColor);
-                        ranges.TransitionRanges.Add((preCount, addedCount));
                         OtherMeshDrawOrderElementAddRule(hexCellData, _meshGenerator.BuildRectStepRiverDrawOrder(ctx, rectVerts), ref ints, IndexOffset);
                         _rectVerticesByCell[(hexCellData.GenerateOrder, dir)] = rectVerts;
                         if (anim != null)
@@ -797,17 +1111,10 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                         : GetGenericRectangleMesh(ctx, dir);
                     verticesList.AddRange(usedRect.Vertices);
                     uvList.AddRange(usedRect.UVs);
-                    int addedCount = verticesList.Count - preCount;
-                    for (int c = 0; c < addedCount; c++) allColors.Add(cellColor);
-                    ranges.TransitionRanges.Add((preCount, addedCount));
                     OtherMeshDrawOrderElementAddRule(hexCellData, usedRect.Indices, ref ints, IndexOffset);
                     if (anim != null)
                         AppendRectAnimUV(anim, hexCellData, dir, usedRect, uv2List, uv3List);
                 }
-
-                int rectangleVertexCount = verticesList.Count - IndexOffset;
-                if (rectangleVertexCount > 0)
-                    rectangleVertexRanges.Add((IndexOffset, rectangleVertexCount));
 
                 Material matA = HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
                 Material matB = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, dir), _config.mapMaterial);
@@ -830,23 +1137,16 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         };
         foreach (HexCellData hexCellData in chunkCells)
         {
-            Color cellColor = FogVertexColor(hexCellData);
-            CellVertexRanges ranges = cellRanges[hexCellData.GenerateOrder];
             foreach (Enums.HexDirection[] pair in triDirs)
             {
                 if (_mapDataService.GetNeighbor(hexCellData, pair[0]) == null ||
                     _mapDataService.GetNeighbor(hexCellData, pair[1]) == null) continue;
                 int IndexOffset = verticesList.Count;
                 List<int> ints = new List<int>();
-                int preCount = verticesList.Count;
                 CellBuildContext ctx = MakeBuildContext(hexCellData);
                 TriangleTransitionMeshData triangle = GetGenericTriangleMesh(ctx, pair[0], pair[1]);
                 verticesList.AddRange(triangle.Vertices);
                 uvList.AddRange(triangle.UVs);
-                int addedCount = verticesList.Count - preCount;
-                for (int c = 0; c < addedCount; c++) allColors.Add(cellColor);
-                ranges.TransitionRanges.Add((preCount, addedCount));
-                triangleVertexRanges.Add((preCount, addedCount));
                 OtherMeshDrawOrderElementAddRule(hexCellData, triangle.Indices, ref ints, IndexOffset);
 
                 if (anim != null)
@@ -876,11 +1176,10 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         foreach (List<int> tri in mergedTriIndices)
             arrArawOrder[offset++] = tri.ToArray();
 
-        return new MapRenderer.TerrainGeometry
+        return new TerrainGeometry
         {
             Vertices = verticesList.ToArray(),
             UVs = uvList.ToArray(),
-            Colors = allColors.ToArray(),
             SubMeshIndices = arrArawOrder,
             BaseMaterials = _config.mapMaterial,
             RectAs = mergedMaterialAs.ToArray(),
@@ -888,9 +1187,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             TriAs = mergedMaterialAsTri.ToArray(),
             TriBs = mergedMaterialBsTri.ToArray(),
             TriCs = mergedMaterialCsTri.ToArray(),
-            RectangleRanges = rectangleVertexRanges,
-            TriangleRanges = triangleVertexRanges,
-            VerticesList = verticesList,
             UV2s = uv2List?.ToArray(),
             UV3s = uv3List?.ToArray()
         };
@@ -898,10 +1194,14 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
 
     // ── 阶段四：每顶点动画通道生成（§20-10）──────────────────
     // UV2.x=startVertexY（旧高度）、UV2.y=targetVertexY（新高度=当前顶点Y）；
-    // UV3.x=错峰延迟、UV3.y=participatesInTransition=1。
-    // 矩形/三角过渡顶点按几何端点来源格写 startY/delay，内部插值点对端点插值（§13.3）。
+    // UV3.x=错峰延迟起点、UV3.y=错峰延迟终点（动画窗口=end-start；
+    //   【阶梯修正-2026-08-05】Wave 模式终点 = 起点 + 行上升窗口（=行间距，任意时刻仅 1 行
+    //   上升中；原 y 恒为 1 的 participates 标志废弃——参与判定改由 end &gt; start 隐式给出）。
+    //   非 Wave 模式终点恒 1，等价旧公式 (1-delay)）。
+    // 矩形/三角过渡顶点按几何端点来源格写 start/end，内部插值点对端点插值（§13.3）。
 
-    /// <summary>河流矩形过渡（顶点按固定布局混合两端格，按 owner 格 delta 近似，§13.3 第一版简化）。</summary>
+    /// <summary>河流矩形过渡（顶点按固定布局混合两端格，按 owner 格 delta 近似，§13.3 第一版简化）。
+    /// 【顶出方案】start/end 按 owner 格写。</summary>
     private static void AppendRiverRectAnimUV(
         AnimatedChunkBuildData anim,
         HexCellData owner,
@@ -911,15 +1211,16 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     {
         float deltaOwner = anim.DeltaY(owner);
         float delayOwner = anim.Delay(owner);
+        float delayEndOwner = anim.DelayEnd(owner);
         for (int c = 0; c < rectVerts.Count; c++)
         {
             float y = rectVerts[c].y;
             uv2List.Add(new Vector2(y - deltaOwner, y));
-            uv3List.Add(new Vector2(delayOwner, 1f));
+            uv3List.Add(new Vector2(delayOwner, delayEndOwner));
         }
     }
 
-    /// <summary>非河流矩形过渡：按 UV.v（profile 进度 0=self→1=neighbor）插值两端格 delta/delay。</summary>
+    /// <summary>非河流矩形过渡：按 UV.v（profile 进度 0=self→1=neighbor）插值两端格 delta/delay/end。</summary>
     private void AppendRectAnimUV(
         AnimatedChunkBuildData anim,
         HexCellData owner,
@@ -933,18 +1234,21 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         float deltaNeighbor = anim.DeltaY(neighbor);
         float delayOwner = anim.Delay(owner);
         float delayNeighbor = anim.Delay(neighbor);
+        float delayEndOwner = anim.DelayEnd(owner);
+        float delayEndNeighbor = anim.DelayEnd(neighbor);
         for (int c = 0; c < rect.Vertices.Count; c++)
         {
             float t = Mathf.Clamp01(rect.UVs[c].y);
             float delta = Mathf.Lerp(deltaOwner, deltaNeighbor, t);
-            float delay = Mathf.Lerp(delayOwner, delayNeighbor, t);
+            float delayStart = Mathf.Lerp(delayOwner, delayNeighbor, t);
+            float delayEnd = Mathf.Lerp(delayEndOwner, delayEndNeighbor, t);
             float y = rect.Vertices[c].y;
             uv2List.Add(new Vector2(y - delta, y));
-            uv3List.Add(new Vector2(delay, 1f));
+            uv3List.Add(new Vector2(delayStart, delayEnd));
         }
     }
 
-    /// <summary>三角过渡：按重心 UV（(u,v)，self 权重=1-u-v）插值三端格 delta/delay。</summary>
+    /// <summary>三角过渡：按重心 UV（(u,v)，self 权重=1-u-v）插值三端格 delta/delay/end。</summary>
     private void AppendTriangleAnimUV(
         AnimatedChunkBuildData anim,
         HexCellData owner,
@@ -961,43 +1265,35 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         float delaySelf = anim.Delay(owner);
         float delayA = anim.Delay(neighborA);
         float delayB = anim.Delay(neighborB);
+        float endSelf = anim.DelayEnd(owner);
+        float endA = anim.DelayEnd(neighborA);
+        float endB = anim.DelayEnd(neighborB);
         for (int c = 0; c < triangle.Vertices.Count; c++)
         {
             Vector2 uv = triangle.UVs[c];
             float wSelf = 1f - uv.x - uv.y;
             float delta = wSelf * dSelf + uv.x * dA + uv.y * dB;
-            float delay = wSelf * delaySelf + uv.x * delayA + uv.y * delayB;
+            float delayStart = wSelf * delaySelf + uv.x * delayA + uv.y * delayB;
+            float delayEnd = wSelf * endSelf + uv.x * endA + uv.y * endB;
             float y = triangle.Vertices[c].y;
             uv2List.Add(new Vector2(y - delta, y));
-            uv3List.Add(new Vector2(delay, 1f));
+            uv3List.Add(new Vector2(delayStart, delayEnd));
         }
     }
 
     // ── 河流构建（只输出目标 Chunk 格）──────────────────────
 
-    private MapRenderer.RiverGeometry BuildChunkRiver(
-        List<HexCellData> chunkCells,
-        Dictionary<int, CellVertexRanges> cellRanges)
+    private RiverGeometry BuildChunkRiver(
+        List<HexCellData> chunkCells)
     {
         var verticesRiverWater = new List<Vector3>();
         var uvRiverWater = new List<Vector2>();
-        var riverColors = new List<Color>();
         var drawOrderRiverWater = new List<int>();
-
-        void RecordRiver(HexCellData cell, CellVertexRanges ranges, int preCount)
-        {
-            int added = verticesRiverWater.Count - preCount;
-            if (added <= 0) return;
-            Color col = FogVertexColor(cell);
-            for (int c = 0; c < added; c++) riverColors.Add(col);
-            ranges.RiverRanges.Add((preCount, added));
-        }
 
         foreach (HexCellData hexCellData in chunkCells)
         {
             List<int> ints = new List<int>();
             int IndexOffset = verticesRiverWater.Count;
-            CellVertexRanges ranges = cellRanges[hexCellData.GenerateOrder];
             if (RiverMeshSolidAreaDrawOrderFunction(hexCellData) == null ||
                 !hexCellData.hasRiverOutgoing ||
                 hexCellData.RiverOutgoingDirection == Enums.HexDirection.None ||
@@ -1012,13 +1308,11 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             OtherMeshDrawOrderElementAddRule(hexCellData, l, ref ints, IndexOffset);
             drawOrderRiverWater.AddRange(ints);
             uvRiverWater.AddRange(_meshGenerator.BuildRiverUV(ctx, l, riverVerts.Length));
-            RecordRiver(hexCellData, ranges, IndexOffset);
         }
         foreach (HexCellData hexCellData in chunkCells)
         {
             List<int> ints = new List<int>();
             int IndexOffset = verticesRiverWater.Count;
-            CellVertexRanges ranges = cellRanges[hexCellData.GenerateOrder];
             if (RiverMeshSolidAreaDrawOrderFunction(hexCellData) == null) continue;
 
             CellBuildContext ctx = MakeBuildContext(hexCellData);
@@ -1028,17 +1322,15 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             OtherMeshDrawOrderElementAddRule(hexCellData, l, ref ints, IndexOffset);
             drawOrderRiverWater.AddRange(ints);
             uvRiverWater.AddRange(_meshGenerator.BuildOutgoingRiverSlopUV());
-            RecordRiver(hexCellData, ranges, IndexOffset);
         }
 
         if (drawOrderRiverWater.Count % 3 == 0 && drawOrderRiverWater.Count != 0)
         {
-            return new MapRenderer.RiverGeometry
+            return new RiverGeometry
             {
                 Vertices = verticesRiverWater.ToArray(),
                 UVs = uvRiverWater.ToArray(),
-                Indices = drawOrderRiverWater.ToArray(),
-                Colors = riverColors.ToArray()
+                Indices = drawOrderRiverWater.ToArray()
             };
         }
         return null;
@@ -1046,25 +1338,14 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
 
     // ── 湖海构建（只输出目标 Chunk 格；依赖 halo 湖海注册表）────────
 
-    private MapRenderer.WaterGeometry BuildChunkWater(
+    private WaterGeometry BuildChunkWater(
         List<HexCellData> chunkCells,
-        List<HexCellData> profileCells,
-        Dictionary<int, CellVertexRanges> cellRanges)
+        List<HexCellData> profileCells)
     {
         var verticesLakeOrSea = new List<Vector3>();
         var uvLakeOrSea = new List<Vector2>();
-        var lakeColors = new List<Color>();
         var drawOrderLakeOrSea = new List<int>();
         var drawOrderCoast = new List<int>();
-
-        void RecordWater(HexCellData cell, CellVertexRanges ranges, int preCount)
-        {
-            int added = verticesLakeOrSea.Count - preCount;
-            if (added <= 0) return;
-            Color col = FogVertexColor(cell);
-            for (int c = 0; c < added; c++) lakeColors.Add(col);
-            ranges.WaterRanges.Add((preCount, added));
-        }
 
         // 湖海实心（只输出目标 Chunk 格；注册表已在阶段 1 就位）
         foreach (HexCellData hexCellData in chunkCells)
@@ -1075,13 +1356,11 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             hexCellData.waterLevel = _config.seaLevel;
 
             int IndexOffset = verticesLakeOrSea.Count;
-            CellVertexRanges ranges = cellRanges[hexCellData.GenerateOrder];
             CellBuildContext ctx = MakeBuildContext(hexCellData);
             Vector3[] lakeVerts = _meshGenerator.BuildLakeOrSeaVertices(ctx);
             _lakeOrSeaVertices[hexCellData.GenerateOrder] = lakeVerts;
             verticesLakeOrSea.AddRange(lakeVerts);
             uvLakeOrSea.AddRange(_meshGenerator.BuildLakeOrSeaUV());
-            RecordWater(hexCellData, ranges, IndexOffset);
 
             List<int> ints = new List<int>();
             List<int> l = new List<int>();
@@ -1095,7 +1374,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         foreach (HexCellData hexCellData in chunkCells)
         {
             if (!WaterLevelConfig.IsWater(hexCellData)) continue;
-            CellVertexRanges ranges = cellRanges[hexCellData.GenerateOrder];
             foreach (Enums.HexDirection dir in dirs)
             {
                 HexCellData neighbor = _mapDataService.GetNeighbor(hexCellData, dir);
@@ -1105,7 +1383,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 CellBuildContext ctx = MakeBuildContext(hexCellData);
                 verticesLakeOrSea.AddRange(_meshGenerator.BuildLakeOrSeaRectVertices(ctx, dir));
                 uvLakeOrSea.AddRange(_meshGenerator.BuildLakeOrSeaRectUV(dir));
-                RecordWater(hexCellData, ranges, IndexOffset);
 
                 List<int> ints = new List<int>();
                 List<int> l = new List<int>();
@@ -1125,7 +1402,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         foreach (HexCellData hexCellData in chunkCells)
         {
             if (!WaterLevelConfig.IsWater(hexCellData)) continue;
-            CellVertexRanges ranges = cellRanges[hexCellData.GenerateOrder];
             foreach (Enums.HexDirection[] pair in triDirs)
             {
                 HexCellData neighborA = _mapDataService.GetNeighbor(hexCellData, pair[0]);
@@ -1138,7 +1414,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 CellBuildContext ctx = MakeBuildContext(hexCellData);
                 verticesLakeOrSea.AddRange(_meshGenerator.BuildLakeOrSeaTriVertices(ctx, pair[0], pair[1]));
                 uvLakeOrSea.AddRange(_meshGenerator.BuildLakeOrSeaTriUV(pair[0], pair[1]));
-                RecordWater(hexCellData, ranges, IndexOffset);
 
                 List<int> ints = new List<int>();
                 List<int> l = new List<int>();
@@ -1154,7 +1429,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         foreach (HexCellData hexCellData in chunkCells)
         {
             if (!WaterLevelConfig.IsWater(hexCellData)) continue;
-            CellVertexRanges ranges = cellRanges[hexCellData.GenerateOrder];
 
             List<Enums.HexDirection> coastDirections = new List<Enums.HexDirection>();
             foreach (Enums.HexDirection h in allDirs)
@@ -1172,7 +1446,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 v.AddRange(_meshGenerator.BuildCoastRectVertices(ctx, h));
             verticesLakeOrSea.AddRange(v);
             uvLakeOrSea.AddRange(_meshGenerator.BuildCoastRectUV(v.ToArray()));
-            RecordWater(hexCellData, ranges, IndexOffset);
 
             List<int> ints = new List<int>();
             List<int> l = new List<int>();
@@ -1184,7 +1457,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         foreach (HexCellData hexCellData in chunkCells)
         {
             if (!WaterLevelConfig.IsWater(hexCellData)) continue;
-            CellVertexRanges ranges = cellRanges[hexCellData.GenerateOrder];
 
             List<Enums.HexDirection> coastDirections = new List<Enums.HexDirection>();
             foreach (Enums.HexDirection h in allDirs)
@@ -1202,7 +1474,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 v.AddRange(_meshGenerator.BuildCoastTriVertices(ctx, h));
             verticesLakeOrSea.AddRange(v);
             uvLakeOrSea.AddRange(_meshGenerator.BuildCoastTriUV(v.ToArray()));
-            RecordWater(hexCellData, ranges, IndexOffset);
 
             List<int> ints = new List<int>();
             List<int> l = new List<int>();
@@ -1218,12 +1489,11 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         int[][] arrArawOrderLakeOrSea = new int[2][];
         arrArawOrderLakeOrSea[0] = drawOrderCoast.ToArray();
         arrArawOrderLakeOrSea[1] = drawOrderLakeOrSea.ToArray();
-        return new MapRenderer.WaterGeometry
+        return new WaterGeometry
         {
             Vertices = verticesLakeOrSea.ToArray(),
             UVs = uvLakeOrSea.ToArray(),
-            Indices = arrArawOrderLakeOrSea,
-            Colors = lakeColors.ToArray()
+            Indices = arrArawOrderLakeOrSea
         };
     }
 
@@ -1289,12 +1559,13 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         chunk.ActiveRiver = chunk.StagingRiver;
         chunk.StagingRiver = temp;
 
-        chunk.CellRanges.Clear();
-        foreach (KeyValuePair<int, CellVertexRanges> kv in staging.CellRanges)
-            chunk.CellRanges[kv.Key] = kv.Value;
+        // 【阶段四修订-审查修复】清除动画开始时保存的过期稳定材质：动画进行中被非动画路径
+        // （Duration=0 提交/分帧提交）重建的 Chunk，Finalize 不应恢复旧数组（submesh 布局可能
+        // 已变）。动画路径中 SwitchToTransitionMaterials 在本方法之后重新保存当前稳定数组，不受影响。
+        chunk.StableTerrainMaterials = null;
     }
 
-    private static void FillMeshData(Mesh mesh, MapRenderer.TerrainGeometry geometry)
+    private static void FillMeshData(Mesh mesh, TerrainGeometry geometry)
     {
         // Drop stale animated UV2/UV3 layout when this buffer is reused by an ordinary build.
         mesh.Clear(false);
@@ -1303,7 +1574,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             : UnityEngine.Rendering.IndexFormat.UInt16;
         mesh.vertices = geometry.Vertices;
         mesh.uv = geometry.UVs;
-        mesh.colors = geometry.Colors;
         // 【阶段四】动画通道（§20-10）：仅在动画构建时写入，普通重建不写（shader 读到 0 → 不参与）
         if (geometry.UV2s != null) mesh.uv2 = geometry.UV2s;
         if (geometry.UV3s != null) mesh.uv3 = geometry.UV3s;
@@ -1319,7 +1589,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         mesh.RecalculateBounds();
     }
 
-    private static void FillRiverMeshData(Mesh mesh, MapRenderer.RiverGeometry geometry)
+    private static void FillRiverMeshData(Mesh mesh, RiverGeometry geometry)
     {
         mesh.Clear(false);
         mesh.indexFormat = geometry.Vertices.Length > ushort.MaxValue
@@ -1327,13 +1597,12 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             : UnityEngine.Rendering.IndexFormat.UInt16;
         mesh.vertices = geometry.Vertices;
         mesh.uv = geometry.UVs;
-        mesh.colors = geometry.Colors;
         mesh.triangles = geometry.Indices;
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
     }
 
-    private static void FillWaterMeshData(Mesh mesh, MapRenderer.WaterGeometry geometry)
+    private static void FillWaterMeshData(Mesh mesh, WaterGeometry geometry)
     {
         mesh.Clear(false);
         mesh.indexFormat = geometry.Vertices.Length > ushort.MaxValue
@@ -1341,7 +1610,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             : UnityEngine.Rendering.IndexFormat.UInt16;
         mesh.vertices = geometry.Vertices;
         mesh.uv = geometry.UVs;
-        mesh.colors = geometry.Colors;
         mesh.subMeshCount = geometry.Indices.Length;
         for (int i = 0; i < geometry.Indices.Length; i++)
         {
@@ -1366,14 +1634,14 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         return true;
     }
 
-    private static bool ValidateTerrain(MapRenderer.TerrainGeometry geometry, out string error)
+    private static bool ValidateTerrain(TerrainGeometry geometry, out string error)
     {
         if (geometry == null)
         {
             error = null;
             return true;
         }
-        if (!ValidateVertexChannels(geometry.Vertices, geometry.UVs, geometry.Colors, "Terrain", out error))
+        if (!ValidateVertexChannels(geometry.Vertices, geometry.UVs, "Terrain", out error))
             return false;
         if (geometry.UV2s != null && geometry.UV2s.Length != geometry.Vertices.Length)
         {
@@ -1398,26 +1666,26 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         return true;
     }
 
-    private static bool ValidateRiver(MapRenderer.RiverGeometry geometry, out string error)
+    private static bool ValidateRiver(RiverGeometry geometry, out string error)
     {
         if (geometry == null)
         {
             error = null;
             return true;
         }
-        if (!ValidateVertexChannels(geometry.Vertices, geometry.UVs, geometry.Colors, "River", out error))
+        if (!ValidateVertexChannels(geometry.Vertices, geometry.UVs, "River", out error))
             return false;
         return ValidateIndices(geometry.Indices, geometry.Vertices.Length, "River", out error);
     }
 
-    private static bool ValidateWater(MapRenderer.WaterGeometry geometry, out string error)
+    private static bool ValidateWater(WaterGeometry geometry, out string error)
     {
         if (geometry == null)
         {
             error = null;
             return true;
         }
-        if (!ValidateVertexChannels(geometry.Vertices, geometry.UVs, geometry.Colors, "Water", out error))
+        if (!ValidateVertexChannels(geometry.Vertices, geometry.UVs, "Water", out error))
             return false;
         if (geometry.Indices == null)
         {
@@ -1432,7 +1700,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         return true;
     }
 
-    private static bool ValidateVertexChannels(Vector3[] vertices, Vector2[] uvs, Color[] colors, string label, out string error)
+    private static bool ValidateVertexChannels(Vector3[] vertices, Vector2[] uvs, string label, out string error)
     {
         if (vertices == null)
         {
@@ -1442,11 +1710,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         if (uvs == null || uvs.Length != vertices.Length)
         {
             error = $"{label} UV={uvs?.Length ?? -1}, vertices={vertices.Length}";
-            return false;
-        }
-        if (colors == null || colors.Length != vertices.Length)
-        {
-            error = $"{label} colors={colors?.Length ?? -1}, vertices={vertices.Length}";
             return false;
         }
         for (int i = 0; i < vertices.Length; i++)
@@ -1488,7 +1751,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
 
     private static bool IsFinite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
-    private Material[] ResolveTerrainMaterials(MapRenderer.TerrainGeometry geometry)
+    private Material[] ResolveTerrainMaterials(TerrainGeometry geometry)
     {
         Material[] allMaterials = new Material[geometry.SubMeshIndices.Length];
         if (_terrainBaseMaterial0 == null)
@@ -1529,7 +1792,122 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         return allMaterials;
     }
 
-    // ── 构建辅助（与 MapRenderer 一致的判定/分发逻辑）─────────
+    /// <summary>
+    /// 【阶段四修订】按稳定材质数组构建一一对应的 *_Transition 变体材质（§十九-21：动画 Shader
+    /// 独立命名、独立材质）。以稳定材质为源 `new Material(source)` 拷贝全部纹理/属性后替换 Shader，
+    /// 因此动画期间外观与稳定渲染完全一致，仅多出 _ChunkProgress/UV2/UV3 顶点动画能力。
+    /// 找不到 Transition Shader 时原样返回稳定材质（降级：动画期间无顶点变形，但渲染不受损）。
+    /// </summary>
+    private Material[] ResolveTransitionMaterials(TerrainGeometry geometry, Material[] stableMaterials)
+    {
+        if (geometry == null || stableMaterials == null || stableMaterials.Length == 0)
+            return stableMaterials;
+
+        // 【阶段四修订-审查修复】惰性缓存 Transition Shader 引用（每种仅 Find 一次；null 时
+        // 降级返回稳定材质，动画期间无顶点变形但渲染不受损）
+        if (_transitionBaseShader == null)
+            _transitionBaseShader = Shader.Find("Custom/TerrainBase_Fog_Transition");
+        if (_transitionRectShader == null)
+            _transitionRectShader = Shader.Find("Custom/RealMaterialMaskBlend_Transition");
+        if (_transitionTriShader == null)
+            _transitionTriShader = Shader.Find("Custom/ThreeMaterialBlend_Land_Transition");
+
+        // 【阶段四修订-审查修复】布局一致性校验：稳定数组 = 3 基础 + rect 组合 + tri 组合。
+        // 若与稳定路径 ResolveTerrainMaterials 的槽布局漂移（未来新增 submesh 槽/改组合顺序），
+        // 降级返回稳定材质并报错，避免 Transition 材质落错槽或 result 出现 null 混入 sharedMaterials。
+        int rectCount = geometry.RectAs != null ? geometry.RectAs.Length : 0;
+        int triCount = geometry.TriAs != null ? geometry.TriAs.Length : 0;
+        if (stableMaterials.Length != 3 + rectCount + triCount)
+        {
+            Debug.LogError($"[ChunkMapRenderer] Transition 材质布局漂移：stable={stableMaterials.Length}, " +
+                           $"rect={rectCount}, tri={triCount}，降级为稳定材质（动画期间无顶点变形）。");
+            return stableMaterials;
+        }
+
+        // 基础三材质（稳定数组前 3 项 = _terrainBaseMaterial0/1/2）
+        if (_terrainBaseMaterial0Transition == null)
+        {
+            if (_transitionBaseShader != null && stableMaterials.Length >= 3)
+            {
+                _terrainBaseMaterial0Transition = MakeTransitionMaterial(stableMaterials[0], _transitionBaseShader);
+                _terrainBaseMaterial1Transition = MakeTransitionMaterial(stableMaterials[1], _transitionBaseShader);
+                _terrainBaseMaterial2Transition = MakeTransitionMaterial(stableMaterials[2], _transitionBaseShader);
+            }
+        }
+
+        Material[] result = new Material[stableMaterials.Length];
+        result[0] = _terrainBaseMaterial0Transition ?? stableMaterials[0];
+        result[1] = _terrainBaseMaterial1Transition ?? stableMaterials[1];
+        result[2] = _terrainBaseMaterial2Transition ?? stableMaterials[2];
+
+        for (int i = 0; i < rectCount; i++)
+        {
+            var key = (geometry.RectAs[i], geometry.RectBs[i]);
+            if (!_rectTransitionCache.TryGetValue(key, out Material mat))
+            {
+                mat = _transitionRectShader != null
+                    ? MakeTransitionMaterial(stableMaterials[3 + i], _transitionRectShader)
+                    : stableMaterials[3 + i];
+                _rectTransitionCache[key] = mat;
+            }
+            result[3 + i] = mat;
+        }
+
+        for (int i = 0; i < triCount; i++)
+        {
+            var key = (geometry.TriAs[i], geometry.TriBs[i], geometry.TriCs[i]);
+            if (!_triTransitionCache.TryGetValue(key, out Material mat))
+            {
+                mat = _transitionTriShader != null
+                    ? MakeTransitionMaterial(stableMaterials[3 + rectCount + i], _transitionTriShader)
+                    : stableMaterials[3 + rectCount + i];
+                _triTransitionCache[key] = mat;
+            }
+            result[3 + rectCount + i] = mat;
+        }
+
+        return result;
+    }
+
+    /// <summary>拷贝稳定材质全部属性，仅替换为 Transition Shader（§19-21：独立材质，不共享实例）。</summary>
+    private static Material MakeTransitionMaterial(Material source, Shader transitionShader)
+    {
+        if (source == null || transitionShader == null) return source;
+        var material = new Material(source);
+        material.shader = transitionShader;
+        material.name = $"{source.name}_Transition";
+        return material;
+    }
+
+    /// <summary>显式销毁本 Renderer 独占创建的材质（§6-2：禁止依赖"引擎自动回收"）。</summary>
+    private void OnDestroy()
+    {
+        DestroyMaterialIfNotNull(_terrainBaseMaterial0);
+        DestroyMaterialIfNotNull(_terrainBaseMaterial1);
+        DestroyMaterialIfNotNull(_terrainBaseMaterial2);
+        foreach (Material mat in _rectMaterialCache.Values)
+            DestroyMaterialIfNotNull(mat);
+        foreach (Material mat in _triMaterialCache.Values)
+            DestroyMaterialIfNotNull(mat);
+
+        // 阶段四修订：Transition 变体材质同属本 Renderer 独占创建，一并显式销毁
+        DestroyMaterialIfNotNull(_terrainBaseMaterial0Transition);
+        DestroyMaterialIfNotNull(_terrainBaseMaterial1Transition);
+        DestroyMaterialIfNotNull(_terrainBaseMaterial2Transition);
+        foreach (Material mat in _rectTransitionCache.Values)
+            DestroyMaterialIfNotNull(mat);
+        foreach (Material mat in _triTransitionCache.Values)
+            DestroyMaterialIfNotNull(mat);
+        _rectTransitionCache.Clear();
+        _triTransitionCache.Clear();
+    }
+
+    private static void DestroyMaterialIfNotNull(Material material)
+    {
+        if (material != null) Object.Destroy(material);
+    }
+
+    // ── 构建辅助 ──────────────────────────────────────────────
 
     private CellBuildContext MakeBuildContext(HexCellData hexCellData)
     {
@@ -1544,14 +1922,6 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             RectVertices = _rectVerticesByCell,
             InterpCount = hexCellData.interpCount
         };
-    }
-
-    private static CellVertexRanges GetOrCreateCellRanges(Dictionary<int, CellVertexRanges> cellRanges, HexCellData cell)
-    {
-        if (cellRanges.TryGetValue(cell.GenerateOrder, out CellVertexRanges ranges)) return ranges;
-        ranges = new CellVertexRanges();
-        cellRanges[cell.GenerateOrder] = ranges;
-        return ranges;
     }
 
     private int MainMeshSolidAreaDrawOrderFunction(HexCellData hexCellData, out List<Enums.HexDirection> direction)
@@ -1757,15 +2127,9 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         return style == Enums.ShadingStyle.FlatAll || style == Enums.ShadingStyle.SmoothRect_FlatTri;
     }
 
-    private static Color FogVertexColor(HexCellData cell)
-    {
-        float r = cell.FogAlpha;
-        return new Color(r, 0f, 0f, 1f);
-    }
-
     // ── RefreshCellObjects：变化格对象刷新 ───────────────────
-
-    public void RefreshCellObjects(IReadOnlyCollection<HexCellData> changedCells, RemovedVisualHandle removed)
+    public void RefreshCellObjects(IReadOnlyCollection<HexCellData> changedCells, RemovedVisualHandle removed,
+        bool snapToFinalPosition = true)
     {
         if (changedCells == null) return;
 
@@ -1786,26 +2150,60 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 cell.resourceModel = null;
             }
 
-            if (cell.landFormModel != null)
+            if (snapToFinalPosition && cell.landFormModel != null)
                 cell.landFormModel.transform.position = cell.RealCenterWorldCoordinate;
-            if (cell.resourceModel != null)
+            if (snapToFinalPosition && cell.resourceModel != null)
                 cell.resourceModel.transform.position = cell.RealCenterWorldCoordinate;
         }
     }
 
-    // ── 迷雾（全局遮罩贴图由 MapRenderer 统一维护；此处只做逐 Chunk 顶点色）──────
+    private static void ApplyAnimationStartVertices(ChunkStagingGeometry staging)
+    {
+        TerrainGeometry terrain = staging?.Terrain;
+        if (terrain?.Vertices == null || terrain.UV2s == null ||
+            terrain.Vertices.Length != terrain.UV2s.Length)
+            return;
 
-    public void ForceRefreshFogVisuals()
+        for (int i = 0; i < terrain.Vertices.Length; i++)
+        {
+            Vector3 vertex = terrain.Vertices[i];
+            vertex.y = terrain.UV2s[i].x;
+            terrain.Vertices[i] = vertex;
+        }
+    }
+
+    /// <summary>
+    /// Wave 是纯高度脉冲且不改拓扑。目标 staging 与当前稳定 mesh 顶点数一致时，直接用当前
+    /// mesh 的逐顶点 Y 覆盖 UV2.x，作为权威动画起点。这样不依赖 Height 差值反推，可避免
+    /// UV2.x 错写为目标高度导致波后仍整体 +4。拓扑不一致时保留原推导值，供一般动画使用。
+    /// </summary>
+    private static void BindWaveStartVerticesFromActiveMesh(ChunkRenderData chunk, ChunkStagingGeometry staging)
+    {
+        if (chunk == null || staging == null || !staging.AnimationReturnsToStart) return;
+        TerrainGeometry terrain = staging.Terrain;
+        Mesh activeMesh = chunk.TerrainFilter != null ? chunk.TerrainFilter.sharedMesh : null;
+        if (terrain?.UV2s == null || activeMesh == null ||
+            activeMesh.vertexCount != terrain.UV2s.Length)
+            return;
+
+        Vector3[] oldVertices = activeMesh.vertices;
+        if (oldVertices.Length != terrain.UV2s.Length) return;
+        for (int i = 0; i < oldVertices.Length; i++)
+            terrain.UV2s[i].x = oldVertices[i].y;
+    }
+
+    // ── 迷雾（全局贴图由 Bootstrap 创建，内容由 Chunk 后端维护）──────
+
+    public void ForceRefreshFogVisuals(IReadOnlyCollection<HexCellData> snapCells = null)
     {
         if (!_fogInitialized) return;
-        UpdateFogTransitionTargets();
-        UpdateExplorationVisuals();
+        UpdateFogTransitionTargets(snapCells);
         RebuildFogMask();
         _fogTransition.ClearDirty();
         _fogRefreshTimer = 0f;
     }
 
-    private void UpdateFogTransitionTargets()
+    private void UpdateFogTransitionTargets(IReadOnlyCollection<HexCellData> snapCells = null)
     {
         const int PlayerViewerFactionId = 0;
         foreach (HexCellData cell in _mapDataService.GetAllCells())
@@ -1820,7 +2218,8 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 isVisible = cell.IsExplored;
 
             float targetAlpha = isVisible ? 1f : 0f;
-            if (_fogInitialized)
+            // 【实机修订-2026-08-04】snapCells 指定格瞬间 Snap（突起帧 37 格立即点亮）
+            if (_fogInitialized && (snapCells == null || !snapCells.Contains(cell)))
                 _fogTransition.RequestTransition(cell, targetAlpha);
             else
                 _fogTransition.SnapTransition(cell, targetAlpha);
@@ -1829,88 +2228,77 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         if (!_fogInitialized)
         {
             _fogInitialized = true;
-            UpdateExplorationVisuals();
             RebuildFogMask();
             _fogTransition.ClearDirty();
         }
     }
 
-    private void UpdateExplorationVisuals()
-    {
-        foreach (ChunkRenderData chunk in _chunks.Values)
-        {
-            if (chunk.CellRanges.Count == 0) continue;
-            Mesh terrainMesh = chunk.TerrainFilter.sharedMesh;
-            if (terrainMesh == null || terrainMesh.vertexCount == 0) continue;
-
-            Color[] colors = terrainMesh.colors;
-            if (colors == null || colors.Length != terrainMesh.vertexCount)
-                colors = new Color[terrainMesh.vertexCount];
-
-            foreach (KeyValuePair<int, CellVertexRanges> kv in chunk.CellRanges)
-            {
-                if (!_mapDataService.TryGetCell(kv.Key, out HexCellData cell) || cell == null) continue;
-                Color newColor = FogVertexColor(cell);
-                CellVertexRanges ranges = kv.Value;
-                if (ranges.SolidStart >= 0)
-                {
-                    for (int i = 0; i < ranges.SolidCount && ranges.SolidStart + i < colors.Length; i++)
-                        colors[ranges.SolidStart + i] = newColor;
-                }
-                foreach (var range in ranges.TransitionRanges)
-                {
-                    for (int i = 0; i < range.count && range.start + i < colors.Length; i++)
-                        colors[range.start + i] = newColor;
-                }
-            }
-            terrainMesh.colors = colors;
-
-            // 水面顶点色
-            Mesh waterMesh = chunk.WaterHost.GetComponent<MeshFilter>().sharedMesh;
-            if (waterMesh != null && waterMesh.vertexCount > 0)
-            {
-                Color[] waterColors = waterMesh.colors;
-                if (waterColors == null || waterColors.Length != waterMesh.vertexCount)
-                    waterColors = new Color[waterMesh.vertexCount];
-                foreach (KeyValuePair<int, CellVertexRanges> kv in chunk.CellRanges)
-                {
-                    if (!_mapDataService.TryGetCell(kv.Key, out HexCellData cell) || cell == null) continue;
-                    Color newColor = FogVertexColor(cell);
-                    foreach (var range in kv.Value.WaterRanges)
-                    {
-                        for (int i = 0; i < range.count && range.start + i < waterColors.Length; i++)
-                            waterColors[range.start + i] = newColor;
-                    }
-                }
-                waterMesh.colors = waterColors;
-            }
-
-            // 河流顶点色
-            Mesh riverMesh = chunk.RiverHost.GetComponent<MeshFilter>().sharedMesh;
-            if (riverMesh != null && riverMesh.vertexCount > 0)
-            {
-                Color[] riverColors = riverMesh.colors;
-                if (riverColors == null || riverColors.Length != riverMesh.vertexCount)
-                    riverColors = new Color[riverMesh.vertexCount];
-                foreach (KeyValuePair<int, CellVertexRanges> kv in chunk.CellRanges)
-                {
-                    if (!_mapDataService.TryGetCell(kv.Key, out HexCellData cell) || cell == null) continue;
-                    Color newColor = FogVertexColor(cell);
-                    foreach (var range in kv.Value.RiverRanges)
-                    {
-                        for (int i = 0; i < range.count && range.start + i < riverColors.Length; i++)
-                            riverColors[range.start + i] = newColor;
-                    }
-                }
-                riverMesh.colors = riverColors;
-            }
-        }
-    }
-
+    /// <summary>
+    /// 【迷雾修复-2026-08-04】重建全局探索遮罩贴图（_FogMaskTex）。
+    /// 迷雾最终视觉（FogBlend_final）只采样 _FogMaskTex 判定已探索/未探索（顶点色 R 不参与混合），
+    /// 遮罩贴图由 MapPresentationBootstrap 创建并绑定全局，Chunk 后端负责按 FogAlpha 自行盖章重建。
+    /// 贴图尺寸与包围盒直接读取全局属性。
+    /// </summary>
     private void RebuildFogMask()
     {
-        // 【阶段三】全局探索遮罩贴图由 MapRenderer（WholeMap 统一迷雾管线）持有并重建；
-        // Chunk 后端只负责逐 Chunk 顶点色回写（UpdateExplorationVisuals），此处为空实现兜底。
+        Texture2D mask = Shader.GetGlobalTexture("_FogMaskTex") as Texture2D;
+        if (mask == null) return;
+
+        Vector4 origin = Shader.GetGlobalVector("_FogMapOrigin");
+        Vector4 size = Shader.GetGlobalVector("_FogMapSize");
+        int w = mask.width, h = mask.height;
+        if (w <= 0 || h <= 0 || size.x <= 0.0001f || size.y <= 0.0001f) return;
+
+        if (_fogMaskData == null || _fogMaskData.Length != w * h)
+            _fogMaskData = new Color32[w * h];
+
+        // 全清 0（每帧重建时的初始状态 = 全未探索）
+        for (int i = 0; i < _fogMaskData.Length; i++)
+            _fogMaskData[i].r = 0;
+
+        // 盖章所有 cell，强度由 FogAlpha 控制。
+        foreach (HexCellData cell in _mapDataService.GetAllCells())
+        {
+            if (cell == null) continue;
+            StampCellToFogMask(cell, mask, origin, size, w, h);
+        }
+
+        mask.SetPixels32(_fogMaskData);
+        mask.Apply(false);
+    }
+
+    /// <summary>把一格的六边形足迹盖章进遮罩 R 通道（探索状态由 FogAlpha 驱动，0-255 连续值）。
+    /// 从全局属性解析贴图坐标。</summary>
+    private void StampCellToFogMask(HexCellData cell, Texture2D mask, Vector4 origin, Vector4 size, int w, int h)
+    {
+        Vector3 c = cell.CenterWorldCoordinate;
+        float o = _config != null ? _config.OuterRadius : 3f;
+        float ir = _config != null ? _config.InnerRadius : 2.598f;
+        const float H = 0.8660254f;
+
+        int px0 = Mathf.Clamp(Mathf.FloorToInt((c.x - o - origin.x) / size.x * w), 0, w - 1);
+        int px1 = Mathf.Clamp(Mathf.CeilToInt((c.x + o - origin.x) / size.x * w), 0, w - 1);
+        int py0 = Mathf.Clamp(Mathf.FloorToInt((c.z - o - origin.y) / size.y * h), 0, h - 1);
+        int py1 = Mathf.Clamp(Mathf.CeilToInt((c.z + o - origin.y) / size.y * h), 0, h - 1);
+
+        byte intensity = (byte)Mathf.RoundToInt(cell.FogAlpha * 255f);
+
+        for (int py = py0; py <= py1; py++)
+        {
+            float wz = origin.y + (py + 0.5f) / h * size.y;
+            for (int px = px0; px <= px1; px++)
+            {
+                float wx = origin.x + (px + 0.5f) / w * size.x;
+                float dx = wx - c.x, dz = wz - c.z;
+                if (Mathf.Abs(dx) <= ir &&
+                    Mathf.Abs(0.5f * dx + H * dz) <= ir &&
+                    Mathf.Abs(-0.5f * dx + H * dz) <= ir)
+                {
+                    int idx = py * w + px;
+                    _fogMaskData[idx].r = intensity;
+                }
+            }
+        }
     }
 }
 
@@ -1937,10 +2325,28 @@ public sealed class ChunkRenderData
     /// <summary>【动态地图-阶段四】本 Chunk 的动画进度属性块（_ChunkProgress，§20-10）。</summary>
     public readonly UnityEngine.MaterialPropertyBlock AnimationBlock = new UnityEngine.MaterialPropertyBlock();
 
+    /// <summary>【阶段四修订】动画开始前保存的稳定 Terrain 材质数组（§19-21：动画期间切换 *_Transition
+    /// 变体，Finalize 恢复稳定材质；null = 当前不在动画中）。</summary>
+    public Material[] StableTerrainMaterials;
+
     /// <summary>【动态地图-阶段四】旧水面/河流淡出幽灵（§13.4 方案C 简化；Finalize 销毁）。</summary>
     public GameObject FadeWaterGhost;
     public GameObject FadeRiverGhost;
 
-    public readonly Dictionary<int, CellVertexRanges> CellRanges = new Dictionary<int, CellVertexRanges>();
+    /// <summary>【顶出方案-修订】旧地形 mesh 快照（动画期间 clip 平面之上垫底显示旧拓扑；
+    /// Finalize 销毁，含独占克隆 mesh）。</summary>
+    public GameObject TerrainGhost;
+
+    /// <summary>【CPU动画-2026-08-05】动画期间逐帧写 mesh.vertices 用的缓存数据
+    /// （Commit 时从 mesh.uv2/uv3/vertices 一次性读取，避免每帧调用 mesh getter 分配数组；
+    /// 顶点动画已从 shader 移至 C#，surface shader 对未声明 UV 通道的读取不可靠）。
+    /// AnimBaseVerts = 提交后的顶点（动画时仅沿用 X/Z；Y 无条件以 UV2.x 旧高度为基线，
+    /// 防止无有效窗口的顶点泄漏目标高度）。</summary>
+    public Vector2[] AnimUV2Cache;
+    public Vector2[] AnimUV3Cache;
+    public Vector3[] AnimBaseVerts;
+    public Vector3[] AnimVertexBuffer;
+    public bool AnimationReturnsToStart;
+
     public List<HexCellData> Cells = new List<HexCellData>();
 }

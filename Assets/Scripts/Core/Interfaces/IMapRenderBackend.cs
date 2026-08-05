@@ -1,34 +1,22 @@
 using System.Collections.Generic;
 
 //****************************************
-// 【动态地图-阶段二/三/四/五】渲染后端接口（IMapRenderBackend）
-// 阶段二实现 = MapRenderer（WholeMap 后端）；阶段三实现 = ChunkMapRenderer（Chunked 后端）。
+// Chunk 地图渲染后端接口。
 // 阶段四：SupportsAnimatedTransition + 动画几何构建 + MaterialPropertyBlock 进度驱动（§20-10）。
 // 阶段五：分帧提交（ComputeDirtyChunkIndices / PrepareChunkGeometrySlice）。
-// 双后端并存，配置 MapRenderMode 切换（§二十-2）；共用无状态 CellMeshData 生成器。
 // 测试可用替身注入。
 //****************************************
 
 public interface IMapRenderBackend
 {
-    /// <summary>是否支持"脏 Chunk 局部重建"（阶段三 Chunked 后端 true；WholeMap 后端 false）。</summary>
-    bool SupportsChunkedRebuild { get; }
-
     /// <summary>
-    /// 是否支持 Shader 顶点动画（阶段四）：Chunked 后端 true；WholeMap 后端 false。
-    /// false 时 MapMutationService 对 Duration&gt;0 降级为同步提交（§14 阶段四检测点）。
+    /// 是否支持 Shader 顶点动画。
+    /// false 时 MapMutationService 对 Duration&gt;0 降级为同步提交。
     /// </summary>
     bool SupportsAnimatedTransition { get; }
 
-    /// <summary>基于当前（已写入目标数据的）HexCellData 生成全图几何 staging（无渲染副作用）。</summary>
-    PreparedWholeMapGeometry PrepareWholeMapGeometry();
-
-    /// <summary>把 staging 几何原子应用到渲染层（复用 Mesh/材质缓存，无新建泄漏）。</summary>
-    void CommitWholeMapGeometry(PreparedWholeMapGeometry geometry);
-
     /// <summary>
-    /// 阶段三：基于脏格集合计算脏 Chunk（含一环 halo 依赖），只重建受影响 Chunk 的 staging。
-    /// WholeMap 后端不应被调用（SupportsChunkedRebuild=false 时走 WholeMap 路径）。
+    /// 基于脏格集合计算脏 Chunk（含一环 halo 依赖），只重建受影响 Chunk 的 staging。
     /// </summary>
     PreparedChunkGeometry PrepareChunkGeometry(IReadOnlyCollection<HexCellData> changedCells);
 
@@ -38,8 +26,7 @@ public interface IMapRenderBackend
     /// <summary>
     /// 阶段四：动画几何构建——与 PrepareChunkGeometry 相同脏 Chunk 计算，
     /// 但生成带 UV2/UV3 顶点动画通道的 staging（§20-10）：
-    /// UV2.x=startVertexY、UV2.y=targetVertexY；UV3.x=错峰延迟、UV3.y=参与标记。
-    /// WholeMap 后端不支持（抛 NotSupportedException）。
+    /// UV2.x=startVertexY、UV2.y=targetVertexY；UV3.x=错峰起点、UV3.y=错峰终点。
     /// </summary>
     PreparedChunkGeometry PrepareAnimatedChunkGeometry(
         IReadOnlyCollection<HexCellData> changedCells,
@@ -57,21 +44,26 @@ public interface IMapRenderBackend
 
     /// <summary>
     /// 阶段五：计算脏 Chunk 索引集合（改格 + 一环邻居 → 所属 Chunk 去重，§七），不构建几何。
-    /// 分帧提交用。WholeMap 后端不支持（抛 NotSupportedException）。
+    /// 分帧提交用。
     /// </summary>
     System.Collections.Generic.IReadOnlyList<ChunkIndex> ComputeDirtyChunkIndices(
         System.Collections.Generic.IReadOnlyCollection<HexCellData> changedCells);
 
     /// <summary>
     /// 阶段五：只构建指定 Chunk 列表的 staging（分帧提交用，每帧构建少量 Chunk）。
-    /// WholeMap 后端不支持（抛 NotSupportedException）。
     /// </summary>
     PreparedChunkGeometry PrepareChunkGeometrySlice(
         System.Collections.Generic.IReadOnlyList<ChunkIndex> chunkIndices);
 
-    /// <summary>变化格对象刷新：移除已清空的地貌/资源模型（转交句柄）、保留模型归位、重建网格线。</summary>
-    void RefreshCellObjects(IReadOnlyCollection<HexCellData> changedCells, RemovedVisualHandle removed);
+    /// <summary>变化格对象刷新：移除已清空的地貌/资源模型（转交句柄）。
+    /// snapToFinalPosition=false 用于动画提交：模型由视觉过渡服务跟随地形移动。</summary>
+    void RefreshCellObjects(IReadOnlyCollection<HexCellData> changedCells, RemovedVisualHandle removed,
+        bool snapToFinalPosition = true);
 
-    /// <summary>立即刷新迷雾视觉（突破 20fps 限频），用于瞬间亮灭场景。</summary>
-    void ForceRefreshFogVisuals();
+    /// <summary>
+    /// 立即刷新迷雾视觉（突破 20fps 限频），用于瞬间亮灭场景。
+    /// 【实机修订-2026-08-04】snapCells 非空时对指定格立即 Snap（瞬间点亮/遮盖，§18.2"突起帧
+    /// 37 格瞬间点亮"），其余格保持渐变过渡（释放时重新聚拢）；null 等价旧行为（全渐变）。
+    /// </summary>
+    void ForceRefreshFogVisuals(IReadOnlyCollection<HexCellData> snapCells = null);
 }

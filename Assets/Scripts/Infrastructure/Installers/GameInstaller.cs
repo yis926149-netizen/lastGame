@@ -87,33 +87,23 @@ public class GameInstaller : MonoInstaller
                  .FromComponentInHierarchy()
                  .AsSingle();
 
-        // �󶨵�ͼ��Ⱦ��
-        Container.Bind<MapRenderer>()
+        // 地图表现启动器（保留场景序列化的 CostLabelPrefab，不再实现渲染后端）。
+        Container.Bind<MapPresentationBootstrap>()
                  .FromComponentInHierarchy()
                  .AsSingle();
+        Container.Bind<IMapPresentationBootstrap>().To<MapPresentationBootstrap>().FromResolve();
 
-        // 【动态地图-阶段三】渲染后端双模式：WholeMap=MapRenderer（默认）；Chunked=ChunkMapRenderer（8×8 分块）。
-        // IMapRenderBackend 统一解析：MapMutationService/测试只依赖接口；按配置分派。
-        if (_mapGenerationConfigSO != null &&
-            _mapGenerationConfigSO.enableExperimentalChunkRenderer &&
-            _mapGenerationConfigSO.mapRenderMode == Enums.MapRenderMode.Chunked)
-        {
-            Container.Bind<ChunkMapRenderer>()
-                     .FromNewComponentOnNewGameObject()
-                     .WithGameObjectName("ChunkMapRenderer")
-                     .AsSingle();
-            Container.Bind<IMapRenderBackend>().To<ChunkMapRenderer>().FromResolve();
-        }
-        else
-        {
-            Container.Bind<IMapRenderBackend>().To<MapRenderer>().FromResolve();
-        }
+        // 唯一 Chunk 渲染后端。
+        Container.Bind<ChunkMapRenderer>()
+                 .FromNewComponentOnNewGameObject()
+                 .WithGameObjectName("ChunkMapRenderer")
+                 .AsSingle();
+        Container.Bind<IMapRenderBackend>().To<ChunkMapRenderer>().FromResolve();
 
         // 【动态地图-阶段三】统一地图射线服务（卡牌/拖拽高亮入口收敛，§11）
         Container.Bind<IMapRaycastService>().To<MapRaycastService>().AsSingle();
 
-        // 【动态地图-阶段三】单格高亮渲染器（替代 cell.GridMesh 高亮，§二十-4）。
-        // 代码创建（不依赖场景组件）：WholeMap 模式调用方保持 GridMesh 旧路径，渲染器空载无害。
+        // 单格高亮渲染器（不依赖逐格 GridMesh）。
         Container.Bind<HexHighlightRenderer>()
                  .FromNewComponentOnNewGameObject()
                  .WithGameObjectName("HexHighlightRenderer")
@@ -155,14 +145,14 @@ public class GameInstaller : MonoInstaller
         // 【动态地图-阶段四】视觉过渡服务（Shader 顶点动画驱动，ITickable；§13.7/§20-10）
         Container.BindInterfacesAndSelfTo<MapVisualTransitionService>().AsSingle();
 
+        // 【竞技场】恢复正常驱动（波浪测试已结束，恢复 ITickable 注册 → Activate 正常触发）
         Container.BindInterfacesAndSelfTo<ArenaEventManager>().AsSingle();
 
-        // 【动态地图-阶段五】调试热键（开发辅助，§18.5-2：F8 提交日志 / F9 脏 Chunk 高亮 /
-        // F10 立即突起 / F11 资源计数；当前无 MCP 桥接时验证"地图动态重建"的运行时入口）
-        Container.Bind<ITickable>().To<MapMutationDebugHotkeys>()
-                 .FromNewComponentOnNewGameObject()
-                 .WithGameObjectName("MapMutationDebugHotkeys")
-                 .AsSingle();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        // 【动态地图-能力测试】全地图波浪式上下变化测试控制器（V 键触发，两次提交升→降）。
+        // 仅编辑器/开发构建绑定——Release 构建中 V 键不得触发全图地形提交（评审 2026-08-05）。
+        Container.BindInterfacesAndSelfTo<MapWaveTestController>().AsSingle();
+#endif
 
         //【普通卡池对象化】普通卡池配置
         Container.Bind<NormalCardPoolSO>().FromInstance(_normalCardPoolSO).AsSingle();
@@ -303,7 +293,7 @@ public class GameInstaller : MonoInstaller
         AddMissing(missing, _mapLandFormDatabaseSO, nameof(_mapLandFormDatabaseSO));
 
         AddMissingInScene<MapGenerator>(missing);
-        AddMissingInScene<MapRenderer>(missing);
+        AddMissingInScene<MapPresentationBootstrap>(missing);
         AddMissingInScene<PlayerModelManager>(missing);
         AddMissingInScene<EnemyModelManager>(missing);
         AddMissingInScene<AIManager>(missing);

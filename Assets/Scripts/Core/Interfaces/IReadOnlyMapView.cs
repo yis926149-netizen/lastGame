@@ -15,7 +15,7 @@ public interface IReadOnlyMapView
 
 /// <summary>
 /// IMapDataService 的只读适配器：把只读查询收敛到 IReadOnlyMapView，
-/// 供 MeshGenerator 无状态构建方法使用（阶段一由 MapRenderer 创建）。
+/// 供 MeshGenerator 无状态构建方法使用（由 ChunkMapRenderer 创建）。
 /// </summary>
 public sealed class MapDataReadOnlyView : IReadOnlyMapView
 {

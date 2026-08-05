@@ -30,7 +30,7 @@ public class UIController : MonoBehaviour
     [Inject] private GoldWallet _goldWallet; // 【探索重构-阶段7】
     [Inject] private GoldIncomeService _goldIncomeService;
     [Inject] private IFactionBuffService _factionBuff; // 天赋 Buff 服务
-    [Inject(Optional = true)] private HexHighlightRenderer _hexHighlightRenderer; // 【动态地图-阶段三】单格高亮替代
+    [Inject] private HexHighlightRenderer _hexHighlightRenderer;
 
     // 摄像机
     private Camera Camera;
@@ -54,18 +54,10 @@ public class UIController : MonoBehaviour
     private GameObject _rangedAttacker = null;
 
     // 临时高亮列表（用于远程攻击范围）
-    private List<HexCellData> _tempHighlightedCells = new List<HexCellData>();
-    private Dictionary<HexCellData, GridVisualState> _tempGridStates = new Dictionary<HexCellData, GridVisualState>();
     // 临时敌方指示器列表
     private List<GameObject> _tempEnemyIndicators = new List<GameObject>();
     private bool _isInfoPanelVisible;
 
-    private struct GridVisualState
-    {
-        public bool WasActive;
-        public Color Color;
-        public bool HasColor;
-    }
 
     void Start()
     {
@@ -364,64 +356,23 @@ public class UIController : MonoBehaviour
     {
         ClearReachableHexes();
 
-        // 【动态地图-阶段三】Chunk 后端优先走 HexHighlightRenderer；WholeMap 后端保持 GridMesh 旧路径
-        if (_hexHighlightRenderer != null)
-        {
-            var cells = new List<HexCellData>();
-            foreach (Vector3 coord in hexCoords)
-            {
-                var cell = _mapDataService.GetCell(coord);
-                if (cell != null) cells.Add(cell);
-            }
-            Color highlightColor = mode == 1 ? Color.cyan : Color.yellow;
-            _hexHighlightRenderer.SetHighlightedCells(HexHighlightChannel.Reachable, cells, highlightColor);
-            return;
-        }
+        // 场景组件可能在 Zenject 注入前被 SetActive 触发 OnDisable，此时渲染器尚未注入。
+        if (_hexHighlightRenderer == null) return;
 
+        var cells = new List<HexCellData>();
         foreach (Vector3 coord in hexCoords)
         {
             var cell = _mapDataService.GetCell(coord);
-            if (cell != null && cell.GridMesh != null)
-            {
-                var renderer = cell.GridMesh.GetComponent<Renderer>();
-                _tempGridStates[cell] = new GridVisualState
-                {
-                    WasActive = cell.GridMesh.activeSelf,
-                    Color = renderer != null ? renderer.material.color : default,
-                    HasColor = renderer != null
-                };
-                cell.GridMesh.SetActive(true);
-                if (mode == 1)
-                {
-                    if (renderer != null)
-                        renderer.material.color = Color.cyan;
-                }
-                _tempHighlightedCells.Add(cell);
-            }
+            if (cell != null) cells.Add(cell);
         }
+        Color highlightColor = mode == 1 ? Color.cyan : Color.yellow;
+        _hexHighlightRenderer.SetHighlightedCells(HexHighlightChannel.Reachable, cells, highlightColor);
     }
 
     private void ClearReachableHexes()
     {
-        if (_hexHighlightRenderer != null)
-        {
-            _hexHighlightRenderer.ClearChannel(HexHighlightChannel.Reachable);
-            return;
-        }
-
-        foreach (var cell in _tempHighlightedCells)
-        {
-            if (cell.GridMesh == null || !_tempGridStates.TryGetValue(cell, out GridVisualState state)) continue;
-
-            if (state.HasColor)
-            {
-                var renderer = cell.GridMesh.GetComponent<Renderer>();
-                if (renderer != null) renderer.material.color = state.Color;
-            }
-            cell.GridMesh.SetActive(state.WasActive);
-        }
-        _tempHighlightedCells.Clear();
-        _tempGridStates.Clear();
+        if (_hexHighlightRenderer == null) return;
+        _hexHighlightRenderer.ClearChannel(HexHighlightChannel.Reachable);
     }
 
     private void OnDisable()

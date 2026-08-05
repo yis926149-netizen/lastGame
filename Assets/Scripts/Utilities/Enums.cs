@@ -47,12 +47,6 @@ public class Enums
         Step
     }
 
-    public enum TransitionGenerationMode
-    {
-        Legacy,
-        GenericFan
-    }
-
     public enum ShadingStyle
     {
         FlatAll,
@@ -77,13 +71,6 @@ public class Enums
     {
         PerlinNoise,
         PaletteMap
-    }
-
-    // 【动态地图-阶段三】渲染后端模式：WholeMap = 整图合并 mesh（阶段二现状），Chunked = 8×8 分块（阶段三）
-    public enum MapRenderMode
-    {
-        WholeMap,
-        Chunked
     }
 
     //资源类型（【地图资源配置化】已移除：改由 MapResourceSO 配置，见 ScriptableObjects/MapResource）

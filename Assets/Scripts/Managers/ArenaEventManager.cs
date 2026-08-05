@@ -238,8 +238,10 @@ public class ArenaEventManager : ITickable
         _mutationService.Commit(options);
 
         // 迷雾视觉点亮（不置探索位）：Arena VisibilityLease + 立即刷新（突破 20fps 限频）
+        // 【实机修订-2026-08-04】snapCells=_arenaCells：突起帧 37 格瞬间点亮（§18.2），
+        // 不再走 2 秒渐变（FogTransitionManager.TransitionSpeed=0.5/s 太慢，观感"迷雾未去除"）
         _lease = _visibilityService.AcquireLease(VisibilitySource, _arenaCells);
-        _renderBackend.ForceRefreshFogVisuals();
+        _renderBackend.ForceRefreshFogVisuals(_arenaCells);
 
         // 中央宝箱（出现即激活，同帧）
         SpawnChest();
@@ -270,8 +272,11 @@ public class ArenaEventManager : ITickable
 
         GameObject model = Object.Instantiate(_config.centralChestModel);
         model.name = "CentralChest";
-        model.transform.position = _centerCell.RealCenterWorldCoordinate;
+        // 先挂父（worldPositionStays=false 保留 prefab 原始 local），再设世界坐标：
+        // 若先设 position 再 SetParent(false)，local 被保留导致世界坐标叠加父对象偏移
+        // （NeutralBuilding 根节点位于 (13.83, 24.35, 55.86)），宝箱会偏出竞技场。
         model.transform.SetParent(GameObject.Find("NeutralBuilding")?.transform, false);
+        model.transform.position = _centerCell.RealCenterWorldCoordinate;
         model.tag = "NeutralBuilding";
 
         CentralChest chest = model.AddComponent<CentralChest>();

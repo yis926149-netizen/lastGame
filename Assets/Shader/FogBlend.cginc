@@ -124,24 +124,6 @@ float FogBlend_sampleSoftMask(float2 uvCenter)
 
 // 【探索重构-阶段6】FogBlend_jaggedExploration 已删除（surf 改造后无调用者）。
 
-// 【探索重构-方案三】surf 阶段不再让未探索地形变黑，正常返回地形 Albedo。
-// 去饱和+半透明雾的处理全部移到 FogBlend_final（光照算完后统一处理）。
-fixed3 FogBlend_surf(float2 uv_FogTex, float exploration, fixed3 terrainAlbedo, inout fixed3 o_Emission)
-{
-    return terrainAlbedo;
-}
-
-// 【探索重构-方案三】Smoothness/Metallic 不再随探索状态归零，始终返回原值。
-fixed FogBlend_alpha(float exploration, float param)
-{
-    return param;
-}
-
-// 【探索重构-方案三】未探索格现在正常投射阴影（不再 clip），保留空函数以兼容 Shader 调用点。
-void FogBlend_shadowClip(float exploration)
-{
-}
-
 // 地图、环境对象与永久未探索面片共用的滚动雾纹采样。
 // 相位先取 frac，避免长时间运行后浮点精度下降；最终 UV 再循环到 [0,1)。
 fixed3 FogBlend_sampleFogLayer(float2 uvW, float speedMultiplier, float uvOffset)
@@ -166,7 +148,7 @@ fixed3 FogBlend_applyUnexplored(float3 baseColor, float2 uvW)
 // 【探索重构-方案三】在 finalcolor 修改器中调用：光照算完后处理未探索区视觉。
 //  - 已探索(exploredJagged=1)：正常光照颜色，不变。
 //  - 未探索(exploredJagged=0)：地形去饱和 + 叠加半透明滚动迷雾（不遮挡地形信息）。
-void FogBlend_final(float exploration, float visibility, half3 fogEmission, inout fixed4 color, float2 uv_FogTex)
+void FogBlend_final(inout fixed4 color, float2 uv_FogTex)
 {
     float2 uvW = FogBlend_warpUV(uv_FogTex);
 

@@ -1059,10 +1059,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   generator: {fileID: 244818669}
-  myMaterial: {fileID: 2100000, guid: 7c0c32e927d412345a7e325cfc9b0756, type: 2}
   fogCoverMaterial: {fileID: 2100000, guid: 9560373430e335f419401d01aee7e420, type: 2}
   fogCoverMaterial_two: {fileID: 2100000, guid: c38f3aac171b9064f997e5ca550a5772, type: 2}
-  connectorMaterial: {fileID: 2100000, guid: 7c0c32e927d412345a7e325cfc9b0756, type: 2}
+  connectorMaterial: {fileID: 2100000, guid: a8434f251682b1f4c80fc4811ad209d8, type: 2}
 --- !u!33 &244818671
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -1643,7 +1642,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   AICity: {fileID: 5877676752127630691, guid: 1c0e0cb695955dc41866402cd01838a2, type: 3}
-  AIDisabled: 0
+  AIDisabled: 1
 --- !u!114 &286174322
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1684,9 +1683,6 @@ MonoBehaviour:
   NextCardPlaceholder: {fileID: 914256594}
   SpawnHexCenterPoint: {x: 0, y: 0, z: 0}
   centerWorldCoordinates: []
-  verticesList: []
-  mesh: {fileID: 0}
-  gridGameObject: {fileID: 0}
 --- !u!114 &286174325
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4034,7 +4030,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   generator: {fileID: 637012644}
-  myMaterial: {fileID: 2100000, guid: 7c0c32e927d412345a7e325cfc9b0756, type: 2}
   fogCoverMaterial: {fileID: 2100000, guid: 9560373430e335f419401d01aee7e420, type: 2}
   fogCoverMaterial_two: {fileID: 2100000, guid: c38f3aac171b9064f997e5ca550a5772, type: 2}
   connectorMaterial: {fileID: 0}
@@ -5304,120 +5299,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 840977696}
   m_CullTransparentMesh: 1
---- !u!1 &856870215
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 856870220}
-  - component: {fileID: 856870222}
-  - component: {fileID: 856870223}
-  - component: {fileID: 856870225}
-  - component: {fileID: 856870224}
-  m_Layer: 0
-  m_Name: Fog
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 0
---- !u!4 &856870220
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 856870215}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!23 &856870222
-MeshRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 856870215}
-  m_Enabled: 1
-  m_CastShadows: 1
-  m_ReceiveShadows: 1
-  m_DynamicOccludee: 1
-  m_StaticShadowCaster: 0
-  m_MotionVectors: 1
-  m_LightProbeUsage: 1
-  m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
-  m_RayTraceProcedural: 0
-  m_RenderingLayerMask: 1
-  m_RendererPriority: 0
-  m_Materials:
-  - {fileID: 2100000, guid: 8d32a805d5eb1194f8ecfb3f8fe04c53, type: 2}
-  m_StaticBatchInfo:
-    firstSubMesh: 0
-    subMeshCount: 0
-  m_StaticBatchRoot: {fileID: 0}
-  m_ProbeAnchor: {fileID: 0}
-  m_LightProbeVolumeOverride: {fileID: 0}
-  m_ScaleInLightmap: 1
-  m_ReceiveGI: 1
-  m_PreserveUVs: 0
-  m_IgnoreNormalsForChartDetection: 0
-  m_ImportantGI: 0
-  m_StitchLightmapSeams: 1
-  m_SelectedEditorRenderState: 3
-  m_MinimumChartSize: 4
-  m_AutoUVMaxDistance: 0.5
-  m_AutoUVMaxAngle: 89
-  m_LightmapParameters: {fileID: 0}
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
-  m_AdditionalVertexStreams: {fileID: 0}
---- !u!33 &856870223
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 856870215}
-  m_Mesh: {fileID: 0}
---- !u!114 &856870224
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 856870215}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 60a188623db91384882722b7ed059b30, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!114 &856870225
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 856870215}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3a4e7b3220c69a0428ca496c4d6e4beb, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  generator: {fileID: 856870224}
-  myMaterial: {fileID: 2100000, guid: 7c0c32e927d412345a7e325cfc9b0756, type: 2}
-  fogCoverMaterial: {fileID: 2100000, guid: 9560373430e335f419401d01aee7e420, type: 2}
-  fogCoverMaterial_two: {fileID: 2100000, guid: c38f3aac171b9064f997e5ca550a5772, type: 2}
-  connectorMaterial: {fileID: 0}
 --- !u!1 &866825365
 GameObject:
   m_ObjectHideFlags: 0
@@ -6421,8 +6302,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.5519369, y: 0, z: 0, w: 0.83388585}
-  m_LocalPosition: {x: 10.767792, y: 60, z: -7.984049}
+  m_LocalRotation: {x: 0.21252747, y: 0.59596443, z: -0.16752984, w: 0.7560372}
+  m_LocalPosition: {x: -75.9, y: 50, z: 26.9}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -6481,7 +6362,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 32e2048a2c85dfc44a2cde38ce42f7eb, type: 3}
   m_Name: 
@@ -10417,7 +10298,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1882833279
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -12394,7 +12275,6 @@ SceneRoots:
   - {fileID: 1785216238}
   - {fileID: 229962190}
   - {fileID: 1953169038}
-  - {fileID: 856870220}
   - {fileID: 244818673}
   - {fileID: 637012648}
   - {fileID: 1094114450}

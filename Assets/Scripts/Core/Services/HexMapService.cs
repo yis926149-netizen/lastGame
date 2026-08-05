@@ -15,11 +15,6 @@ public class HexMapService : IMapDataService
     //��ͼ����
     private Vector3[] _hexVertices;
 
-    //��ͼ����ʱ����
-    private List<Vector3> _verticesList;
-    private Mesh _mesh;
-    private GameObject _gridGameObject;
-
     public GameObject MapGameObject => _mapGameObject;
 
     private List<HexCellData> _cachedAllCells;
@@ -33,14 +28,7 @@ public class HexMapService : IMapDataService
         GameObject mapGameObject,
 
         //��ͼ����
-        Vector3[] hexVertices,
-
-        //��ͼ����ʱ����
-        List<Vector3> verticesList,
-        Mesh mesh,
-        GameObject gridGameObject
-
-
+        Vector3[] hexVertices
         )
     {
         _hexToCell = hexToCell;
@@ -51,18 +39,7 @@ public class HexMapService : IMapDataService
 
         _hexVertices = hexVertices;
 
-        _verticesList = verticesList;
-        _mesh = mesh;
-        _gridGameObject = gridGameObject;
-
         _cachedCellRadius = ComputeCellRadius();
-    }
-
-    public void UpdateRuntimeData(List<Vector3> verticesList, Mesh mesh, GameObject gridGameObject)
-    {
-        _verticesList = verticesList;
-        _mesh = mesh;
-        _gridGameObject = gridGameObject;
     }
 
     public HexCellData GetCell(Vector3 hexCoordinate)

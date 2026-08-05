@@ -34,11 +34,6 @@ public class MapGenerator : MonoBehaviour
     [HideInInspector]
     public Dictionary<int, HexCellData> GenerateOrder_HexCellData = new Dictionary<int, HexCellData>();
 
-    //��ͼ����ʱ����
-    public List<Vector3> verticesList;
-    public Mesh mesh;
-    public GameObject gridGameObject;
-
     // ���ɵ�ͼ���ݣ�����䵽 IMapDataService ��
     public Vector3[] Generate()
     {
@@ -74,12 +69,7 @@ public class MapGenerator : MonoBehaviour
             mapGameObject: transform.gameObject,
 
             //��ͼ����
-            hexVertices: hexVertices,
-
-            //��ͼ����ʱ����
-            verticesList: verticesList,
-            mesh: mesh,
-            gridGameObject: gridGameObject
+            hexVertices: hexVertices
         );
     }
 

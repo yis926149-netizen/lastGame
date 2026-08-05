@@ -7,7 +7,9 @@ using Zenject;
 //****************************************
 // 功能说明：玩家输入处理器。
 //   【批次 B】移除单位选择/移动/攻击逻辑（约 400 行）。
-//   保留：G 键切格网、拖牌高亮、UI 阻挡检测辅助方法。
+//   保留：拖牌高亮、UI 阻挡检测辅助方法。
+//   【2026-08-05 评审清理】G 键切格网已移除：格网对象写入方（旧 MapRenderer）删除后
+//   gridGameObject 恒 null，分支不可达。
 //   ForceDeselectUnit / ClearCardDragHighlight 保留为空桩（外部调用点不删）。
 //
 // 卡牌拖拽可在任何时间使用（移除 CurrentPhase is not PlayerPhase 门控）。
@@ -18,7 +20,6 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     private readonly IInputService _input;
     private readonly IMapDataService _mapData;
     private readonly IUIConfigProvider _uiConfig;
-    private readonly MapGenerator _mapGenerator;
     private readonly IUnitRepository _unitRepository;
     private readonly Canvas _targetUICanvas;
     private readonly IExplorationService _explorationService;
@@ -27,10 +28,7 @@ public class PlayerInputHandler : ITickable, System.IDisposable
 
     private bool _isDraggingCard;
     private HexCellData _lastDraggingHighlightCell;
-    private bool _lastDraggingGridWasActive;
-
-    // 【动态地图-阶段三】单格高亮替代：拖拽高亮提交到 HexHighlightRenderer（Chunk 后端无 cell.GridMesh）
-    [Inject(Optional = true)] private HexHighlightRenderer _hexHighlightRenderer;
+    [Inject] private HexHighlightRenderer _hexHighlightRenderer;
 
     [Inject]
     public PlayerInputHandler(
@@ -39,7 +37,6 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         IUIConfigProvider uiConfig,
         IUnitRepository unitRepository,
         [Inject(Id = "TargetUICanvas")] Canvas targetUICanvas,
-        MapGenerator mapGenerator,
         IExplorationService explorationService,
         GameLoop gameLoop,
         [InjectOptional] ILogisticsService logisticsService
@@ -50,7 +47,6 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         _uiConfig = uiConfig;
         _unitRepository = unitRepository;
         _targetUICanvas = targetUICanvas;
-        _mapGenerator = mapGenerator;
         _explorationService = explorationService;
         _gameLoop = gameLoop;
         _logisticsService = logisticsService;
@@ -58,19 +54,8 @@ public class PlayerInputHandler : ITickable, System.IDisposable
 
     public void Tick()
     {
-        HandleGlobalInput();
         HandleCardDragging();
         HandleTileClickForExploration();
-    }
-
-    // ---------- G 键切格网 ----------
-    private void HandleGlobalInput()
-    {
-        if (_input.GetKeyDown(KeyCode.G))
-        {
-            if (_mapGenerator.gridGameObject != null)
-                _mapGenerator.gridGameObject.SetActive(!_mapGenerator.gridGameObject.activeSelf);
-        }
     }
 
     // ---------- 卡牌拖拽高亮 ----------
@@ -91,15 +76,7 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     public void ClearCardDragHighlight()
     {
         _isDraggingCard = false;
-        if (_hexHighlightRenderer != null)
-        {
-            _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
-            _lastDraggingHighlightCell = null;
-            return;
-        }
-        if (_lastDraggingHighlightCell == null) return;
-
-        _lastDraggingHighlightCell.GridMesh?.SetActive(_lastDraggingGridWasActive);
+        _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
         _lastDraggingHighlightCell = null;
     }
 
@@ -112,47 +89,21 @@ public class PlayerInputHandler : ITickable, System.IDisposable
             var cell = _mapData.GetCellByWorldPosition(hit.point);
             if (cell != null && cell != _lastDraggingHighlightCell)
             {
-                // 【动态地图-阶段三】Chunk 后端优先走 HexHighlightRenderer；WholeMap 后端保持 GridMesh 旧路径
-                if (_hexHighlightRenderer != null)
-                {
-                    if (cell.IsExplored)
-                    {
-                        _hexHighlightRenderer.SetHighlightedCells(HexHighlightChannel.CardPlacement, new[] { cell }, Color.yellow);
-                        _lastDraggingHighlightCell = cell;
-                    }
-                    else
-                    {
-                        _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
-                        _lastDraggingHighlightCell = null;
-                    }
-                    return;
-                }
-
-                if (_lastDraggingHighlightCell != null && _lastDraggingHighlightCell.GridMesh != null)
-                    _lastDraggingHighlightCell.GridMesh.SetActive(_lastDraggingGridWasActive);
-
                 if (cell.IsExplored)
                 {
-                    _lastDraggingGridWasActive = cell.GridMesh != null && cell.GridMesh.activeSelf;
-                    if (cell.GridMesh != null) cell.GridMesh.SetActive(true);
+                    _hexHighlightRenderer.SetHighlightedCells(HexHighlightChannel.CardPlacement, new[] { cell }, Color.yellow);
                     _lastDraggingHighlightCell = cell;
                 }
                 else
                 {
+                    _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
                     _lastDraggingHighlightCell = null;
                 }
             }
         }
         else
         {
-            if (_hexHighlightRenderer != null)
-            {
-                _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
-                _lastDraggingHighlightCell = null;
-                return;
-            }
-            if (_lastDraggingHighlightCell != null && _lastDraggingHighlightCell.GridMesh != null)
-                _lastDraggingHighlightCell.GridMesh.SetActive(_lastDraggingGridWasActive);
+            _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
             _lastDraggingHighlightCell = null;
         }
     }

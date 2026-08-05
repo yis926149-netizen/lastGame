@@ -2,7 +2,7 @@ using UnityEngine;
 
 //****************************************
 // 【动态地图-阶段三】IMapRaycastService 默认实现（§11）。
-// 同时兼容 WholeMap 后端（命中地图根）与 Chunked 后端（命中 MapChunkView 后代）。
+// 统一识别 Chunk 后端的 MapChunkView 后代。
 //****************************************
 
 public class MapRaycastService : IMapRaycastService

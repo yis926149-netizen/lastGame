@@ -83,3 +83,6 @@ Thumbs.db
 # Large source archives and textures (>100MB, GitHub limit)
 Archive/
 *_Displacement.exr
+
+# Wave test screenshots (MapWaveTest 取证产物，不入库)
+WaveCaptures/

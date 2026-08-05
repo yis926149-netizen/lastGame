@@ -20,7 +20,7 @@ public sealed class SolidAreaMeshData
 }
 
 /// <summary>
-/// 单格几何构建的输入上下文。由调用方（MapRenderer）为每个格子构建时创建，
+/// 单格几何构建的输入上下文。由 ChunkMapRenderer 为每个格子构建时创建，
 /// 生成器方法只读该上下文与显式参数，不写回任何 HexCellData 渲染缓存——保证无状态、
 /// 可重复调用（同一输入必得同一输出）。
 /// </summary>

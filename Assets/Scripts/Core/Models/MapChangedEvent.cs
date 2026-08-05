@@ -42,7 +42,7 @@ public sealed class MapChangedEvent
     public MapDirtyFlags DirtyFlags { get; }
     public MapChangedPhase Phase { get; }
 
-    /// <summary>【阶段五-诊断】受影响（脏）Chunk 列表（Chunked 后端有值；WholeMap 后端为空）。调试可视化用。</summary>
+    /// <summary>受影响（脏）Chunk 列表，供诊断和调试可视化使用。</summary>
     public IReadOnlyList<ChunkIndex> AffectedChunks { get; }
 
     public MapChangedEvent(int commitId, IReadOnlyList<HexCellData> changedCells, MapDirtyFlags dirtyFlags, MapChangedPhase phase, IReadOnlyList<ChunkIndex> affectedChunks = null)
@@ -57,7 +57,8 @@ public sealed class MapChangedEvent
 
 /// <summary>
 /// 错峰模式（§13.7）：动画期间各格按模式错开启动时机。
-/// 阶段四实现 Simultaneous / CenterToOuter；其余枚举保留（随机/方向/波浪后续接入）。
+/// 已实现 Simultaneous / CenterToOuter / Wave（行粒度：同行同延迟、行间阶梯接续，2026-08-05）；
+/// OuterToCenter / Random / Directional 保留后续接入（当前降级为 Simultaneous 并警告）。
 /// </summary>
 public enum MapTransitionStagger
 {
@@ -84,7 +85,7 @@ public sealed class MapTransitionOptions
     /// <summary>缓动曲线；null 时使用默认 smoothstep（§13.7）。</summary>
     public AnimationCurve Easing;
 
-    /// <summary>错峰模式（阶段四支持 Simultaneous / CenterToOuter）。</summary>
+    /// <summary>错峰模式（已支持 Simultaneous / CenterToOuter / Wave 行粒度）。</summary>
     public MapTransitionStagger Stagger = MapTransitionStagger.Simultaneous;
 
     /// <summary>错峰中心格（CenterToOuter/OuterToCenter 用，§13.2 中心向外）。</summary>

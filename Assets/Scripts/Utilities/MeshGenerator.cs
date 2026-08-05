@@ -2,11 +2,17 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
+// 【约束-2026-08-05】FogConnector 内圈顶点支持运行时高度偏移（SetConnectorInnerHeightOffsets），
+// 驱动方是 FogManager.LateUpdate + MapVisualTransitionService.GetAnimatedWorldY；
+// 基线顶点（_connectorBaseVertices）只在本类生成 Connector mesh 时捕获，外部不得改写。
 public class MeshGenerator : MonoBehaviour
 {
     private MeshFilter m_meshFilter;
     private MeshRenderer m_meshRenderer;
     private Mesh m_mesh;
+    private Vector3[] _connectorBaseVertices;
+    private int _connectorInnerStart = -1;
+    private int _connectorInnerCount;
 
     private void Awake()
     {
@@ -90,6 +96,32 @@ public class MeshGenerator : MonoBehaviour
         UpdateMesh(vertices, triangles);
     }
 
+    /// <summary>让 FogConnector 内圈逐点跟随地图边缘高度；外圈/填充面保持原位。</summary>
+    public void SetConnectorInnerHeightOffsets(IReadOnlyList<float> offsets)
+    {
+        if (m_mesh == null || _connectorBaseVertices == null || _connectorInnerStart < 0 ||
+            offsets == null || offsets.Count != _connectorInnerCount ||
+            m_mesh.vertexCount != _connectorBaseVertices.Length)
+            return;
+
+        Vector3[] vertices = (Vector3[])_connectorBaseVertices.Clone();
+        for (int i = 0; i < _connectorInnerCount; i++)
+            vertices[_connectorInnerStart + i].y += offsets[i];
+        m_mesh.vertices = vertices;
+        m_mesh.RecalculateNormals();
+        m_mesh.RecalculateBounds();
+    }
+
+    public void ResetConnectorInnerHeightOffsets()
+    {
+        if (m_mesh == null || _connectorBaseVertices == null ||
+            m_mesh.vertexCount != _connectorBaseVertices.Length)
+            return;
+        m_mesh.vertices = (Vector3[])_connectorBaseVertices.Clone();
+        m_mesh.RecalculateNormals();
+        m_mesh.RecalculateBounds();
+    }
+
     public void GenerateConnectorMesh(List<Vector3> rectangleBoundary, List<Vector3> innerBoundary,
         List<Vector3> slopeOuterBoundary, Material material)
     {
@@ -142,6 +174,9 @@ public class MeshGenerator : MonoBehaviour
             Debug.LogWarning($"FogConnector: {degenerateSegmentCount}/{innerBoundary.Count} 个坡面段包含退化三角形。");
 
         UpdateMesh(vertices, triangles);
+        _connectorBaseVertices = vertices.ToArray();
+        _connectorInnerStart = innerStart;
+        _connectorInnerCount = innerBoundary.Count;
     }
 
     private static void AddUpFacingTriangle(List<Vector3> vertices, List<int> triangles, int a, int b, int c)

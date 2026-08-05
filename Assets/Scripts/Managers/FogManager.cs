@@ -2,6 +2,17 @@ using System.Collections.Generic;
 using UnityEngine;
 using Zenject;
 
+//****************************************
+// FogManager：迷雾盖面（FogCover）与地图边缘连接面片（FogConnector）管理。
+//
+// 【外围网格跟随约束-2026-08-05（波浪测试反哺，详见 动态地图/动态地图变化与分块重建方案.md 末章）】
+// FogConnector 是贴地图边缘的静态网格，不参与 Chunk 重建。地图动画期间其内圈必须跟随
+// 地形高度，否则与地图断开（WaveCaptures/170848 实机）。约束：
+// ① 内圈顶点逐点映射最近边缘格，LateUpdate 读 MapVisualTransitionService.GetAnimatedWorldY
+//    计算高度偏移；外圈保持 FogCover 原高度，连接坡面随波峰动态伸缩。
+// ② 禁止直接读 cell.RealCenterWorldCoordinate 当视觉高度（动画中它是逻辑值，非显示值）。
+// ③ 后续同类外围网格（势力范围城墙、覆盖层等）应复用同一模式：follower 或 GetAnimatedWorldY。
+//****************************************
 public class FogManager : MonoBehaviour
 {
     //注入
@@ -9,9 +20,9 @@ public class FogManager : MonoBehaviour
     [Inject] private IMeshGenerator _meshGenerator;
     [Inject] private MapVisualEventSO _mapVisualEvent;
     [Inject] private MapGenerationConfigSO _config;
+    [Inject] private MapVisualTransitionService _visualTransition;
 
     public MeshGenerator generator;
-    public Material myMaterial;
     public Material fogCoverMaterial;
     public Material fogCoverMaterial_two;
     public Material connectorMaterial;
@@ -20,6 +31,10 @@ public class FogManager : MonoBehaviour
     //迷雾连接面片：贴地斜坡 + MinY 平面填充，共用一个 Mesh 以保持 UV 连续
     private GameObject _connectorGO;
     private Material _connectorMaterial;
+    private MeshGenerator _connectorGenerator;
+    private readonly List<HexCellData> _connectorBoundaryCells = new List<HexCellData>();
+    private readonly List<float> _connectorHeightOffsets = new List<float>();
+    private bool _connectorWasAnimating;
 
 
     private void Awake()
@@ -43,7 +58,6 @@ public class FogManager : MonoBehaviour
     {
         if (_isSubscribed || _mapVisualEvent == null) return;
 
-        _mapVisualEvent.OnMapVisualChanged.AddListener(OnMapVisualChanged);
         _mapVisualEvent.fogInit.AddListener(OnFogInit);
         _isSubscribed = true;
     }
@@ -52,13 +66,33 @@ public class FogManager : MonoBehaviour
     {
         if (!_isSubscribed || _mapVisualEvent == null) return;
 
-        _mapVisualEvent.OnMapVisualChanged.RemoveListener(OnMapVisualChanged);
         _mapVisualEvent.fogInit.RemoveListener(OnFogInit);
         _isSubscribed = false;
     }
 
-    private void OnMapVisualChanged()
+    private void LateUpdate()
     {
+        if (_connectorGenerator == null || _visualTransition == null) return;
+        if (!_visualTransition.IsAnimating)
+        {
+            if (_connectorWasAnimating)
+            {
+                _connectorGenerator.ResetConnectorInnerHeightOffsets();
+                _connectorWasAnimating = false;
+            }
+            return;
+        }
+
+        _connectorHeightOffsets.Clear();
+        foreach (HexCellData cell in _connectorBoundaryCells)
+        {
+            float offset = cell != null
+                ? _visualTransition.GetAnimatedWorldY(cell) - cell.RealCenterWorldCoordinate.y
+                : 0f;
+            _connectorHeightOffsets.Add(offset);
+        }
+        _connectorGenerator.SetConnectorInnerHeightOffsets(_connectorHeightOffsets);
+        _connectorWasAnimating = true;
     }
 
     private void OnFogInit()
@@ -136,19 +170,36 @@ public class FogManager : MonoBehaviour
 
         }
 
-        _connectorGO.GetComponent<MeshGenerator>()
-            .GenerateConnectorMesh(rectBoundary, realOutline, slopeOuterBoundary, _connectorMaterial);
+        _connectorGenerator = _connectorGO.GetComponent<MeshGenerator>();
+        _connectorGenerator.GenerateConnectorMesh(rectBoundary, realOutline, slopeOuterBoundary, _connectorMaterial);
+        BindConnectorBoundaryCells(realOutline);
     }
 
-    //迷雾
-    public void GenerateFog()
+    private void BindConnectorBoundaryCells(IReadOnlyList<Vector3> realOutline)
     {
-        List<Vector3> outerBoundary = new List<Vector3>();
-        List<List<Vector3>> holes = new List<List<Vector3>>();
-        _meshGenerator.GetFogVertices(out outerBoundary, out holes, _mapDataService);
-
-        //执行生成
-        generator.GenerateMesh(outerBoundary, holes, myMaterial);
+        _connectorBoundaryCells.Clear();
+        if (realOutline == null) return;
+        IReadOnlyList<HexCellData> cells = _mapDataService.GetAllCells();
+        foreach (Vector3 point in realOutline)
+        {
+            HexCellData nearest = null;
+            float best = float.MaxValue;
+            if (cells != null)
+            {
+                foreach (HexCellData cell in cells)
+                {
+                    if (cell == null) continue;
+                    Vector3 center = cell.RealCenterWorldCoordinate;
+                    float dx = point.x - center.x;
+                    float dz = point.z - center.z;
+                    float distance = dx * dx + dz * dz;
+                    if (distance >= best) continue;
+                    best = distance;
+                    nearest = cell;
+                }
+            }
+            _connectorBoundaryCells.Add(nearest);
+        }
     }
 
     //迷雾封皮

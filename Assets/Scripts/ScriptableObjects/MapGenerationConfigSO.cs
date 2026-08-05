@@ -127,10 +127,6 @@ public class MapGenerationConfigSO : ScriptableObject
     [Tooltip("单条边台阶细分数上限")]
     [Min(0)] public int maxStepSubdivision = 8;
 
-    [Header("过渡算法")]
-    [Tooltip("过渡面片生成算法：GenericFan = 通用扇出法（推荐），Legacy = 旧版枚举法")]
-    public Enums.TransitionGenerationMode transitionGenerationMode = Enums.TransitionGenerationMode.GenericFan;
-
     [Header("迷雾材质")]
     [Tooltip("战争迷雾材质")]
     public Material fogMaterial;
@@ -138,8 +134,6 @@ public class MapGenerationConfigSO : ScriptableObject
     [Min(0f)] public float fogCoverWidth = 27.5f;
     [Tooltip("地图真实边缘下降到迷雾封皮 MinY 平面的斜坡宽度")]
     [Min(0.01f)] public float fogConnectorSlopeWidth = 1f;
-    [Tooltip("记忆区（探索过·当前无视野）叠加颜色（乘法叠加），默认白色=不染色")]
-    public Color fogMemoryColor = Color.white;
 
     [Header("法线/着色风格对比")]
     [Tooltip("切换后重新进入 Play 模式即可对比不同渲染风格")]
@@ -165,12 +159,6 @@ public class MapGenerationConfigSO : ScriptableObject
     [Tooltip("曲线边界流动速度，仅 WideSmooth 生效。0=静态；越大边界摆动越快。建议 0.1~0.4，过大会让边缘格子明显脉动")]
     [Range(0f, 2f)]
     public float fogEdgeAnimSpeed = 0.25f;
-
-    [Header("渲染后端（动态地图-阶段三）")]
-    [Tooltip("Chunked 当前为实验后端；未同时开启 enableExperimentalChunkRenderer 时会强制回退 WholeMap。")]
-    public Enums.MapRenderMode mapRenderMode = Enums.MapRenderMode.WholeMap;
-    [Tooltip("实验开关：只有完成 WholeMap/Chunked 几何 A/B 对比后才允许开启。默认关闭，防止坏 Chunk mesh 进入游戏。")]
-    public bool enableExperimentalChunkRenderer = false;
 
     [Header("竞技场（动态地图-阶段二）")]
     [Tooltip("竞技场激活时机（GameTime 秒，暂停冻结）；0 = 开局即突起")]

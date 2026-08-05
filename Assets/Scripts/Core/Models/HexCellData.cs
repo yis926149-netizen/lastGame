@@ -1,6 +1,4 @@
-using System.Collections;
 using System.Collections.Generic;
-using Unity.VisualScripting;
 using UnityEngine;
 
 //****************************************
@@ -20,9 +18,6 @@ public class HexCellData
     // 【地图资源配置化】地块上的资源配置（SO 引用，单一事实源）
     public MapResourceSO resource;
     public GameObject resourceModel;
-    //对应的六边形网格线
-    public GameObject GridMesh;
-
     //地块的移动力消耗(暂且都设置为1)
     public float movementCost = 1;
 
@@ -57,70 +52,6 @@ public class HexCellData
     //有无河流流经
     public bool hasRiver = false;
 
-    //实心顶点组（全部44个点）
-    public List<Vector3> SolidAreaVertices = new List<Vector3>();
-    //实心7顶点 + 12个分割点组(无扰动)
-    public List<Vector3> SolidAreaVerticesWithoutPerturb = new List<Vector3>();
-    //实心44绘制顺序
-    public List<int> SolidAreaDrawOrder = new List<int>();
-    //实心44UV
-    public List<Vector2> SolidAreaUV = new List<Vector2>();
-    //实心44颜色顶点数组
-    public List<Color> SolidAreaColors = new List<Color>();
-    //该地块在地形合并Mesh中的实心区域首顶点索引
-    public int MeshSolidAreaVertexStartIndex = -1;
-    //该地块在地形合并Mesh中的过渡区域顶点范围列表（起始索引，顶点数）
-    public List<(int start, int count)> MeshTransitionVertexRanges = new List<(int start, int count)>();
-    //该地块在海洋/湖泊合并Mesh中的顶点范围列表（起始索引，顶点数）——用于运行时迷雾更新
-    public List<(int start, int count)> MeshWaterVertexRanges = new List<(int start, int count)>();
-    //该地块在河流合并Mesh中的顶点范围列表（起始索引，顶点数）——用于运行时迷雾更新
-    public List<(int start, int count)> MeshRiverVertexRanges = new List<(int start, int count)>();
-
-    //NE矩形顶点组
-    public List<Vector3> NERectVertices = new List<Vector3>();
-    //NE矩形绘制顺序
-    public List<int> NERectDrawOrder = new List<int>();
-    //NE矩形UV
-    public List<Vector2> NERectUV = new List<Vector2>();
-    //NE矩形颜色顶点数组
-    public List<Color> NERectColors = new List<Color>();
-
-    //NE_E三角顶点组
-    public List<Vector3> NE_ETriVertices = new List<Vector3>();
-    //NE_E三角绘制顺序
-    public List<int> NE_ETriDrawOrder = new List<int>();
-    //NE_E三角UV
-    public List<Vector2> NE_ETriUV = new List<Vector2>();
-    //NE_E三角颜色顶点数组
-    public List<Color> NE_ETriColors = new List<Color>();
-
-    //E矩形顶点组
-    public List<Vector3> ERectVertices = new List<Vector3>();
-    //E矩形绘制顺序
-    public List<int> ERectDrawOrder = new List<int>();
-    //E矩形UV
-    public List<Vector2> ERectUV = new List<Vector2>();
-    //E矩形颜色顶点数组
-    public List<Color> ERectColors = new List<Color>();
-
-    //E_SE三角顶点组
-    public List<Vector3> E_SETriVertices = new List<Vector3>();
-    //E_SE三角绘制顺序
-    public List<int> E_SETriDrawOrder = new List<int>();
-    //E_SE三角UV
-    public List<Vector2> E_SETriUV = new List<Vector2>();
-    //E_SE三角颜色顶点数组
-    public List<Color> E_SETriColors = new List<Color>();
-
-    //SE矩形顶点组
-    public List<Vector3> SERectVertices = new List<Vector3>();
-    //SE矩形绘制顺序
-    public List<int> SERectDrawOrder = new List<int>();
-    //SE矩形UV
-    public List<Vector2> SERectUV = new List<Vector2>();
-    //SE矩形颜色顶点数组
-    public List<Color> SERectColors = new List<Color>();
-
     //矩形、三角形过渡区域阶梯的分段数
     public int interpCount = 1;
     //矩形阶梯的uv那个Δx, 元素顺序对应不同方向 - NE{倾斜，水平}、E{倾斜，水平}、SE{倾斜，水平}
@@ -130,88 +61,13 @@ public class HexCellData
 
     //河水深度 ∈ (0，1]，1为与河岸齐平，0为河道干涸
     public float RiverWaterDepth = 0.7f;
-    //实心区域河流顶点组
-    public List<Vector3> RiverVertices = new List<Vector3>();
-    //实心区域河流绘制顺序
-    public List<int> RiverDrawOrder = new List<int>();
-    //实心区域河流UV
-    public List<Vector2> RiverUV = new List<Vector2>();
-
-    //过渡区域河流顶点组
-    public List<Vector3> OutgoingRiverVertices = new List<Vector3>();
-    //过渡区域河流绘制顺序
-    public List<int> OutgoingRiverDrawOrder = new List<int>();
-    //过渡区域河流UV
-    public List<Vector2> OutgoingRiverUV = new List<Vector2>();
 
     //水位高度 - 若水位大于海拔，则形成湖或海
     public float lakeOrSeaWaterLevel = 2;
-    // 该格所属水体的水面高度（Height 单位），由 MapRenderer 从 seaLevel 配置填入
+    // 该格所属水体的水面高度（Height 单位），由 ChunkMapRenderer 从 seaLevel 配置填入
     public float waterLevel;
     // 是否为海岸地块
     public bool isCoast;
-    //湖或海实心区域顶点组
-    public List<Vector3> lakeOrSeaVertices = new List<Vector3>();
-    //湖或海实心区域绘制顺序
-    public List<int> lakeOrSeaDrawOrder = new List<int>();
-    //湖或海实心区域UV
-    public List<Vector2> lakeOrSeaUV = new List<Vector2>();
-
-    //湖或海NE矩形过渡区域顶点组
-    public List<Vector3> lakeOrSeaNERectVertices = new List<Vector3>();
-    //湖或海NE矩形过渡区域绘制顺序
-    public List<int> lakeOrSeaNERectDrawOrder = new List<int>();
-    //湖或海NE矩形过渡区域UV
-    public List<Vector2> lakeOrSeaNERectUV = new List<Vector2>();
-
-    //湖或海E矩形过渡区域顶点组
-    public List<Vector3> lakeOrSeaERectVertices = new List<Vector3>();
-    //湖或海E矩形过渡区域绘制顺序
-    public List<int> lakeOrSeaERectDrawOrder = new List<int>();
-    //湖或海E矩形过渡区域UV
-    public List<Vector2> lakeOrSeaERectUV = new List<Vector2>();
-
-    //湖或海SE矩形过渡区域顶点组
-    public List<Vector3> lakeOrSeaSERectVertices = new List<Vector3>();
-    //湖或海SE矩形过渡区域绘制顺序
-    public List<int> lakeOrSeaSERectDrawOrder = new List<int>();
-    //湖或海SE矩形过渡区域UV
-    public List<Vector2> lakeOrSeaSERectUV = new List<Vector2>();
-
-    //湖或海NE_E三角过渡区域顶点组
-    public List<Vector3> lakeOrSeaNE_ETriVertices = new List<Vector3>();
-    //湖或海NE_E三角过渡区域绘制顺序
-    public List<int> lakeOrSeaNE_ETriDrawOrder = new List<int>();
-    //湖或海NE_E三角形过渡区域UV
-    public List<Vector2> lakeOrSeaNE_ETriUV = new List<Vector2>();
-
-    //湖或海E_SE三角过渡区域顶点组
-    public List<Vector3> lakeOrSeaE_SETriVertices = new List<Vector3>();
-    //湖或海E_SE三角过渡区域绘制顺序
-    public List<int> lakeOrSeaE_SETriDrawOrder = new List<int>();
-    //湖或海E_SE三角过渡区域UV
-    public List<Vector2> lakeOrSeaE_SETriUV = new List<Vector2>();
-
-    //海岸矩形过渡区域顶点组
-    public List<Vector3> CoastRectVertices = new List<Vector3>();
-    //海岸矩形过渡区域绘制顺序
-    public List<int> CoastRectDrawOrder = new List<int>();
-    //海岸矩形过渡区域UV
-    public List<Vector2> CoastRectUV = new List<Vector2>();
-
-    //海岸三角过渡区域顶点组
-    public List<Vector3> CoastTriVertices = new List<Vector3>();
-    //海岸三角过渡区域绘制顺序
-    public List<int> CoastTriDrawOrder = new List<int>();
-    //海岸三角过渡区域UV
-    public List<Vector2> CoastTriUV = new List<Vector2>();
-
-    //网格线顶点组
-    public List<Vector3> GridVertices = new List<Vector3>();
-    //网格线绘制顺序
-    public List<int> GridDrawOrder = new List<int>();
-    //网格线UV
-    public List<Vector2> GridUV = new List<Vector2>();
 
     //该地块归属
     public KeyValuePair<int, int> Player_City_Index = new KeyValuePair<int, int>(-1, -1);
@@ -338,7 +194,7 @@ public class HexCellData
         //  - 建筑放置（AttackStatue/DefenseStatue）由 CardPresenter/AIEntityFactory 各自设置为 MaxValue
         //  - 探索不改变寻路权重，与单位移动完全解耦
 
-        //物体显隐不再在此处零散处理：统一由 MapRenderer.SyncCellObjectVisibility
+        // 物体显隐不再在此处零散处理，由地图表现层统一维护。
         //（OnMapVisualChanged 事件驱动，按"归属×三态"规则集中同步）。
     }
 

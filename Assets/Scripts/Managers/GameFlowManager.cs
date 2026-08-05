@@ -5,7 +5,7 @@ using Zenject;
 
 public class GameFlowManager : MonoBehaviour, IInitializable
 {
-    [Inject] private MapRenderer mapRenderer;
+    [Inject] private IMapPresentationBootstrap _mapPresentationBootstrap;
     [Inject] private MapGenerator mapGenerator;
     [Inject] private IMapDataService _mapDataService;
     [Inject] private MapVisualEventSO _mapVisualEvent;
@@ -45,8 +45,8 @@ public class GameFlowManager : MonoBehaviour, IInitializable
         // 1. 地图生成
         mapGenerator.Generate();
 
-        // 1.1 【动态地图-阶段三】渲染后端按配置在 MapRender 内分派（Chunked = ChunkMapRenderer 分块渲染）
-        mapRenderer.MapRender();
+        // 1.1 初始化唯一 Chunk 后端及后端无关地图视觉。
+        _mapPresentationBootstrap.InitializeMapPresentation();
 
         // 1.2 【竞技场-阶段二】预留区标记（IsUnexplorable × 37）——
         // 必须在公共建筑生成与玩家出生点选择之前，供两者排除预留区

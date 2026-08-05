@@ -10,7 +10,7 @@ public class FogTransitionManager
     /// <summary>过渡速度（每秒改变量，0.5 = 2秒完成 0→1）</summary>
     public float TransitionSpeed = 0.5f;
 
-    // 当本帧有 alpha 值实际变化时设为 true，由 MapRenderer 在刷新视觉后清除。
+    // 当本帧有 alpha 值实际变化时设为 true，由 ChunkMapRenderer 在刷新视觉后清除。
     // 注意：Tick 内部只"置位"，从不"清位"——清位由 ClearDirty 在外部完成。
     // 这样保证最后一帧（过渡完成帧）的最终值也能被正确刷新到 GPU。
     private bool _dirty;
@@ -91,7 +91,7 @@ public class FogTransitionManager
     }
 
     /// <summary>
-    /// 清除脏标记（MapRenderer 在刷新完视觉后调用）。
+    /// 清除脏标记（ChunkMapRenderer 在刷新完视觉后调用）。
     /// </summary>
     public void ClearDirty() => _dirty = false;
 

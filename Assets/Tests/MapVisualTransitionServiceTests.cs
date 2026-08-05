@@ -6,7 +6,7 @@ using UnityEngine;
 
 //****************************************
 // 【动态地图-阶段四】MapVisualTransitionService 单元测试
-// 覆盖：错峰延迟计算（Simultaneous/CenterToOuter）、BeginTransition 生命周期、
+// 覆盖：错峰延迟计算（Simultaneous/CenterToOuter/Wave 行粒度）、BeginTransition 生命周期、
 // Tick 进度驱动、完成/取消事件、幂等、单位视觉跟随、视觉跟随物、模型溶解。
 //****************************************
 
@@ -90,21 +90,59 @@ public class MapVisualTransitionServiceTests
 
         Assert.AreEqual(0f, delays[_center.GenerateOrder], "中心格应无延迟");
         Assert.Greater(delays[_ringB.GenerateOrder], delays[_ringA.GenerateOrder], "外环延迟应大于内环");
-        Assert.LessOrEqual(delays[_ringB.GenerateOrder], 0.6f, "错峰上限 60%（§13.2）");
+        Assert.LessOrEqual(delays[_ringB.GenerateOrder], 0.35f, "错峰上限 35%（实机修订-2026-08-04：StaggerSpan 0.6→0.35）");
     }
 
     [Test]
-    public void ComputeStaggerDelays_UnsupportedMode_FallsBackToZero()
+    public void ComputeStaggerDelays_Wave_SameRowShareDelay_LaterRowLarger()
     {
-        var cells = new List<HexCellData> { _center, _ringA };
+        // 行粒度（2026-08-05 修订）：同一行（HexCoordinate.z 相同）所有格延迟一致——
+        // 整行作为刚性平板升降；行号越大延迟越大，形成行间接续推进的阶梯波。
+        var row0A = new HexCellData(Enums.HexType.NoRiver, 10, new Vector3(0, 0, 0), Vector3.zero, 1f);
+        var row0B = new HexCellData(Enums.HexType.NoRiver, 11, new Vector3(1, -1, 0), Vector3.zero, 1f);
+        var row2 = new HexCellData(Enums.HexType.NoRiver, 12, new Vector3(-1, -1, 2), Vector3.zero, 1f);
+        var cells = new List<HexCellData> { row0A, row0B, row2 };
+
         var delays = _service.ComputeStaggerDelays(cells, new MapTransitionOptions
         {
-            Stagger = MapTransitionStagger.Wave,
-            StaggerCenter = _center
+            Stagger = MapTransitionStagger.Wave
         });
 
-        Assert.AreEqual(0f, delays[_center.GenerateOrder]);
-        Assert.AreEqual(0f, delays[_ringA.GenerateOrder]);
+        Assert.AreEqual(delays[row0A.GenerateOrder], delays[row0B.GenerateOrder],
+            "同行格延迟必须一致（整行刚性升降）");
+        Assert.AreEqual(0f, delays[row0A.GenerateOrder], "首行无延迟");
+        Assert.Greater(delays[row2.GenerateOrder], delays[row0A.GenerateOrder], "后行延迟应大于前行");
+        Assert.LessOrEqual(delays[row2.GenerateOrder], 0.8f, "波浪错峰上限 80%");
+        // 【阶梯修正-2026-08-05】保留键必须携带行上升窗口：3 行 → step=0.8/2=0.4，
+        // 窗口 = min(0.4×波前厚度3, 1-跨度0.8) = 0.2（既有厚度又保证末行动画结束前走完）
+        Assert.Greater(delays[MapVisualTransitionService.RiseWindowKey], 0f,
+            "Wave 模式必须携带行上升窗口（保留键 RiseWindowKey）");
+        Assert.AreEqual(0.2f, delays[MapVisualTransitionService.RiseWindowKey], 0.0001f,
+            "行上升窗口 = min(行间距×波前厚度, 1-跨度)，多行同时上升的阶梯带（非单排凸起、非曲面）");
+    }
+
+    [Test]
+    public void LocalProgress_Wave_ReturnsToZeroAfterRowWindow()
+    {
+        var cell = new HexCellData(Enums.HexType.NoRiver, 0, Vector3.zero, Vector3.zero, 2f);
+        var transition = new ActiveMapTransition
+        {
+            Options = new MapTransitionOptions { Stagger = MapTransitionStagger.Wave },
+            StaggerDelays = new Dictionary<int, float>
+            {
+                [cell.GenerateOrder] = 0f,
+                [MapVisualTransitionService.RiseWindowKey] = 0.2f
+            }
+        };
+
+        transition.EasedProgress = 0.1f;
+        Assert.AreEqual(1f, transition.LocalProgress(cell), 0.0001f, "窗口中点应到达波峰");
+
+        transition.EasedProgress = 0.2f;
+        Assert.AreEqual(0f, transition.LocalProgress(cell), 0.0001f, "窗口结束后该行必须回到原高度");
+
+        transition.EasedProgress = 0.8f;
+        Assert.AreEqual(0f, transition.LocalProgress(cell), 0.0001f, "波峰离开后不得保持抬高");
     }
 
     // ── Duration=0：同步完成（§12.3）────────────────────────

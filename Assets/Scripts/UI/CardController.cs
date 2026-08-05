@@ -199,7 +199,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         bool isMapHit;
         if (_mapRaycastService != null)
         {
-            // 【动态地图-阶段三】统一射线服务：兼容 Chunk 后端（MapChunkView 后代）与 WholeMap 后端（地图根）
+            // 统一射线服务：命中 Chunk 的 MapChunkView 后代。
             isMapHit = _mapRaycastService.RaycastMap(Input.mousePosition, out hit);
         }
         else

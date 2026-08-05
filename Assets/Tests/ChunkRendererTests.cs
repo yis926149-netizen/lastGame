@@ -6,7 +6,7 @@ using UnityEngine;
 //****************************************
 // 【动态地图-阶段三】Chunk 渲染器单元测试
 // 覆盖：8×8 offset-grid 划分（§二十-1）、脏 Chunk 计算（§七）、
-// CellVertexRanges 记录、材质组合键共享（重建不增长）。
+// 材质组合键共享（重建不增长）。
 // 几何归一化 A/B 对比测试需要 Editor 运行时/渲染上下文，见验证方案 §18.1。
 //****************************************
 
@@ -52,32 +52,6 @@ public class ChunkIndexTests
     }
 }
 
-public class CellVertexRangesTests
-{
-    [Test]
-    public void CellVertexRanges_StartsEmpty()
-    {
-        var ranges = new CellVertexRanges();
-        Assert.AreEqual(-1, ranges.SolidStart);
-        Assert.IsFalse(ranges.HasTerrain);
-        Assert.IsEmpty(ranges.TransitionRanges);
-        Assert.IsEmpty(ranges.WaterRanges);
-        Assert.IsEmpty(ranges.RiverRanges);
-    }
-
-    [Test]
-    public void CellVertexRanges_TracksLocalOffsets()
-    {
-        var ranges = new CellVertexRanges { SolidStart = 44, SolidCount = 44 };
-        ranges.TransitionRanges.Add((44, 20));
-        ranges.WaterRanges.Add((0, 25));
-        ranges.RiverRanges.Add((0, 19));
-        Assert.IsTrue(ranges.HasTerrain);
-        Assert.AreEqual(1, ranges.TransitionRanges.Count);
-        Assert.AreEqual(20, ranges.TransitionRanges[0].count);
-    }
-}
-
 public class SphereOfInfluenceBoundaryStatelessTests
 {
     private MapGenerationConfigSO _config;
@@ -95,7 +69,6 @@ public class SphereOfInfluenceBoundaryStatelessTests
         _config = ScriptableObject.CreateInstance<MapGenerationConfigSO>();
         var generator = new MeshGeneratorService(mapData, _config);
         var cell = new HexCellData(Enums.HexType.NoRiver, 0, Vector3.zero, Vector3.zero, 1f);
-        Assert.IsEmpty(cell.SolidAreaVertices, "阶段一后旧渲染缓存应允许为空。");
 
         mapData.GetNeighbor(cell, Arg.Any<Enums.HexDirection>()).Returns((HexCellData)null);
         var cells = new List<HexCellData> { cell };

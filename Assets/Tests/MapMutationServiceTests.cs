@@ -26,7 +26,8 @@ public class MapMutationServiceTests
     {
         _mapData = Substitute.For<IMapDataService>();
         _backend = Substitute.For<IMapRenderBackend>();
-        _backend.PrepareWholeMapGeometry().Returns(new PreparedWholeMapGeometry());
+        _backend.PrepareChunkGeometry(Arg.Any<IReadOnlyCollection<HexCellData>>())
+            .Returns(new PreparedChunkGeometry());
 
         _cellA = new HexCellData(Enums.HexType.NoRiver, 0, new Vector3(0, 0, 0), Vector3.zero, 2f)
         {
@@ -173,9 +174,10 @@ public class MapMutationServiceTests
         _service.Apply(_cellB, HexCellPatch.HeightPatch(5f));
         _service.Commit();
 
-        _backend.Received(1).PrepareWholeMapGeometry();
-        _backend.Received(1).CommitWholeMapGeometry(Arg.Any<PreparedWholeMapGeometry>());
-        _backend.Received(1).RefreshCellObjects(Arg.Any<IReadOnlyCollection<HexCellData>>(), Arg.Any<RemovedVisualHandle>());
+        _backend.Received(1).PrepareChunkGeometry(Arg.Any<IReadOnlyCollection<HexCellData>>());
+        _backend.Received(1).CommitChunkGeometry(Arg.Any<PreparedChunkGeometry>());
+        _backend.Received(1).RefreshCellObjects(
+            Arg.Any<IReadOnlyCollection<HexCellData>>(), Arg.Any<RemovedVisualHandle>(), true);
     }
 
     [Test]
@@ -223,7 +225,7 @@ public class MapMutationServiceTests
 
         Assert.IsFalse(_service.HasActiveTransaction);
         Assert.AreEqual(2f, _cellA.Height, "Rollback 后不应写入任何数据");
-        _backend.DidNotReceive().PrepareWholeMapGeometry();
+        _backend.DidNotReceive().PrepareChunkGeometry(Arg.Any<IReadOnlyCollection<HexCellData>>());
     }
 
     [Test]
@@ -245,7 +247,6 @@ public class MapMutationServiceTests
     public void Commit_AnimatedPath_PreparesAnimatedGeometryAndKeepsLockUntilFinalize()
     {
         _backend.SupportsAnimatedTransition.Returns(true);
-        _backend.SupportsChunkedRebuild.Returns(true);
         _backend.PrepareAnimatedChunkGeometry(Arg.Any<IReadOnlyCollection<HexCellData>>(),
                 Arg.Any<IReadOnlyDictionary<int, float>>(),
                 Arg.Any<IReadOnlyDictionary<int, float>>())
@@ -271,6 +272,8 @@ public class MapMutationServiceTests
             Arg.Any<IReadOnlyDictionary<int, float>>(),
             Arg.Any<IReadOnlyDictionary<int, float>>());
         _backend.Received(1).CommitAnimatedChunkGeometry(Arg.Any<PreparedChunkGeometry>());
+        _backend.Received(1).RefreshCellObjects(
+            Arg.Any<IReadOnlyCollection<HexCellData>>(), Arg.Any<RemovedVisualHandle>(), false);
         Assert.AreEqual(MapChangedPhase.Committed, phases[0]);
         Assert.AreEqual(MapChangedPhase.TransitionStarted, phases[1]);
         Assert.IsTrue(visualTransition.IsAnimating, "动画应处于活动状态");
@@ -287,7 +290,6 @@ public class MapMutationServiceTests
     public void Commit_AnimatedPath_ForceCompleteReleasesLock()
     {
         _backend.SupportsAnimatedTransition.Returns(true);
-        _backend.SupportsChunkedRebuild.Returns(true);
         _backend.PrepareAnimatedChunkGeometry(Arg.Any<IReadOnlyCollection<HexCellData>>(),
                 Arg.Any<IReadOnlyDictionary<int, float>>(),
                 Arg.Any<IReadOnlyDictionary<int, float>>())
@@ -313,7 +315,6 @@ public class MapMutationServiceTests
     {
         // 后端不支持动画（Substitute 默认 false）→ Duration>0 降级同步，提交后无锁
         _backend.SupportsAnimatedTransition.Returns(false);
-        _backend.SupportsChunkedRebuild.Returns(true);
         _backend.PrepareChunkGeometry(Arg.Any<IReadOnlyCollection<HexCellData>>())
             .Returns(new PreparedChunkGeometry());
         var visualTransition = new MapVisualTransitionService(_backend, _gate, _movementSystem);

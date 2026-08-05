@@ -2,13 +2,13 @@ public static class WaterLevelConfig
 {
     /// <summary>
     /// 水域判定阈值：Height &lt;= WaterLevel 为湖海，Height &gt; WaterLevel 为陆地。
-    /// 由 MapRenderer 在渲染前从 MapGenerationConfigSO.seaLevel 同步，保证分类与水面高度一致。
+    /// 由 MapGenerator 在生成前从 MapGenerationConfigSO.seaLevel 同步，保证分类与水面高度一致。
     /// </summary>
     public static float WaterLevel = 1f;
 
     /// <summary>
     /// 当前地图全局最大高度，用于将高度区间对半分给 3 个子 Mesh。
-    /// 地图初始化时由 MapRenderer 设置一次。
+    /// 地图生成时由 MapGenerator 设置一次。
     /// </summary>
     public static float MaxHeight { get; set; } = 2f;
 
