@@ -70,7 +70,7 @@ MonoBehaviour:
   fogEdgeStyle: 2
   fogEdgeSoftness: 0.8
   fogEdgeAnimSpeed: 2
-  ArenaActivateTime: 999
+  ArenaActivateTime: 3
   ArenaFloorHeight: 4
   ArenaWallHeight: 5
   centralChestModel: {fileID: 8526569099747661489, guid: 685fc0a37029f7449809a785ca062099, type: 3}

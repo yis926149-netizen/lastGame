@@ -152,6 +152,11 @@ public class GameInstaller : MonoInstaller
         // 【动态地图-能力测试】全地图波浪式上下变化测试控制器（V 键触发，两次提交升→降）。
         // 仅编辑器/开发构建绑定——Release 构建中 V 键不得触发全图地形提交（评审 2026-08-05）。
         Container.BindInterfacesAndSelfTo<MapWaveTestController>().AsSingle();
+
+        // 【动态地图-能力测试】鼠标指格地形高度微调测试（R/F 键单格 ±1 永久修改，2026-08-05）。
+        // 仅编辑器/开发构建绑定——Release 构建中 R/F 键不得修改地形（与波浪测试同评审口径）。
+        // 【2026-08-05 屏蔽】该测试已临时停用，类文件保留以备后续使用——取消下行注释即可恢复。
+        // Container.BindInterfacesAndSelfTo<MapHeightEditTestController>().AsSingle();
 #endif
 
         //【普通卡池对象化】普通卡池配置

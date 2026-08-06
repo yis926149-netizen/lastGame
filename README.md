@@ -5,6 +5,7 @@
 ## 项目概览
 
 - **程序化地图**：生成六边形地块、地形、河流与资源。
+- **动态地图系统**：地图地块支持运行时事务级变化——`MapMutationService`（BeginTransaction→Apply→Commit/Rollback）+ 唯一渲染后端 `ChunkMapRenderer`（8×8 分块双缓冲），变化带 CPU 顶点动画（错峰、顶出、并行动画、水面淡出）与交互锁。已落地竞技场（37 格状态机）与能力测试（V 键全图波浪、R/F 键指格微调，后者 2026-08-05 起屏蔽保留）。详见 [动态地图/动态地图变化系统-使用报告.md](动态地图/动态地图变化系统-使用报告.md)。
 - **探索与后勤系统**：玩家主动支付金币点击探索格，同时占领并收割资源。后勤系统（`LogisticsService`）以主城为根对双方领地做 BFS 连通判断：断供地块对双方重新覆盖迷雾（地面与建筑一起），恢复供应后自动揭雾；迷雾遮罩由 FogMask 全量可逆重建驱动。详见 [后勤系统设计方案.md](游戏系统/后勤系统设计方案.md)。
 - **实时游戏循环**：`GameLoop` 每帧驱动所有单位自动决策，玩家随时可通过卡牌部署单位，并可暂停/继续游戏。
 - **单位自动化**：每种单位有独立的兵种策略——近战、远程——由 `UnitBrainBase` 统一调度，逐格移动、探测敌人、自动攻击。
@@ -175,7 +176,7 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `PublicBuildingMarkerView` | 公共建筑浮标视觉组件：呼吸动画、图标设置、始终面向相机 |
 | `ExplorationPillarPool` | 探索特效对象池：石柱升起/飞盘砸落表现；`PlayRevealEffect()` 无业务副作用的公共建筑发现特效 |
 | `CostLabelRenderer` | 探索费用标签：Screen Space 渲染、Button 点击探索、金币不足压暗 |
-| `FogManager` | 迷雾封皮/连接面片网格生成（迷雾遮罩 `_FogMaskTex` 与 Shader 参数见 `MapRenderer`） |
+| `FogManager` | 迷雾封皮/连接面片网格生成（迷雾遮罩 `_FogMaskTex` 与 Shader 参数见 `ChunkMapRenderer`） |
 | `SphereOfInfluenceRenderer` | 势力范围可视化渲染 |
 | `IInputService` | 鼠标、键盘、射线和 UI 遮挡判断 |
 | `IMeshGenerator` | 地形、河流、迷雾等网格数据生成 |
@@ -191,12 +192,21 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `AIAutoExplorer` | AI 自动探索器：定时搜索邻接己方领地的未探索地块并自动探索（免费） |
 | `AICardTicker` | AI 卡牌定时器：每 5 秒驱动一次 AI 抽卡管线 |
 | `CameraController` | 镜头控制：平移/缩放/旋转/边界限制，内置屏幕震动 `Shake()` |
+| `MapMutationService` | 地块变化事务管线：`BeginTransaction`→`Apply(HexCellPatch)`→`Commit`/`Rollback`，水陆跨界双向重置、单位联动（途经取消/不可通行弹射/站立吸附/路径失效）、`MapChanged` 事件广播 |
+| `ChunkMapRenderer` | 唯一渲染后端（8×8 offset-grid Chunk 双缓冲）：地形/河流/湖海/海岸/网格线/迷雾 `_FogMaskTex` 重建，动画 staging（UV2/UV3 + CPU 顶点插值） |
+| `MapVisualTransitionService` | 地图变化动画：错峰延迟（Simultaneous/CenterToOuter/Wave）、CPU 顶点动画、水面/河流淡出、单位与地貌模型跟随（`RegisterVisualFollower`）、并行动画冲突强制完成 |
+| `MapSlicedCommitExecutor` | 分帧提交执行器：大范围变化每帧最多重建 N 个 Chunk，防卡顿（与动画互斥） |
+| `MapInteractionGate` | 交互锁：动画/提交期间锁定受影响格（`IMapInteractionGate`） |
+| `MapRaycastService` | 统一地图射线：屏幕坐标 → Chunk 地块（卡牌放置/高亮入口，`IMapRaycastService`） |
+| `TemporaryVisibilityService` | 来源式临时点亮迷雾（`VisibilityLease`，如竞技场突起瞬间），多来源互不影响 |
+| `ArenaEventManager` | 竞技场：37 格状态机（Inactive→Reserved→Activated→Destroyed），突起动画、宝箱摧毁恢复、对局结束动画兜底 |
+| `MapMutationDiagnostics` | 提交日志 + 脏格品红高亮诊断开关 |
 
 ## 探索与后勤系统
 
 探索仍是玩家主动的领地扩张手段，但地图不再"全图始终可见"——迷雾由**后勤供应**动态驱动，可逆覆盖：
 
-- **视觉**：迷雾遮罩（`_FogMaskTex`）由 [MapRenderer](Assets/Scripts/Managers/MapRenderer.cs) 全量重建（先清空 R 通道再按 `FogAlpha` 盖章），配合 [FogBlend.cginc](Assets/Shader/FogBlend.cginc) 去饱和 + 半透明雾叠加。已归属格按"归属方探索 + 后勤畅通"判断（双方观察一致）；中立格按观察方永久发现状态判断；断供后迷雾重新覆盖（含该格建筑模型），恢复供应后平滑揭雾（`FogTransitionManager` 过渡动画）。
+- **视觉**：迷雾遮罩（`_FogMaskTex`）由 [ChunkMapRenderer](Assets/Scripts/Managers/ChunkMapRenderer.cs) 全量重建（先清空 R 通道再按 `FogAlpha` 盖章；2026-08-04 起旧 `MapRenderer` 已删除，盖章重建迁入 Chunk 后端并订阅 `LogisticsChanged`），配合 [FogBlend.cginc](Assets/Shader/FogBlend.cginc) 去饱和 + 半透明雾叠加。已归属格按"归属方探索 + 后勤畅通"判断（双方观察一致）；中立格按观察方永久发现状态判断；断供后迷雾重新覆盖（含该格建筑模型），恢复供应后平滑揭雾（`FogTransitionManager` 过渡动画）。
 - **探索方式**：
   - 玩家点击势力范围相邻未探索格上的费用标签，支付金币即可探索（标记已探索 + 圈入势力范围 + 收割资源）。
   - 占领公共建筑后，其势力范围自动标记为已探索并收割资源。
@@ -262,6 +272,8 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 - 输入摄像机配置（`InputCameraConfigurationTests`）
 - 地图控制器网格（`MapControllerMeshTests`）
 - 三角形过渡网格（`TriangleTransitionMeshTests`）
+- 地图变化服务（`MapMutationServiceTests`：事务协议/水陆双向重置/脏位/事件广播；`MapMutationStage5Tests`：归属接入/诊断/并行动画/分帧提交）
+- 视觉过渡服务（`MapVisualTransitionServiceTests`：错峰/生命周期/Wave 行窗口脉冲回归）
 - Console 日志工具（`ConsoleLogFormatterTests`、`ConsoleLogEntriesReflectorTests`、`ConsoleToolbarInjectorTests`）
 
 运行方式：
@@ -359,10 +371,20 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 - 单位策略类型配置化：`UnitConfigSO.strategyType` 替代 `UnitStrategyFactory` 中的 0/3/5/9 魔法数
 - 一次性资产迁移工具（`Tools/Normal Card Pool/Migrate`）在迁移完成后已删除
 
+2026-08-04 ~ 2026-08-05 动态地图系统（阶段二~五）落地，详见 [动态地图/动态地图变化与分块重建方案.md](动态地图/动态地图变化与分块重建方案.md) 与 [动态地图/动态地图变化系统-使用报告.md](动态地图/动态地图变化系统-使用报告.md)：
+
+- 事务管线：`MapMutationService` 提供 `BeginTransaction→Apply(HexCellPatch)→Commit/Rollback`；水陆跨界自动双向重置；单位联动（途经取消/不可通行弹射/站立吸附/路径失效）
+- 分块渲染：`ChunkMapRenderer` 取代旧 `MapRenderer` 成为唯一渲染后端（8×8 offset-grid Chunk 双缓冲）；全地图波浪压力测试（576 格/24 Chunk）通过（2026-08-05）
+- 变化动画：CPU 顶点动画（2026-08-05 起：UV2/UV3 缓存 startY/targetY/delay、逐帧写 `mesh.vertices`）+ 三套 `*_Transition` Shader（keep-below clip 顶出、TerrainGhost、手写 ShadowCaster）；错峰模式 Simultaneous/CenterToOuter/Wave；动画期间交互锁、水面河流淡出、单位与地貌模型跟随、并行动画与冲突强制完成；动画管线七次实机修订史见 [动态地图/地图动画实机问题与修改总结.md](动态地图/地图动画实机问题与修改总结.md)
+- 迷雾修复：`_FogMaskTex` 重建迁入 Chunk 后端 + 订阅 `LogisticsChanged`（2026-08-04）
+- 竞技场：`ArenaEventManager` 37 格状态机（Inactive→Reserved→Activated→Destroyed），预留区初始化、突起动画、宝箱摧毁恢复、对局结束动画兜底
+- 能力测试：V 键全图波浪（纯视觉脉冲、自动回落）；R/F 键指格永久 ±1 微调（2026-08-05 已屏蔽保留，方案见 [鼠标指格地形高度微调测试-RF键实现方案.md](鼠标指格地形高度微调测试-RF键实现方案.md)）
+- 规划文档：[程序化山脉实现方式讨论.md](程序化山脉实现方式讨论.md)（地貌型程序化山脉构思，未实现）
+
 ## 当前说明
 
 - 性能已针对 20×30（600 格）地图完成全项目优化（P0 + P1 全部落地），详见 [视觉与渲染/性能优化方案讨论.md](视觉与渲染/性能优化方案讨论.md)。
 - 项目当前仍使用默认工程名称，尚未在仓库中确定正式游戏名称。
 - 仓库中包含部分历史资源和第三方资源目录，其是否仍被场景或脚本引用需要单独确认后再清理。
 - 仓库暂未提供明确的发布平台说明、CI 配置或自动化构建脚本。
-- 项目配套的设计文档分散在多个专题目录中：`游戏系统/`、`探索系统重构/`、`视觉与渲染/`、`地图与地形/`、`AI设计/`、`审计与规划/`、`历史归档/`。
+- 项目配套的设计文档分散在多个专题目录中：`游戏系统/`、`探索系统重构/`、`视觉与渲染/`、`地图与地形/`、`动态地图/`、`AI设计/`、`审计与规划/`、`历史归档/`；根目录另有近期方案/讨论文档（`鼠标指格地形高度微调测试-RF键实现方案.md`、`程序化山脉实现方式讨论.md` 等）。
