@@ -24,7 +24,16 @@ public sealed class HexCellPatch
     public bool HasIsUnexplorable;
     public bool IsUnexplorable;
 
-    // ── 地貌/资源（清空）────────────────────────
+    // ── 地貌/资源 ───────────────────────────────
+    public bool HasMountain;
+    public MapLandFormSO MountainLandForm;
+    public MountainRidgeData MountainRidge;
+    public Enums.MountainRidgeStatus MountainRidgeStatus;
+    public float MountainDistToRidge;
+    public float MountainPosAlongRidge;
+    public Enums.HexDirection RidgeDirectionA = Enums.HexDirection.None;
+    public Enums.HexDirection RidgeDirectionB = Enums.HexDirection.None;
+
     public bool ClearLandForm;
     public bool ClearResource;
 

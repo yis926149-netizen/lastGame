@@ -39,12 +39,14 @@ public class ArenaEventManager : ITickable
     private readonly List<HexCellData> _arenaCells = new List<HexCellData>();   // 37 格（中心 + 半径3）
     private readonly List<HexCellData> _innerCells = new List<HexCellData>();   // 内 2 环（19 格）
     private readonly List<HexCellData> _ringCells = new List<HexCellData>();    // 外环（18 格）
-    private readonly List<HexCellData> _wallCells = new List<HexCellData>();    // 外环除入口（16 格）
+    private readonly List<HexCellData> _wallCells = new List<HexCellData>();    // 外环除入口（16 格，永久山脉）
     private HexCellData _entranceA;
     private HexCellData _entranceB;
 
     private VisibilityLease _lease;
     private CentralChest _chest;
+    private Dictionary<HexCellData, ArenaMountainPlacement> _pendingMountainPlacements;
+    private int _arenaRiseCommitId = -1;
 
     public ArenaState State { get; private set; } = ArenaState.Inactive;
     public HexCellData CenterCell => _centerCell;
@@ -178,8 +180,8 @@ public class ArenaEventManager : ITickable
     }
 
     /// <summary>
-    /// 突起（阶段二 Duration=0 同步提交；阶段四检测 SupportsAnimatedTransition 后启用 1.2s 中心向外错峰，§14）：
-    /// 清空内 2 环 → 边界环不可通行（入口保留）→ 单位弹射/取消由 MapMutationService 处理 →
+    /// 突起：先让 37 格同高平台中心向外升起，动画完成后再同步叠加永久山脉边界。
+    /// 清空内 2 环 → 边界环保持不可通行（入口保留）→ 单位弹射/取消由 MapMutationService 处理 →
     /// Arena VisibilityLease 点亮 37 格 → 生成宝箱。
     /// </summary>
     private void Activate()
@@ -188,18 +190,15 @@ public class ArenaEventManager : ITickable
         State = ArenaState.Activated;
 
         float floorHeight = _config.ArenaFloorHeight;
-        float wallHeight = _config.ArenaWallHeight;
-        bool animated = _renderBackend.SupportsAnimatedTransition;
+        bool animationRequested = _renderBackend.SupportsAnimatedTransition && _visualTransition != null;
+        _pendingMountainPlacements = BuildArenaMountainPlacements();
 
+        // 准备事务先同步清理旧地貌，确保后续纯高度事务不会因山体拓扑变化被降级。
         _mutationService.BeginTransaction();
-
-        // 内 2 环：平台高度、清河流/地貌/资源、可通行（IsUnexplorable 保持 true → 禁开发/禁部署）
         foreach (HexCellData cell in _innerCells)
         {
             _mutationService.Apply(cell, new HexCellPatch
             {
-                HasHeight = true,
-                Height = floorHeight,
                 HasMovementCost = true,
                 MovementCost = 1f,
                 ClearRiver = true,
@@ -207,15 +206,11 @@ public class ArenaEventManager : ITickable
                 ClearResource = true
             });
         }
-
-        // 外环：墙高；非入口格 movementCost=MaxValue（边界地块，决策 C）；入口格按普通地块
         foreach (HexCellData cell in _ringCells)
         {
             bool isEntrance = cell == _entranceA || cell == _entranceB;
             _mutationService.Apply(cell, new HexCellPatch
             {
-                HasHeight = true,
-                Height = isEntrance ? floorHeight : wallHeight,
                 HasMovementCost = true,
                 MovementCost = isEntrance ? 1f : float.MaxValue,
                 HasIsUnexplorable = true,
@@ -225,17 +220,30 @@ public class ArenaEventManager : ITickable
                 ClearResource = true
             });
         }
+        _mutationService.Commit(new MapTransitionOptions { Duration = 0f, LockAffectedCells = true });
 
-        // 阶段四：后端支持动画 → 1.2s 中心向外错峰（§13.10 第一版范围）；否则同步提交
+        // 纯高度事务保持拓扑不变，可稳定进入中心向外的顶点动画管线。
+        _mutationService.BeginTransaction();
+        foreach (HexCellData cell in _arenaCells)
+            _mutationService.Apply(cell, HexCellPatch.HeightPatch(floorHeight));
+
         var options = new MapTransitionOptions
         {
-            Duration = animated ? ArenaRiseDurationSeconds : 0f,
-            Stagger = animated ? MapTransitionStagger.CenterToOuter : MapTransitionStagger.Simultaneous,
+            Duration = animationRequested ? ArenaRiseDurationSeconds : 0f,
+            Stagger = animationRequested ? MapTransitionStagger.CenterToOuter : MapTransitionStagger.Simultaneous,
             StaggerCenter = _centerCell,
             Easing = null,
             LockAffectedCells = true
         };
-        _mutationService.Commit(options);
+        MapCommitResult riseResult = _mutationService.Commit(options);
+        _arenaRiseCommitId = riseResult?.CommitId ?? -1;
+        bool animated = riseResult != null && _visualTransition != null
+            && _visualTransition.IsTransitionActive(riseResult.CommitId);
+
+        if (animated)
+            _mutationService.MapChanged += OnArenaRiseChanged;
+        else
+            ApplyPendingArenaMountains();
 
         // 迷雾视觉点亮（不置探索位）：Arena VisibilityLease + 立即刷新（突破 20fps 限频）
         // 【实机修订-2026-08-04】snapCells=_arenaCells：突起帧 37 格瞬间点亮（§18.2），
@@ -253,8 +261,180 @@ public class ArenaEventManager : ITickable
         }
 
         // 全单位路径失效（MapMutationService.Commit 已统一处理，此处仅日志）
-        Debug.Log($"[ArenaEventManager] 竞技场突起完成：平台 {_innerCells.Count} 格 + 边界 {_wallCells.Count} 格（入口 2）" +
-                  (animated ? $"，动画 {ArenaRiseDurationSeconds}s 中心向外错峰。" : "（同步提交）。"));
+        Debug.Log($"[ArenaEventManager] 竞技场突起完成：平台 {_innerCells.Count} 格 + 永久山脉边界 {_wallCells.Count} 格（入口 2）" +
+                   (animated ? $"，动画 {ArenaRiseDurationSeconds}s 中心向外错峰。" : "（同步提交）。"));
+    }
+
+    private void OnArenaRiseChanged(MapChangedEvent mapEvent)
+    {
+        if (mapEvent == null || mapEvent.CommitId != _arenaRiseCommitId) return;
+        if (mapEvent.Phase != MapChangedPhase.Finalized && mapEvent.Phase != MapChangedPhase.Cancelled) return;
+
+        _mutationService.MapChanged -= OnArenaRiseChanged;
+        _arenaRiseCommitId = -1;
+        ApplyPendingArenaMountains();
+    }
+
+    private void ApplyPendingArenaMountains()
+    {
+        Dictionary<HexCellData, ArenaMountainPlacement> placements = _pendingMountainPlacements;
+        _pendingMountainPlacements = null;
+        if (placements == null || placements.Count == 0) return;
+
+        _mutationService.BeginTransaction();
+        foreach (HexCellData cell in _wallCells)
+        {
+            if (!placements.TryGetValue(cell, out ArenaMountainPlacement placement)) continue;
+            _mutationService.Apply(cell, new HexCellPatch
+            {
+                HasMountain = true,
+                MountainLandForm = _config.mountainConfig.mountainLandForm,
+                MountainRidge = placement.Ridge,
+                MountainRidgeStatus = Enums.MountainRidgeStatus.RidgeCell,
+                MountainDistToRidge = 0f,
+                MountainPosAlongRidge = placement.Position,
+                RidgeDirectionA = placement.DirectionA,
+                RidgeDirectionB = placement.DirectionB,
+                HasMovementCost = true,
+                MovementCost = float.MaxValue
+            });
+        }
+        _mutationService.Commit(new MapTransitionOptions { Duration = 0f, LockAffectedCells = true });
+    }
+
+    private Dictionary<HexCellData, ArenaMountainPlacement> BuildArenaMountainPlacements()
+    {
+        var result = new Dictionary<HexCellData, ArenaMountainPlacement>();
+        MountainConfigSO mountain = _config.mountainConfig;
+        if (mountain == null || mountain.mountainLandForm == null)
+        {
+            Debug.LogError("[ArenaEventManager] mountainConfig 或 mountainLandForm 未配置，竞技场边界将保持不可通行但无法显示山脉。");
+            return result;
+        }
+
+        List<List<HexCellData>> paths = CollectWallPaths();
+        float cellDistance = GetCellDistance();
+        float innerRadius = cellDistance * 0.5f;
+
+        for (int pathIndex = 0; pathIndex < paths.Count; pathIndex++)
+        {
+            List<HexCellData> path = paths[pathIndex];
+            float hMax = Mathf.Clamp(
+                mountain.baseHeight + mountain.heightPerLength * (path.Count - mountain.minRidgeLength),
+                mountain.minHeight,
+                mountain.maxHeight) * Mathf.Max(0.01f, _config.mountainHeightScale);
+            var ridge = new MountainRidgeData
+            {
+                ridgeId = -1 - pathIndex,
+                seed = unchecked(_config.randomSeed * 397 ^ pathIndex * 7919 ^ _centerCell.GenerateOrder),
+                length = path.Count,
+                widthRadius = Mathf.Max(0.01f, mountain.widthRadius),
+                gamma = mountain.gamma,
+                hMax = hMax,
+                ridgeNoiseAmplitude = mountain.ridgeNoiseAmplitude,
+                cellNoiseScale = mountain.cellNoiseScale,
+                minVisibleHeight = mountain.minVisibleHeight,
+                maxSlope = mountain.maxSlopeRatio * cellDistance,
+                xzPerturb = mountain.xzPerturbRatio * innerRadius,
+                peakEccentricMin = mountain.peakEccentricMinRatio * innerRadius,
+                peakEccentricMax = mountain.peakEccentricMaxRatio * innerRadius,
+                mountainCellCount = path.Count
+            };
+
+            for (int i = 0; i < path.Count; i++)
+            {
+                HexCellData cell = path[i];
+                ridge.ridgeHexes.Add(cell.HexCoordinate);
+                result[cell] = new ArenaMountainPlacement
+                {
+                    Ridge = ridge,
+                    Position = i,
+                    DirectionA = i > 0
+                        ? RidgeGenerator.DirectionFromTo(path[i - 1].HexCoordinate, cell.HexCoordinate)
+                        : Enums.HexDirection.None,
+                    DirectionB = i < path.Count - 1
+                        ? RidgeGenerator.DirectionFromTo(cell.HexCoordinate, path[i + 1].HexCoordinate)
+                        : Enums.HexDirection.None
+                };
+            }
+        }
+
+        return result;
+    }
+
+    private List<List<HexCellData>> CollectWallPaths()
+    {
+        var paths = new List<List<HexCellData>>();
+        var remaining = new HashSet<HexCellData>(_wallCells);
+        while (remaining.Count > 0)
+        {
+            HexCellData start = null;
+            foreach (HexCellData candidate in remaining)
+            {
+                int degree = CountWallNeighbors(candidate, remaining);
+                if (degree <= 1 && (start == null || candidate.GenerateOrder < start.GenerateOrder))
+                    start = candidate;
+            }
+            if (start == null)
+            {
+                foreach (HexCellData candidate in remaining)
+                {
+                    if (start == null || candidate.GenerateOrder < start.GenerateOrder)
+                        start = candidate;
+                }
+            }
+
+            var path = new List<HexCellData>();
+            HexCellData previous = null;
+            HexCellData current = start;
+            while (current != null)
+            {
+                path.Add(current);
+                remaining.Remove(current);
+                HexCellData next = null;
+                foreach (HexCellData neighbor in _mapDataService.GetNeighbors(current))
+                {
+                    if (neighbor == previous || !remaining.Contains(neighbor)) continue;
+                    if (next == null || neighbor.GenerateOrder < next.GenerateOrder)
+                        next = neighbor;
+                }
+                previous = current;
+                current = next;
+            }
+            paths.Add(path);
+        }
+        return paths;
+    }
+
+    private int CountWallNeighbors(HexCellData cell, HashSet<HexCellData> candidates)
+    {
+        int count = 0;
+        foreach (HexCellData neighbor in _mapDataService.GetNeighbors(cell))
+        {
+            if (candidates.Contains(neighbor)) count++;
+        }
+        return count;
+    }
+
+    private float GetCellDistance()
+    {
+        foreach (HexCellData neighbor in _mapDataService.GetNeighbors(_centerCell))
+        {
+            if (neighbor == null) continue;
+            float distance = Vector2.Distance(
+                new Vector2(_centerCell.CenterWorldCoordinate.x, _centerCell.CenterWorldCoordinate.z),
+                new Vector2(neighbor.CenterWorldCoordinate.x, neighbor.CenterWorldCoordinate.z));
+            if (distance > 0.0001f) return distance;
+        }
+        return 1f;
+    }
+
+    private sealed class ArenaMountainPlacement
+    {
+        public MountainRidgeData Ridge;
+        public float Position;
+        public Enums.HexDirection DirectionA;
+        public Enums.HexDirection DirectionB;
     }
 
     /// <summary>阶段四：竞技场突起动画时长（§13.10 第一版锁定 1.2s）。</summary>
@@ -347,7 +527,7 @@ public class ArenaEventManager : ITickable
         slider.fillRect = fillRT;
     }
 
-    /// <summary>宝箱摧毁 → 竞技场恢复普通地形（纯规则恢复，零 mesh 重建；高度不回落，决策已锁定）。</summary>
+    /// <summary>宝箱摧毁 → 解除竞技场限制；边界山脉与地块高度永久保留。</summary>
     private void OnChestDestroyed(CentralChest chest)
     {
         if (State != ArenaState.Activated) return;
@@ -358,11 +538,6 @@ public class ArenaEventManager : ITickable
         foreach (HexCellData cell in _arenaCells)
         {
             _mutationService.Apply(cell, HexCellPatch.UnexplorablePatch(false));
-        }
-        // 边界环（含原入口）恢复可通行
-        foreach (HexCellData cell in _ringCells)
-        {
-            _mutationService.Apply(cell, HexCellPatch.MovementCostPatch(1f));
         }
         _mutationService.Commit(new MapTransitionOptions { Duration = 0f });
 
@@ -395,7 +570,7 @@ public class ArenaEventManager : ITickable
         }
         _chest = null;
 
-        Debug.Log("[ArenaEventManager] 竞技场已恢复普通地形（可探索/可通行/可开发/可部署，迷雾重新遮盖）。");
+        Debug.Log("[ArenaEventManager] 竞技场限制已解除；边界山脉永久保留，入口与平台可探索/可通行/可开发/可部署，迷雾重新遮盖。");
     }
 
     // ── 对局结束兜底 ─────────────────────────────────────────
@@ -403,6 +578,10 @@ public class ArenaEventManager : ITickable
     /// <summary>对局结束时强制收尾：释放 lease、强制完成动画、注销并销毁宝箱（由 EndGame.EndThisGame 调用）。</summary>
     public void Shutdown()
     {
+        _mutationService.MapChanged -= OnArenaRiseChanged;
+        _arenaRiseCommitId = -1;
+        _pendingMountainPlacements = null;
+
         // 阶段五：分帧提交对局结束兜底（几何立即构建完成，防锁残留/句柄泄漏）
         if (_mutationService.HasSlicedCommitPending)
             _mutationService.ForceCompleteSliced();

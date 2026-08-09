@@ -612,6 +612,20 @@ public class MapMutationService
             cell.landForm = null;
         }
 
+        if (patch.HasMountain)
+        {
+            cell.landForm = patch.MountainLandForm;
+            cell.mountainRidge = patch.MountainRidge;
+            cell.mountainRidgeStatus = patch.MountainRidgeStatus;
+            cell.mountainDistToRidge = patch.MountainDistToRidge;
+            cell.mountainPosAlongRidge = patch.MountainPosAlongRidge;
+            cell.RidgeDirectionA = patch.RidgeDirectionA;
+            cell.RidgeDirectionB = patch.RidgeDirectionB;
+            cell.mountainCleared = false;
+            if (!patch.HasMovementCost)
+                cell.movementCost = MountainCellRule.DeriveMovementCost(cell);
+        }
+
         if (patch.ClearResource)
             cell.resource = null;
 
@@ -652,6 +666,8 @@ public class MapMutationService
                 if (patch.ClearLandForm && MountainCellRule.IsMountainCell(cell))
                     flags |= MapDirtyFlags.Terrain;
             }
+            if (patch.HasMountain)
+                flags |= MapDirtyFlags.Terrain | MapDirtyFlags.Objects | MapDirtyFlags.Navigation;
             if (patch.HasMovementCost)
                 flags |= MapDirtyFlags.Navigation;
             if (patch.HasIsUnexplorable)

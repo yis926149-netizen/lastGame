@@ -15,7 +15,7 @@ MonoBehaviour:
   cardId: 0
   cardName: BattleOrder
   description: "\u6218\u6597\u53F7\u4EE4"
-  cardSprite: {fileID: 21300000, guid: 183b2b9df0eecdf4c82f8d436fe90bf9, type: 3}
+  cardSprite: {fileID: 21300000, guid: d4d648592fe4f9f46882e1b563c0fca1, type: 3}
   effectType: 1
   effect:
     healRatio: 0

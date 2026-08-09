@@ -15,7 +15,7 @@ MonoBehaviour:
   cardId: 1
   cardName: Repair
   description: "\u7FA4\u4F53\u56DE\u8840"
-  cardSprite: {fileID: 21300000, guid: af9a40b11c74fba45b01505053d46125, type: 3}
+  cardSprite: {fileID: 21300000, guid: 9527d4b7abeda8f41b6ef035c1e0bf3b, type: 3}
   effectType: 0
   effect:
     healRatio: 0.3

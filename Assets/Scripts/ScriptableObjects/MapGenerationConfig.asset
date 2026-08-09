@@ -68,11 +68,11 @@ MonoBehaviour:
   fogNoiseWavelength: 2
   fogMaskTexelSize: 0.8
   fogEdgeStyle: 2
-  fogEdgeSoftness: 0.8
+  fogEdgeSoftness: 3
   fogEdgeAnimSpeed: 2
   mountainConfig: {fileID: 11400000, guid: 93c6c6aa29bc24946a1fde8cdd47afb9, type: 2}
-  mountainHeightScale: 6
-  ArenaActivateTime: 999
+  mountainHeightScale: 3
+  ArenaActivateTime: 10
   ArenaFloorHeight: 4
-  ArenaWallHeight: 5
+  ArenaWallHeight: 4
   centralChestModel: {fileID: 8526569099747661489, guid: 685fc0a37029f7449809a785ca062099, type: 3}

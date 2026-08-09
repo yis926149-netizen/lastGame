@@ -116,4 +116,44 @@ public class MapMutationMountainTests
         Assert.IsTrue(result.DirtyFlags.HasFlag(MapDirtyFlags.Objects));
         Assert.IsFalse(result.DirtyFlags.HasFlag(MapDirtyFlags.Terrain), "普通格清除地貌不应补 Terrain 脏位");
     }
+
+    [Test]
+    public void Commit_SetMountain_WritesGeometryDataAndMarksTerrainDirty()
+    {
+        _mountainCell.landForm = null;
+        _mountainCell.mountainRidge = null;
+        _mountainCell.mountainRidgeStatus = Enums.MountainRidgeStatus.None;
+        _mountainCell.movementCost = 1f;
+        var ridge = new MountainRidgeData
+        {
+            ridgeId = -1,
+            length = 1,
+            widthRadius = 1f,
+            hMax = 2f,
+            minVisibleHeight = 0.1f
+        };
+
+        _service.BeginTransaction();
+        _service.Apply(_mountainCell, new HexCellPatch
+        {
+            HasMountain = true,
+            MountainLandForm = _mountainForm,
+            MountainRidge = ridge,
+            MountainRidgeStatus = Enums.MountainRidgeStatus.RidgeCell,
+            MountainPosAlongRidge = 2f,
+            RidgeDirectionA = Enums.HexDirection.W,
+            RidgeDirectionB = Enums.HexDirection.E
+        });
+        MapCommitResult result = _service.Commit();
+
+        Assert.AreSame(_mountainForm, _mountainCell.landForm);
+        Assert.AreSame(ridge, _mountainCell.mountainRidge);
+        Assert.AreEqual(Enums.MountainRidgeStatus.RidgeCell, _mountainCell.mountainRidgeStatus);
+        Assert.AreEqual(2f, _mountainCell.mountainPosAlongRidge);
+        Assert.AreEqual(float.MaxValue, _mountainCell.movementCost);
+        Assert.IsTrue(MountainGeometryBuilder.HasVisibleMountain(_mountainCell));
+        Assert.IsTrue(result.DirtyFlags.HasFlag(MapDirtyFlags.Terrain));
+        Assert.IsTrue(result.DirtyFlags.HasFlag(MapDirtyFlags.Navigation));
+    }
+
 }

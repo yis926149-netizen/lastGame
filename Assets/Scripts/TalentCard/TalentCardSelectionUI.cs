@@ -314,7 +314,7 @@ public class TalentCardSelectionUI : MonoBehaviour
             SetPanelOnTop(false); // 恢复原层级
             _panelRoot?.SetActive(false);
             if (_gameLoop != null) _gameLoop.SetPaused(_wasPausedBeforeOffer);
-            _timer?.StartTimer(300f);
+            _timer?.StartTimer(GlobalTimerService.DefaultDurationSeconds);
         });
     }
 

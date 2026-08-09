@@ -171,7 +171,7 @@ public class MapGenerationConfigSO : ScriptableObject
     public float ArenaActivateTime = 90f;
     [Tooltip("竞技场内 2 环平台高度（Height 级差，必须 > seaLevel 才能脱离水域判定）")]
     [Min(0f)] public float ArenaFloorHeight = 3f;
-    [Tooltip("竞技场边界环墙高度（Height 级差，表现层纯视觉，无墙实体）")]
+    [Tooltip("竞技场边界高度兼容字段；当前边界与平台统一使用 ArenaFloorHeight，阻挡由程序化山脉提供")]
     [Min(0f)] public float ArenaWallHeight = 4f;
     [Tooltip("中央宝箱模型（出现即激活，含可被攻击的视觉本体；血条画布运行时构造）")]
     public GameObject centralChestModel;

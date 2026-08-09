@@ -2815,7 +2815,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         {
             if (cell == null) continue;
 
-            if (cell.landForm == null && cell.landFormModel != null)
+            if ((cell.landForm == null || cell.landForm.modelPrefab == null) && cell.landFormModel != null)
             {
                 removed?.Add(cell.landFormModel);
                 cell.landFormModel = null;

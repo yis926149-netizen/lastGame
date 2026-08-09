@@ -7,7 +7,11 @@ using UnityEngine;
 /// </summary>
 public class GlobalTimerService
 {
-    private float _remaining;
+    /// <summary>默认倒计时总时长（秒）。启动前 Remaining 即为此值，使 HUD 显示满时长。</summary>
+    public const float DefaultDurationSeconds = 300f;
+
+    // 初始化为满时长：未启动时 HUD 显示总时长而非 0；StartTimer 会覆盖此值。
+    private float _remaining = DefaultDurationSeconds;
     private bool _running;
 
     public float Remaining => _remaining;

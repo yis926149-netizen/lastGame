@@ -107,6 +107,11 @@ public class MapVisualTransitionService : ITickable
 
     public bool IsAnimating => _actives.Count > 0;
 
+    public bool IsTransitionActive(int commitId)
+    {
+        return _actives.Any(t => !t.Completed && t.CommitId == commitId);
+    }
+
     public MapVisualTransitionService(
         IMapRenderBackend renderBackend,
         MapInteractionGate interactionGate,

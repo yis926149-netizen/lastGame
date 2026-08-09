@@ -1641,7 +1641,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 222bdc7e85faeed4b9300c2a5747da44, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  AIDisabled: 1
+  AIDisabled: 0
 --- !u!114 &286174322
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -10460,6 +10460,7 @@ RectTransform:
   m_Children:
   - {fileID: 1600688494}
   - {fileID: 794295123}
+  - {fileID: 1354046497}
   - {fileID: 1815167281}
   - {fileID: 1990543631}
   - {fileID: 1924824594}
@@ -10474,7 +10475,6 @@ RectTransform:
   - {fileID: 467794375}
   - {fileID: 231014287}
   - {fileID: 818467538}
-  - {fileID: 1354046497}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
