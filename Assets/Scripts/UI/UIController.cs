@@ -90,22 +90,10 @@ public class UIController : MonoBehaviour
         // 单位模型图标
         if (UIType == "unitIcon")
         {
-            GameObject unitObj = gameObject.transform.parent.transform.parent.gameObject;
-            int id = -1;
-
-            // 尝试从玩家单位获取
-            if (_unitRepository.TryGetPlayerUnit(unitObj, out var playerData))
-            {
-                id = playerData.unitData.id;
-            }
-            else
-            {
-                // 尝试从敌方单位获取
-                if (_unitRepository.TryGetEnemyUnit(unitObj, out var enemyData))
-                {
-                    id = enemyData.unitData.id;
-                }
-            }
+            UnitMovementController movement = GetComponentInParent<UnitMovementController>();
+            int id = movement != null && movement.characterData?.unitData != null
+                ? movement.characterData.unitData.id
+                : -1;
 
             if (id >= 0)
                 GetComponent<Image>().sprite = unitDataProvider.GetUnitIcon(id);
@@ -363,7 +351,10 @@ public class UIController : MonoBehaviour
         foreach (Vector3 coord in hexCoords)
         {
             var cell = _mapDataService.GetCell(coord);
-            if (cell != null) cells.Add(cell);
+            // 【程序化山脉-阶段6.5】攻击范围/可达集合过滤有效山格（决策 ⑨）：
+            // 山格不可通行不可部署，无高亮目标；Renderer 门禁只作兜底。
+            if (cell == null || MountainCellRule.IsEffectiveMountainCell(cell)) continue;
+            cells.Add(cell);
         }
         Color highlightColor = mode == 1 ? Color.cyan : Color.yellow;
         _hexHighlightRenderer.SetHighlightedCells(HexHighlightChannel.Reachable, cells, highlightColor);

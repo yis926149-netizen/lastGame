@@ -103,6 +103,8 @@ public class BarracksSpawner : MonoBehaviour
         {
             HexCellData neighbor = _mapDataService.GetNeighbor(center, (Enums.HexDirection)i);
             if (neighbor == null) continue;
+            // 【程序化山脉-阶段 7.6】统一部署资格（决策 ①）：山格/水域不可部署（兵营生产入口收口）
+            if (!MountainCellRule.CanSpawnUnitOnCell(neighbor)) continue;
             if (neighbor.HexType == Enums.HexType.LakeOrSea) continue;
             if (neighbor.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) continue;
             if (neighbor.IsHaveUnit()) continue;

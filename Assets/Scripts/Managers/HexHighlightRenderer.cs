@@ -46,8 +46,40 @@ public sealed class HexHighlightRenderer : MonoBehaviour
         _view = new MapDataReadOnlyView(_mapDataService);
     }
 
-    /// <summary>提交一个通道的高亮格集合（整体替换）。cells 为空 = 清空该通道。</summary>
+    /// <summary>
+    /// 提交一个通道的高亮格集合（整体替换）。cells 为空 = 清空该通道。
+    /// 【程序化山脉-阶段6.4】默认门禁：有效山格（IsEffectiveMountainCell）被过滤，
+    /// 不会产出埋进山体的基础地表高亮（决策 ⑨）；DebugDirtyChunk 诊断通道豁免。
+    /// 动态水→陆/清除恢复后，下一次刷新按当前格状态重新过滤（整体替换语义）。
+    /// </summary>
     public void SetHighlightedCells(HexHighlightChannel channel, IReadOnlyCollection<HexCellData> cells, Color color)
+    {
+        SetHighlightedCellsInternal(channel, cells, color, filterMountain: true);
+    }
+
+    /// <summary>
+    /// 显式诊断豁免入口（阶段6.4）：跳过山格门禁。
+    /// 仅供开发调试工具（如 MapHeightEditTestController）使用；玩家可见通道禁止调用，
+    /// 避免调试高亮被玩法门禁静默吞掉，也不允许调试豁免泄漏到玩家 UI。
+    /// </summary>
+    public void SetHighlightedCellsDiagnostic(HexHighlightChannel channel, IReadOnlyCollection<HexCellData> cells, Color color)
+    {
+        SetHighlightedCellsInternal(channel, cells, color, filterMountain: false);
+    }
+
+    /// <summary>
+    /// 【程序化山脉-阶段6.4】山格高亮门禁纯函数：该格是否应被玩家可见通道过滤。
+    /// 玩家可见通道（CardPlacement/Reachable/AttackRange/Selection）过滤有效山格（决策 ⑨），
+    /// 诊断通道 DebugDirtyChunk 豁免。过滤依据 = MountainCellRule.IsEffectiveMountainCell
+    /// （统一口径，不复制 landForm 判断）；水淹/清除后自动放行，恢复后重新拦截。
+    /// </summary>
+    public static bool IsBlockedByMountainGate(HexHighlightChannel channel, HexCellData cell)
+    {
+        return channel != HexHighlightChannel.DebugDirtyChunk
+            && MountainCellRule.IsEffectiveMountainCell(cell);
+    }
+
+    private void SetHighlightedCellsInternal(HexHighlightChannel channel, IReadOnlyCollection<HexCellData> cells, Color color, bool filterMountain)
     {
         EnsureInitialized();
         ChannelState state = GetOrCreateChannel(channel);
@@ -56,7 +88,10 @@ public sealed class HexHighlightRenderer : MonoBehaviour
         {
             foreach (HexCellData cell in cells)
             {
-                if (cell != null) state.Cells.Add(cell);
+                if (cell == null) continue;
+                if (filterMountain && IsBlockedByMountainGate(channel, cell))
+                    continue;
+                state.Cells.Add(cell);
             }
         }
         state.Material.color = color;

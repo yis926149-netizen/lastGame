@@ -39,6 +39,16 @@ public class Enums
         SeaFloor, FlatLand, HighLand
     }
 
+    // 【程序化山脉】山脉地块角色（决策 ⑯：山脉 = 一条脊线 + 宽度化坡面格）
+    public enum MountainRidgeStatus
+    {
+        None,
+        // 脊线格：山脊轴心，决定山体走向与 RidgesDirectionA/B
+        RidgeCell,
+        // 宽度化坡面格：脊线两侧低矮坡面，沿垂直脊线方向衰减
+        SlopeCell
+    }
+
     //地貌类型（【地图地貌配置化】已移除：改由 MapLandFormSO 配置，见 ScriptableObjects/MapLandForm）
 
     public enum TransitionEdgeType

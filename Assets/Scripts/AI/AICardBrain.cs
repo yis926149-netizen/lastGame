@@ -174,6 +174,8 @@ public class AICardBrain
     private bool IsValidSpawnCellForUnit(HexCellData cell)
     {
         if (cell == null) return false;
+        // 【程序化山脉-阶段 7.6】统一部署资格（决策 ①）：山格/水域不可部署单位（AI 卡牌入口收口）
+        if (!MountainCellRule.CanSpawnUnitOnCell(cell)) return false;
         if (_movementSystem.IsDestinationReserved(cell.HexCoordinate)) return false;
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
@@ -185,12 +187,12 @@ public class AICardBrain
     private bool IsValidSpawnCellForBuilding(HexCellData cell)
     {
         if (cell == null) return false;
+        // 【程序化山脉-阶段 7.6】统一建造资格（决策 ①）：山格/水域不可建造（AI 卡牌入口收口）
+        if (!MountainCellRule.CanBuildOnCell(cell)) return false;
         if (_movementSystem.IsDestinationReserved(cell.HexCoordinate)) return false;
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
         if (cell.IsHaveUnit()) return false;
-        // 金矿格不可部署建筑（单位不受限）
-        if (cell.landForm != null && cell.landForm.blockBuildingSpawn) return false;
         return cell.Player_City_Index.Key == AIIndex &&
                (_logisticsService == null || _logisticsService.IsLogisticsConnected(cell, AIIndex));
     }

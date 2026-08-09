@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: MountainLowPoly_Fog
+  m_Shader: {fileID: 4800000, guid: c121e860f7594b8eb8061dd1874c4b0e, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _RockTexture:
+        m_Texture: {fileID: 2800000, guid: 0a5ff2c9de054b34c8348fdf9f8925b4, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _Metallic: 0
+    - _RockTextureEnabled: 0
+    - _Roughness: 0.9
+    - _ShadowStrength: 1
+    - _TriplanarBlendSharpness: 4
+    - _TriplanarWorldScale: 1
+    m_Colors:
+    - _ColorHigh: {r: 0.72, g: 0.71, b: 0.68, a: 1}
+    - _ColorLow: {r: 0.42, g: 0.34, b: 0.28, a: 1}
+    - _ColorMid: {r: 0.56, g: 0.54, b: 0.5, a: 1}
+  m_BuildTextureStacks: []

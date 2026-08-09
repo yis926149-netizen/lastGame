@@ -4,6 +4,7 @@ using UnityEngine;
 public interface IBuildingDataProvider
 {
     GameObject GetCityModel();
+    GameObject GetEnemyCityModel();
     GameObject GetBuildingPrefab(int buildingId);
     float GetBuildingBaseHP(int buildingId);
 
@@ -50,6 +51,9 @@ public class BuildingDataProvider : IBuildingDataProvider
     }
 
     public GameObject GetCityModel() => _buildingDatabase.cityModel;
+
+    public GameObject GetEnemyCityModel() =>
+        _buildingDatabase.enemyCityModel != null ? _buildingDatabase.enemyCityModel : _buildingDatabase.cityModel;
 
     // 旧 int 查询 API：按显式 ID 查 config 后读取字段。
     public GameObject GetBuildingPrefab(int buildingId) => GetBuildingConfig(buildingId).buildingModel;

@@ -276,6 +276,10 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
     private bool IsReleaseValid(NormalCardConfigSO config, HexCellData cell)
     {
         if (cell == null || _movementSystem.IsDestinationReserved(cell.HexCoordinate)) return false;
+        // 【程序化山脉-阶段 7.6】统一部署资格（决策 ①）：山格/水域不可部署单位或建筑。
+        // 放置预览已按同一资格过滤（PlayerInputHandler），确认路径必须再次校验，防止"无高亮但可执行"窗口。
+        if (config is UnitConfigSO && !MountainCellRule.CanSpawnUnitOnCell(cell)) return false;
+        if (config is BuildingConfigSO && !MountainCellRule.CanBuildOnCell(cell)) return false;
         // 【动态地图-阶段二】交互锁：事务/动画期间受影响格禁止部署（§12.6）
         if (_interactionGate != null && _interactionGate.IsLocked(cell, MapInteractionType.Deploy)) return false;
         // 【探索重构-阶段7】部署需在势力范围内 + 有足够金币

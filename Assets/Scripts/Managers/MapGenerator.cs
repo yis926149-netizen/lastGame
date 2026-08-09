@@ -116,9 +116,27 @@ public class MapGenerator : MonoBehaviour
 
         InitializeMapDataService(hexVertices);
 
-        RiverGenerator.RiverGeneration(x, z, minLongestLength, maxLongestLength, riverSourceGenerationProbability, _mapDataService, riverRandom);
+        // 【程序化山脉】生成顺序（决策 ③）：地形 → 山 → 其他地貌 → 河 → 资源
+        // 山脉由 RidgeGenerator 专属 pass 生成（决策 ⑬：不参与散落权重池），
+        // 山格数据（固化参数快照 + d/s）在生成时写入格级数据（决策 ②）。
+        System.Random mountainRandom = SeedService.GetRandom("Mountain");
+        List<MountainRidgeData> ridges = RidgeGenerator.Generate(
+            _config.mountainConfig, _mapDataService.GetAllCells(), _mapDataService.GetNeighbors, mountainRandom,
+            _config.mountainHeightScale);
+        if (ridges.Count > 0)
+            Debug.Log($"[MapGenerator] 山脉生成：{ridges.Count} 条脊线、共 {CountMountainCells(ridges)} 个山脉地块。");
+
         LandFormDataGeneration(hexVertices, landFormRandom);
+        RiverGenerator.RiverGeneration(x, z, minLongestLength, maxLongestLength, riverSourceGenerationProbability, _mapDataService, riverRandom);
         ResourceDataGeneration(hexVertices, resourceRandom);
+    }
+
+    private static int CountMountainCells(List<MountainRidgeData> ridges)
+    {
+        int count = 0;
+        foreach (MountainRidgeData ridge in ridges)
+            count += ridge.mountainCellCount;
+        return count;
     }
 
     private List<float> TerrainHeightGeneration(int xNumber, int zNumber, TerrainGenerator.TerrainHeights terrainHeights, System.Random random)
@@ -244,23 +262,18 @@ public class MapGenerator : MonoBehaviour
             //���������������ȡhexCell;
             HexCellData hexCellData = HexC_HexCellData[hexVertices[j]];
             //���ǡ����򺣡�������
-            if (isLakeOrSea(hexCellData) || hexCellData.hasRiver) { continue; }
+            // 【程序化山脉】山脉先于其他地貌生成：散落地貌跳过已有山格（决策 ③/⑫）
+            if (isLakeOrSea(hexCellData) || MountainCellRule.IsMountainCell(hexCellData)) { continue; }
 
             // 【地图地貌配置化】按数据库权重表掷点；掷中空白保持 null
             hexCellData.landForm = LandFormSpawnRule.RollLandForm(_landFormDatabase, random);
         }
 
-        // 【金矿扎堆】阶段二：簇生成。仅 clusterSpawn=true 的地貌（金矿）走固定 n 堆
-        // 不规则扎堆；散落池保持原权重锁定随机流（同种子下其他地貌位置不变），
-        // 簇外掷中该地貌的格由 RemoveScatteredForm 拦截改写为空白。
-        MapLandFormSO clusterForm = LandFormClusterSpawnRule.FindClusterForm(_landFormDatabase);
-        if (clusterForm != null)
-        {
-            List<HexCellData> allCells = _mapDataService.GetAllCells();
-            HashSet<HexCellData> claimed = LandFormClusterSpawnRule.PlaceClusters(
-                clusterForm, allCells, _mapDataService.GetNeighbors, SeedService.GetRandom("LandFormCluster"));
-            LandFormClusterSpawnRule.RemoveScatteredForm(clusterForm, allCells, claimed);
-        }
+        // 【金矿扎堆 + 程序化山脉】多簇遍历（决策 ⑮）：按数据库顺序处理所有 clusterSpawn 地貌，
+        // 共享占用集合保证簇间互斥；山脉地貌不入数据库（RidgeGenerator 专属 pass），山格不参与簇生长。
+        LandFormClusterSpawnRule.PlaceAllClusters(
+            _landFormDatabase, _mapDataService.GetAllCells(), _mapDataService.GetNeighbors,
+            SeedService.GetRandom("LandFormCluster"));
     }
 
     private void ResourceDataGeneration(Vector3[] hexVertices, System.Random random)

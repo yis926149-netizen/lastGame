@@ -89,7 +89,9 @@ public class PlayerInputHandler : ITickable, System.IDisposable
             var cell = _mapData.GetCellByWorldPosition(hit.point);
             if (cell != null && cell != _lastDraggingHighlightCell)
             {
-                if (cell.IsExplored)
+                // 【程序化山脉-阶段6.5】放置预览资格 = CanSpawnUnitOnCell（决策 ①）：
+                // 山格/水域不显示部署预览；Renderer 门禁只作兜底，调用方不再把山格计入可用目标。
+                if (cell.IsExplored && MountainCellRule.CanSpawnUnitOnCell(cell))
                 {
                     _hexHighlightRenderer.SetHighlightedCells(HexHighlightChannel.CardPlacement, new[] { cell }, Color.yellow);
                     _lastDraggingHighlightCell = cell;

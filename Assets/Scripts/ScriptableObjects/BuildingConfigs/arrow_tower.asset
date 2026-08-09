@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 41ebb27e865c0ff4bbfe5e1adec85113, type: 3}
+  m_Name: arrow_tower
+  m_EditorClassIdentifier: 
+  cardSprite: {fileID: 21300000, guid: a918f51fbe556dc4f8432d5481b86d53, type: 3}
+  buildingId: 5
+  buildingType: 6
+  buildingModel: {fileID: 2557242060110657361, guid: 28b80beb5df67444f8c411a71de16bea, type: 3}
+  enemyBuildingModel: {fileID: 406344736295955969, guid: 12a5f029a8fb39147b35f207813ae361, type: 3}
+  baseHP: 100
+  blocksMovement: 0
+  producedUnit: {fileID: 0}

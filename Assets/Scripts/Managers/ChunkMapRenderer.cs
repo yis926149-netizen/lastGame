@@ -36,6 +36,19 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     private static readonly int ChunkAnimBaseYId = Shader.PropertyToID("_ChunkAnimBaseY");
     private static readonly int ChunkAnimRiseHeightId = Shader.PropertyToID("_ChunkAnimRiseHeight");
 
+    // 【程序化山脉-阶段 7.8】Chunk 构建性能诊断钩子（默认关闭 = 零开销；仅编辑器工具
+    // Tools/程序化山脉/性能基线 启用）。统计 Chunk 构建耗时（含/不含山体分类）、
+    // collision cooking（提交）次数与 CPU 顶点动画单帧写入耗时，供阶段 7.8 性能验收记录。
+    public static bool EnableChunkBuildTiming;
+    public static long ChunkBuildCount;
+    public static long MountainChunkBuildCount;
+    public static double ChunkBuildMsTotal;
+    public static double MountainChunkBuildMsTotal;
+    public static long CollisionCommitCount;
+    public static long AnimProgressFrameCount;
+    public static double AnimProgressFrameMsTotal;
+    public static double AnimProgressFrameMsMax;
+
     [Inject] private IMapDataService _mapDataService;
     [Inject] private MapGenerationConfigSO _config;
     [Inject] private IMeshGenerator _meshGenerator;
@@ -49,6 +62,9 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     // Chunk 运行时数据：ChunkIndex → 渲染宿主
     private readonly Dictionary<ChunkIndex, ChunkRenderData> _chunks = new Dictionary<ChunkIndex, ChunkRenderData>();
 
+    /// <summary>【程序化山脉-阶段 7.8】性能基线/诊断用 Chunk 只读枚举（不暴露修改语义，仅供编辑器验收工具统计）。</summary>
+    public IEnumerable<ChunkRenderData> DebugChunks => _chunks.Values;
+
     // 构建期注册表（每次 Prepare 重建；仅覆盖目标 Chunk + halo，§九）
     private IReadOnlyMapView _view;
     private readonly Dictionary<int, Vector3[]> _solidVertices = new Dictionary<int, Vector3[]>();
@@ -56,13 +72,28 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     private readonly Dictionary<(int, Enums.HexDirection), List<Vector3>> _rectVerticesByCell = new Dictionary<(int, Enums.HexDirection), List<Vector3>>();
     private readonly Dictionary<(int owner, Enums.HexDirection direction), RectangleTransitionMeshData> _genericRectangleMeshes
         = new Dictionary<(int, Enums.HexDirection), RectangleTransitionMeshData>();
+    /// <summary>【程序化山脉-阶段 3.6】山体 rect 缓存（与普通 rect 同键；普通 rect 保留原始表面供碰撞）。</summary>
+    private readonly Dictionary<(int owner, Enums.HexDirection direction), MountainRectBuild> _mountainRectangleMeshes
+        = new Dictionary<(int, Enums.HexDirection), MountainRectBuild>();
 
     // 材质缓存（按材质组合键共享，§6-2）
     private Material _terrainBaseMaterial0;
     private Material _terrainBaseMaterial1;
     private Material _terrainBaseMaterial2;
+    // 【程序化山脉-阶段 4.2】山体稳定材质：每 Renderer 一份实例（与 _terrainBaseMaterial0 同生命周期，
+    // OnDestroy 显式销毁）；Shader 查找只尝试一次，失败回落 _terrainBaseMaterial0 且只记录一次错误。
+    private Shader _mountainShader;
+    private Material _mountainMaterial;
+    private bool _mountainShaderLookupAttempted;
+    // 【程序化山脉-阶段 5.4】山体 Transition 变体（动画期间 keep-below clip）：每 Renderer 一份实例，
+    // 属性从稳定山体材质克隆；Shader 缺失回落稳定山体材质（只报一次），绝不回落普通 Terrain shader。
+    private Shader _mountainTransitionShader;
+    private Material _mountainTransitionMaterial;
+    private bool _mountainTransitionShaderLookupAttempted;
     private readonly Dictionary<(Material, Material), Material> _rectMaterialCache = new Dictionary<(Material, Material), Material>();
     private readonly Dictionary<(Material, Material, Material), Material> _triMaterialCache = new Dictionary<(Material, Material, Material), Material>();
+    private readonly Dictionary<Material, Material> _mountainBoundaryMaterialCache = new Dictionary<Material, Material>();
+    private readonly Dictionary<Material, Material> _mountainBoundaryTransitionCache = new Dictionary<Material, Material>();
 
     // 【阶段四修订】动画专用 *_Transition 材质缓存（§十九-21：动画 Shader 必须独立命名、
     // 独立材质，绝不修改三套稳定 Shader；仅在动画期间按 Chunk 切换使用）。
@@ -647,6 +678,8 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             chunk.TerrainFilter != null && chunk.TerrainFilter.sharedMesh != null &&
             chunk.TerrainFilter.sharedMesh.vertexCount == chunk.AnimUV2Cache.Length)
         {
+            // 【程序化山脉-阶段 7.8】性能基线：CPU 逐顶点写入帧耗时采样（默认关闭零开销）。
+            System.Diagnostics.Stopwatch timing = EnableChunkBuildTiming ? System.Diagnostics.Stopwatch.StartNew() : null;
             int count = chunk.AnimUV2Cache.Length;
             if (chunk.AnimVertexBuffer == null || chunk.AnimVertexBuffer.Length != count)
                 chunk.AnimVertexBuffer = new Vector3[count];
@@ -670,6 +703,14 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 }
             }
             chunk.TerrainFilter.sharedMesh.vertices = verts;
+            if (timing != null)
+            {
+                timing.Stop();
+                AnimProgressFrameCount++;
+                AnimProgressFrameMsTotal += timing.Elapsed.TotalMilliseconds;
+                if (timing.Elapsed.TotalMilliseconds > AnimProgressFrameMsMax)
+                    AnimProgressFrameMsMax = timing.Elapsed.TotalMilliseconds;
+            }
         }
 
         // Wave 不使用 Transition Shader/clip，且必须保留 Renderer 原有 MPB（迷雾/颜色参数）。
@@ -907,6 +948,9 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
 
     private ChunkStagingGeometry BuildChunkStaging(ChunkRenderData chunk, List<HexCellData> chunkCells, AnimatedChunkBuildData anim = null)
     {
+        // 【程序化山脉-阶段 7.8】性能基线：仅 EnableChunkBuildTiming 时计时（默认关闭零开销）。
+        System.Diagnostics.Stopwatch timing = EnableChunkBuildTiming ? System.Diagnostics.Stopwatch.StartNew() : null;
+
         _solidVertices.Clear();
         _lakeOrSeaVertices.Clear();
         _rectVerticesByCell.Clear();
@@ -929,6 +973,22 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         staging.Terrain = BuildChunkTerrain(chunkCells, profileList, anim);
         staging.River = BuildChunkRiver(chunkCells);
         staging.Water = BuildChunkWater(chunkCells, profileList);
+
+        // 【程序化山脉-阶段 7.8】按"本 Chunk 是否含山体渲染槽"分类累计构建耗时。
+        if (timing != null)
+        {
+            timing.Stop();
+            ChunkBuildCount++;
+            if (staging.Terrain != null && staging.Terrain.HasMountain)
+            {
+                MountainChunkBuildCount++;
+                MountainChunkBuildMsTotal += timing.Elapsed.TotalMilliseconds;
+            }
+            else
+            {
+                ChunkBuildMsTotal += timing.Elapsed.TotalMilliseconds;
+            }
+        }
         return staging;
     }
 
@@ -1010,6 +1070,12 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 if (_mapDataService.GetNeighbor(cell, dir) == null) continue;
                 CellBuildContext ctx = MakeBuildContext(cell);
                 GetGenericRectangleMesh(ctx, dir);
+                // 【程序化山脉】山体 rect 同 halo 预构建（tri 复用 profiles；跨 Chunk 一致）
+                if (MountainGeometryBuilder.HasVisibleMountain(cell)
+                    || MountainGeometryBuilder.HasVisibleMountain(_mapDataService.GetNeighbor(cell, dir)))
+                {
+                    GetMountainRectangleMesh(ctx, dir);
+                }
             }
         }
     }
@@ -1030,7 +1096,15 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         var flatDrawOrderList = new List<int>();
         var seafloorDrawOrderList = new List<int>();
         var subList = new List<List<int>> { highDrawOrderList, flatDrawOrderList, seafloorDrawOrderList };
-
+        // 【程序化山脉-阶段 3.6】替换式拓扑：山体面只进 MountainIndices，被替换原始面只进 CollisionIndices
+        var mountainIndices = new List<int>();
+        // 山-普通山侧半 rect：按普通侧地形材质分组；BlendData 在构建末尾统一回填 UV4。
+        var mountainBoundaryGroups = new Dictionary<Material, List<int>>();
+        var mountainBoundaryBlendRanges = new List<(int start, Vector4[] data)>();
+        var collisionIndices = new List<int>();
+        // 【程序化山脉-阶段 5.8】仅山体渲染顶点区间（平坦 (start,count) 对，供碰撞索引校验）
+        var mountainRanges = new List<int>();
+        System.Func<HexCellData, Enums.HexDirection, HexCellData> neighborOf = (c, d) => _mapDataService.GetNeighbor(c, d);
         // 实心区域（只输出目标 Chunk 格）
         foreach (HexCellData hexCellData in chunkCells)
         {
@@ -1060,7 +1134,27 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 3 => _meshGenerator.BuildSolidAreaDrawOrder3(hexCellData, d[0], d[1]),
                 _ => _meshGenerator.BuildSolidAreaDrawOrder1(hexCellData)
             };
-            MainMeshDrawOrderElementAddRule(hexCellData, ints, ref subList, solidStart);
+            if (MountainGeometryBuilder.HasVisibleMountain(hexCellData))
+            {
+                // 有效山格：原 44 点仍写入顶点数组（供 collision 扇形），顶面索引不进地形槽
+                foreach (int i in ints) collisionIndices.Add(i + solidStart);
+                CellGeometry mountain = MountainGeometryBuilder.BuildSolidMountain(hexCellData, solid, neighborOf);
+                int mountainStart = verticesList.Count;
+                verticesList.AddRange(mountain.Vertices);
+                mountainRanges.Add(mountainStart);
+                mountainRanges.Add(mountain.Vertices.Length);
+                // 山体槽 UV0 契约见 MountainMaterialContract（UV0.x=ridgeKey01、UV0.y=tier 编码），普通地形 UV 逻辑禁止重解释
+                uvList.AddRange(mountain.UVs);
+                if (anim != null)
+                    MountainGeometryBuilder.AppendMountainAnimUV(mountain,
+                        c => anim.DeltaY(c), c => anim.Delay(c), c => anim.DelayEnd(c), uv2List, uv3List);
+                foreach (int i in mountain.Indices) mountainIndices.Add(i + mountainStart);
+            }
+            else
+            {
+                MainMeshDrawOrderElementAddRule(hexCellData, ints, ref subList, solidStart);
+                foreach (int i in ints) collisionIndices.Add(i + solidStart);
+            }
         }
 
         // 矩形过渡（只输出目标 Chunk 格；profile 已在阶段 1 预生成）
@@ -1101,27 +1195,111 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                         if (anim != null)
                             AppendRiverRectAnimUV(anim, hexCellData, rectVerts, uv2List, uv3List);
                     }
+                    // 河 rect 恒不贴山（决策 ③），原始面同时进 collision
+                    foreach (int i in ints) collisionIndices.Add(i);
+
+                    Material matA = HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
+                    Material matB = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, dir), _config.mapMaterial);
+                    var key = (matA, matB);
+                    if (!rectGroups.ContainsKey(key))
+                        rectGroups[key] = new List<int>();
+                    rectGroups[key].AddRange(ints);
                 }
                 else
                 {
                     _rectVerticesByCell[(hexCellData.GenerateOrder, dir)] = new List<Vector3>();
                     int preCount = verticesList.Count;
-                    RectangleTransitionMeshData usedRect = RectFlat(_config.shadingStyle)
-                        ? RectangleTransitionMesh.ToFlatShaded(GetGenericRectangleMesh(ctx, dir))
-                        : GetGenericRectangleMesh(ctx, dir);
-                    verticesList.AddRange(usedRect.Vertices);
-                    uvList.AddRange(usedRect.UVs);
-                    OtherMeshDrawOrderElementAddRule(hexCellData, usedRect.Indices, ref ints, IndexOffset);
-                    if (anim != null)
-                        AppendRectAnimUV(anim, hexCellData, dir, usedRect, uv2List, uv3List);
-                }
+                    HexCellData neighbor = _mapDataService.GetNeighbor(hexCellData, dir);
+                    bool edgeMountain = MountainGeometryBuilder.HasVisibleMountain(hexCellData)
+                        || MountainGeometryBuilder.HasVisibleMountain(neighbor);
+                    if (!edgeMountain)
+                    {
+                        // 原路径完全不变：渲染槽（共享顶点同时进 collision）
+                        RectangleTransitionMeshData usedRect = RectFlat(_config.shadingStyle)
+                            ? RectangleTransitionMesh.ToFlatShaded(GetGenericRectangleMesh(ctx, dir))
+                            : GetGenericRectangleMesh(ctx, dir);
+                        verticesList.AddRange(usedRect.Vertices);
+                        uvList.AddRange(usedRect.UVs);
+                        OtherMeshDrawOrderElementAddRule(hexCellData, usedRect.Indices, ref ints, IndexOffset);
+                        foreach (int i in ints) collisionIndices.Add(i);
+                        if (anim != null)
+                            AppendRectAnimUV(anim, hexCellData, dir, usedRect, uv2List, uv3List);
 
-                Material matA = HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
-                Material matB = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, dir), _config.mapMaterial);
-                var key = (matA, matB);
-                if (!rectGroups.ContainsKey(key))
-                    rectGroups[key] = new List<int>();
-                rectGroups[key].AddRange(ints);
+                        Material matA = HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
+                        Material matB = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, dir), _config.mapMaterial);
+                        var key = (matA, matB);
+                        if (!rectGroups.ContainsKey(key))
+                            rectGroups[key] = new List<int>();
+                        rectGroups[key].AddRange(ints);
+                    }
+                    else
+                    {
+                        // 山边 rect：原始 surface 只进 collision（替换式拓扑，决策 ⑤）；
+                        // collision-only plain 顶点沿用基础地形通道规则（阶段 5.3）
+                        RectangleTransitionMeshData plain = GetGenericRectangleMesh(ctx, dir);
+                        verticesList.AddRange(plain.Vertices);
+                        uvList.AddRange(plain.UVs);
+                        if (anim != null)
+                            AppendRectAnimUV(anim, hexCellData, dir, plain, uv2List, uv3List);
+                        foreach (int i in plain.Indices) collisionIndices.Add(i + IndexOffset);
+
+                        // 山-山 rect 进主山体槽；山-普通山侧半 rect 进按普通侧地形材质分组的融合槽。
+                        MountainRectBuild mountainBuild = GetMountainRectangleMesh(ctx, dir);
+                        bool boundaryBlend = mountainBuild.PlainRect != null;
+                        CellGeometry mountain = boundaryBlend
+                            ? MountainGeometryBuilder.RectToTerrainBlendRender(mountainBuild, hexCellData, neighbor)
+                            : MountainGeometryBuilder.RectToRender(mountainBuild, hexCellData, neighbor);
+                        int mountainOffset = verticesList.Count;
+                        verticesList.AddRange(mountain.Vertices);
+                        mountainRanges.Add(mountainOffset);
+                        mountainRanges.Add(mountain.Vertices.Length);
+                        uvList.AddRange(mountain.UVs);
+                        if (anim != null)
+                            MountainGeometryBuilder.AppendMountainAnimUV(mountain,
+                                c => anim.DeltaY(c), c => anim.Delay(c), c => anim.DelayEnd(c), uv2List, uv3List);
+                        if (boundaryBlend)
+                        {
+                            Material terrainMaterial = MountainGeometryBuilder.HasVisibleMountain(hexCellData)
+                                ? HexController.SetHexMaterial(neighbor, _config.mapMaterial)
+                                : HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
+                            if (!mountainBoundaryGroups.TryGetValue(terrainMaterial, out List<int> boundaryIndices))
+                            {
+                                boundaryIndices = new List<int>();
+                                mountainBoundaryGroups[terrainMaterial] = boundaryIndices;
+                            }
+                            foreach (int i in mountain.Indices) boundaryIndices.Add(i + mountainOffset);
+                            mountainBoundaryBlendRanges.Add((mountainOffset, mountain.BlendData));
+                        }
+                        else
+                        {
+                            foreach (int i in mountain.Indices) mountainIndices.Add(i + mountainOffset);
+                        }
+
+                        // 【2026-08-07 决策 ④ 细化：格界劈半】山-普通 rect 的普通半边回地形槽
+                        // （地形材质/格线，与原 rect 同 (matA,matB) 分组键与动画通道规则），
+                        // 山体视觉边界收回到格界线；山-山 rect 无 PlainRect（整面山体）。
+                        // 几何上两件在格界点严格闭合（同一 boundary 点位，MountainGeometryBuilder 保证）。
+                        if (mountainBuild.PlainRect != null)
+                        {
+                            RectangleTransitionMeshData plainHalf = RectFlat(_config.shadingStyle)
+                                ? RectangleTransitionMesh.ToFlatShaded(mountainBuild.PlainRect)
+                                : mountainBuild.PlainRect;
+                            int plainHalfOffset = verticesList.Count;
+                            verticesList.AddRange(plainHalf.Vertices);
+                            uvList.AddRange(plainHalf.UVs);
+                            var plainHalfInts = new List<int>();
+                            OtherMeshDrawOrderElementAddRule(hexCellData, plainHalf.Indices, ref plainHalfInts, plainHalfOffset);
+                            if (anim != null)
+                                AppendRectAnimUV(anim, hexCellData, dir, plainHalf, uv2List, uv3List);
+                            Material halfMatA = HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
+                            Material halfMatB = HexController.SetHexMaterial(neighbor, _config.mapMaterial);
+                            var halfKey = (halfMatA, halfMatB);
+                            if (!rectGroups.ContainsKey(halfKey))
+                                rectGroups[halfKey] = new List<int>();
+                            rectGroups[halfKey].AddRange(plainHalfInts);
+                        }
+                    }
+                }
             }
         }
         var mergedRectIndices = new List<List<int>>(rectGroups.Values);
@@ -1144,29 +1322,88 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 int IndexOffset = verticesList.Count;
                 List<int> ints = new List<int>();
                 CellBuildContext ctx = MakeBuildContext(hexCellData);
-                TriangleTransitionMeshData triangle = GetGenericTriangleMesh(ctx, pair[0], pair[1]);
-                verticesList.AddRange(triangle.Vertices);
-                uvList.AddRange(triangle.UVs);
-                OtherMeshDrawOrderElementAddRule(hexCellData, triangle.Indices, ref ints, IndexOffset);
+                HexCellData neighborA = _mapDataService.GetNeighbor(hexCellData, pair[0]);
+                HexCellData neighborB = _mapDataService.GetNeighbor(hexCellData, pair[1]);
+                bool allMountain = MountainGeometryBuilder.HasVisibleMountain(hexCellData)
+                    && MountainGeometryBuilder.HasVisibleMountain(neighborA)
+                    && MountainGeometryBuilder.HasVisibleMountain(neighborB);
+                if (allMountain)
+                {
+                    // 3 山格 tri：山体封口进山体槽（决策 ⑤）
+                    CellGeometry mountain = MountainGeometryBuilder.BuildTriangleMountain(
+                        hexCellData, neighborOf, (c, d) => GetMountainRectangleMesh(MakeBuildContext(c), d).Rect,
+                        pair[0], pair[1]);
+                    int mountainOffset = verticesList.Count;
+                    verticesList.AddRange(mountain.Vertices);
+                    mountainRanges.Add(mountainOffset);
+                    mountainRanges.Add(mountain.Vertices.Length);
+                    uvList.AddRange(mountain.UVs);
+                    if (anim != null)
+                        MountainGeometryBuilder.AppendMountainAnimUV(mountain,
+                            c => anim.DeltaY(c), c => anim.Delay(c), c => anim.DelayEnd(c), uv2List, uv3List);
+                    foreach (int i in mountain.Indices) mountainIndices.Add(i + mountainOffset);
 
-                if (anim != null)
-                    AppendTriangleAnimUV(anim, hexCellData, pair, triangle, uv2List, uv3List);
+                    // 原始 tri 只进 collision（替换式拓扑）；collision-only plain 顶点沿用基础地形通道规则。
+                    // 【阶段 7.4/7.6 修复】plain tri 追加在山体 tri 之后，索引偏移必须取 plain 的实际
+                    // 追加位置（verticesList.Count），不能复用 1229 行捕获的山体 tri 之前的 IndexOffset——
+                    // 否则 collision 索引落入山体顶点区间（MountainVertexRanges 校验拒绝，初始地图缺地形）。
+                    TriangleTransitionMeshData plain = GetGenericTriangleMesh(ctx, pair[0], pair[1]);
+                    int plainOffset = verticesList.Count;
+                    verticesList.AddRange(plain.Vertices);
+                    uvList.AddRange(plain.UVs);
+                    if (anim != null)
+                        AppendTriangleAnimUV(anim, hexCellData, pair, plain, uv2List, uv3List);
+                    foreach (int i in plain.Indices) collisionIndices.Add(i + plainOffset);
+                }
+                else
+                {
+                    TriangleTransitionMeshData triangle = GetGenericTriangleMesh(ctx, pair[0], pair[1]);
+                    verticesList.AddRange(triangle.Vertices);
+                    uvList.AddRange(triangle.UVs);
+                    OtherMeshDrawOrderElementAddRule(hexCellData, triangle.Indices, ref ints, IndexOffset);
+                    foreach (int i in ints) collisionIndices.Add(i);
+                    if (anim != null)
+                        AppendTriangleAnimUV(anim, hexCellData, pair, triangle, uv2List, uv3List);
 
-                Material matA = HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
-                Material matB = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, pair[0]), _config.mapMaterial);
-                Material matC = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, pair[1]), _config.mapMaterial);
-                var key = (matA, matB, matC);
-                if (!triGroups.ContainsKey(key))
-                    triGroups[key] = new List<int>();
-                triGroups[key].AddRange(ints);
+                    Material matA = HexController.SetHexMaterial(hexCellData, _config.mapMaterial);
+                    Material matB = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, pair[0]), _config.mapMaterial);
+                    Material matC = HexController.SetHexMaterial(_mapDataService.GetNeighbor(hexCellData, pair[1]), _config.mapMaterial);
+                    var key = (matA, matB, matC);
+                    if (!triGroups.ContainsKey(key))
+                        triGroups[key] = new List<int>();
+                    triGroups[key].AddRange(ints);
+
+                    // 【2026-08-07 续24】两格连续脊线 + 第三格普通：保留完整 terrain tri，
+                    // 另叠加一条由脊边触发的山体肩部 wedge。第三格不变山格、不参与玩法占地，
+                    // collision 仍只使用原 terrain tri；wedge 仅进入山体渲染槽。
+                    CellGeometry shoulder = MountainGeometryBuilder.BuildRidgeEdgeTriangleShoulder(
+                        hexCellData, neighborA, neighborB, triangle);
+                    if (shoulder != null && shoulder.Vertices.Length > 0)
+                    {
+                        int shoulderOffset = verticesList.Count;
+                        verticesList.AddRange(shoulder.Vertices);
+                        mountainRanges.Add(shoulderOffset);
+                        mountainRanges.Add(shoulder.Vertices.Length);
+                        uvList.AddRange(shoulder.UVs);
+                        if (anim != null)
+                            MountainGeometryBuilder.AppendMountainAnimUV(shoulder,
+                                c => anim.DeltaY(c), c => anim.Delay(c), c => anim.DelayEnd(c), uv2List, uv3List);
+                        foreach (int i in shoulder.Indices) mountainIndices.Add(i + shoulderOffset);
+                    }
+                }
             }
         }
         var mergedTriIndices = new List<List<int>>(triGroups.Values);
         var mergedMaterialAsTri = triGroups.Keys.Select(k => k.Item1).ToList();
         var mergedMaterialBsTri = triGroups.Keys.Select(k => k.Item2).ToList();
         var mergedMaterialCsTri = triGroups.Keys.Select(k => k.Item3).ToList();
+        var mergedMountainBoundaryIndices = new List<List<int>>(mountainBoundaryGroups.Values);
+        var mergedMountainBoundaryMaterials = mountainBoundaryGroups.Keys.ToList();
 
-        int[][] arrArawOrder = new int[3 + mergedRectIndices.Count + mergedTriIndices.Count][];
+        // 槽布局 = 3 基础 + N rect + M tri + B 山脚融合 + (主山体槽非空 ? 1 : 0)
+        int slotCount = 3 + mergedRectIndices.Count + mergedTriIndices.Count
+            + mergedMountainBoundaryIndices.Count + (mountainIndices.Count > 0 ? 1 : 0);
+        int[][] arrArawOrder = new int[slotCount][];
         arrArawOrder[0] = subList[2].ToArray();
         arrArawOrder[1] = subList[1].ToArray();
         arrArawOrder[2] = subList[0].ToArray();
@@ -1175,6 +1412,28 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             arrArawOrder[offset++] = rect.ToArray();
         foreach (List<int> tri in mergedTriIndices)
             arrArawOrder[offset++] = tri.ToArray();
+        foreach (List<int> boundary in mergedMountainBoundaryIndices)
+            arrArawOrder[offset++] = boundary.ToArray();
+        if (mountainIndices.Count > 0)
+            arrArawOrder[offset] = mountainIndices.ToArray();
+
+        Vector4[] uv4 = null;
+        if (mergedMountainBoundaryIndices.Count > 0)
+        {
+            uv4 = new Vector4[verticesList.Count];
+            foreach ((int start, Vector4[] data) range in mountainBoundaryBlendRanges)
+            {
+                if (range.data == null) continue;
+                for (int i = 0; i < range.data.Length; i++)
+                    uv4[range.start + i] = range.data[i];
+            }
+        }
+
+        // 【程序化山脉-阶段 5.7】动画构建预扩保守 bounds（覆盖 start→target 全程 + 山峰 + clip 余量）；
+        // 普通无动画构建保持 null（FillMeshData 维持 RecalculateBounds 原行为，零变化）。
+        Bounds? conservativeBounds = null;
+        if (anim != null && verticesList.Count > 0 && uv2List != null && uv2List.Count == verticesList.Count)
+            conservativeBounds = MountainGeometryBuilder.ComputeConservativeAnimBounds(verticesList, uv2List);
 
         return new TerrainGeometry
         {
@@ -1188,7 +1447,15 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             TriBs = mergedMaterialBsTri.ToArray(),
             TriCs = mergedMaterialCsTri.ToArray(),
             UV2s = uv2List?.ToArray(),
-            UV3s = uv3List?.ToArray()
+            UV3s = uv3List?.ToArray(),
+            UV4s = uv4,
+            MountainBoundaryMaterials = mergedMountainBoundaryMaterials.ToArray(),
+            // 【程序化山脉】无山 Chunk 两数组均为 null（碰撞回落渲染 mesh，零额外内存）
+            MountainIndices = mountainIndices.Count > 0 ? mountainIndices.ToArray() : null,
+            CollisionIndices = (mountainIndices.Count > 0 || mergedMountainBoundaryIndices.Count > 0)
+                ? collisionIndices.ToArray() : null,
+            MountainVertexRanges = mountainRanges.Count > 0 ? mountainRanges.ToArray() : null,
+            ConservativeBounds = conservativeBounds,
         };
     }
 
@@ -1199,6 +1466,8 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     //   上升中；原 y 恒为 1 的 participates 标志废弃——参与判定改由 end &gt; start 隐式给出）。
     //   非 Wave 模式终点恒 1，等价旧公式 (1-delay)）。
     // 矩形/三角过渡顶点按几何端点来源格写 start/end，内部插值点对端点插值（§13.3）。
+    // 【程序化山脉-阶段 5.3】山体顶点不再使用恒等通道：走
+    // MountainGeometryBuilder.AppendMountainAnimUV（逐顶点来源集合，决策 ㉙）。
 
     /// <summary>河流矩形过渡（顶点按固定布局混合两端格，按 owner 格 delta 近似，§13.3 第一版简化）。
     /// 【顶出方案】start/end 按 owner 格写。</summary>
@@ -1507,13 +1776,36 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             return;
         }
 
+        // 【程序化山脉-阶段 5.6】提交前记录本 Chunk 是否残留动画状态（提交后统一清理，
+        // 防旧 Finalize/进度驱动把过期动画数据带到新 mesh）。
+        bool hadAnimation = chunk.AnimUV2Cache != null || chunk.AnimBaseVerts != null
+            || chunk.StableTerrainMaterials != null || chunk.AnimationReturnsToStart;
+
         // Terrain
         if (staging.Terrain != null && staging.Terrain.Vertices != null && staging.Terrain.Vertices.Length > 0)
         {
             FillMeshData(chunk.StagingTerrain, staging.Terrain);
             chunk.TerrainFilter.sharedMesh = chunk.StagingTerrain;
             chunk.TerrainRenderer.sharedMaterials = ResolveTerrainMaterials(staging.Terrain);
-            chunk.TerrainCollider.sharedMesh = chunk.StagingTerrain;
+            // 【程序化山脉-阶段 3.2】碰撞分离（决策 ㉚）：山体 Chunk 使用共享顶点 +
+            // CollisionIndices 的独立碰撞网格；无山 Chunk 回落渲染 mesh（零额外内存，行为不变）。
+            if (staging.Terrain.CollisionIndices != null)
+            {
+                if (chunk.StagingCollision == null)
+                    chunk.StagingCollision = new Mesh { name = $"ChunkCollisionStaging_{chunk.Index.X}_{chunk.Index.Z}" };
+                FillCollisionMeshData(chunk.StagingCollision, staging.Terrain);
+                chunk.TerrainCollider.sharedMesh = chunk.StagingCollision;
+                // 【程序化山脉-阶段 7.8】collision cooking（提交）次数 = 含山 Chunk 碰撞网格切换次数。
+                if (EnableChunkBuildTiming) CollisionCommitCount++;
+
+                Mesh tempCollision = chunk.ActiveCollision;
+                chunk.ActiveCollision = chunk.StagingCollision;
+                chunk.StagingCollision = tempCollision;
+            }
+            else
+            {
+                chunk.TerrainCollider.sharedMesh = chunk.StagingTerrain;
+            }
             chunk.TerrainRenderer.enabled = true;
         }
         else
@@ -1521,6 +1813,12 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             chunk.TerrainRenderer.enabled = false;
             chunk.TerrainCollider.sharedMesh = null;
         }
+
+        // 【程序化山脉-阶段 5.1】提交后保存山体拓扑签名（供下一次动画准备阶段比较）。
+        // 无山/无地形 Chunk 恒为 Empty（提前返回，零分配；签名不包含纯 Y 值）。
+        chunk.LastMountainTopology = staging.Terrain != null && staging.Terrain.HasMountain
+            ? BuildMountainTopologySignature(staging.Terrain, chunk.Cells)
+            : MountainTopologySignature.Empty;
 
         // Water
         if (staging.Water != null)
@@ -1563,6 +1861,67 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         // （Duration=0 提交/分帧提交）重建的 Chunk，Finalize 不应恢复旧数组（submesh 布局可能
         // 已变）。动画路径中 SwitchToTransitionMaterials 在本方法之后重新保存当前稳定数组，不受影响。
         chunk.StableTerrainMaterials = null;
+
+        // 【程序化山脉-阶段 5.6】同步提交接管 Chunk 所有权：清除过期动画缓存与 clip MPB，
+        // 防止旧动画 Finalize/进度驱动把过期 subMesh 布局或 keep-below 平面残留到新 mesh。
+        // （正常路径旧动画已被 ForceCompleteConflicting 完成；此处为防御性兜底，幂等。）
+        if (hadAnimation)
+            ClearAnimationState(chunk);
+    }
+
+    /// <summary>
+    /// 【程序化山脉-阶段 5.6】清理 Chunk 的动画状态（幂等）：缓存清空、返回值标记复位、
+    /// clip MPB 钉死"恒不裁"（稳定 Shader 不读这些参数，仅防止旧动画期间钉死的 keep-below
+    /// 平面在后续动画外残留）。TerrainGhost/FadeGhost 由 Finalize 路径销毁，同步提交不创建。
+    /// </summary>
+    private static void ClearAnimationState(ChunkRenderData chunk)
+    {
+        chunk.AnimUV2Cache = null;
+        chunk.AnimUV3Cache = null;
+        chunk.AnimBaseVerts = null;
+        chunk.AnimVertexBuffer = null;
+        chunk.AnimationReturnsToStart = false;
+        if (chunk.TerrainRenderer != null)
+        {
+            chunk.AnimationBlock.SetFloat(ChunkAnimBaseYId, 1000f);
+            chunk.AnimationBlock.SetFloat(ChunkAnimRiseHeightId, 0f);
+            chunk.TerrainRenderer.SetPropertyBlock(chunk.AnimationBlock);
+        }
+    }
+
+    /// <summary>
+    /// 【程序化山脉-阶段 5.1】从已构建几何 + 本 Chunk 格集合派生山体拓扑签名（纯函数）。
+    /// 有效山格集合用 HasVisibleMountain（与 Height 无关，决策 ⑳ 阈值已并入）；
+    /// 山体/碰撞 indices 内容摘要覆盖 halo 驱动的 rect/tri 变化（跨 Chunk 邻居可见性翻转也会改布局）。
+    /// </summary>
+    private static MountainTopologySignature BuildMountainTopologySignature(
+        TerrainGeometry terrain, IReadOnlyList<HexCellData> chunkCells)
+    {
+        var subMeshCounts = new List<int>(terrain.SubMeshIndices != null ? terrain.SubMeshIndices.Length : 0);
+        if (terrain.SubMeshIndices != null)
+        {
+            foreach (int[] sub in terrain.SubMeshIndices)
+                subMeshCounts.Add(sub != null ? sub.Length : 0);
+        }
+
+        var visibleOrders = new List<int>();
+        if (chunkCells != null)
+        {
+            foreach (HexCellData cell in chunkCells)
+            {
+                if (cell != null && MountainGeometryBuilder.HasVisibleMountain(cell))
+                    visibleOrders.Add(cell.GenerateOrder);
+            }
+        }
+
+        return MountainTopologySignature.Build(
+            hasMountain: true,
+            totalVertexCount: terrain.Vertices != null ? terrain.Vertices.Length : 0,
+            mountainIndexCount: terrain.MountainIndices != null ? terrain.MountainIndices.Length : 0,
+            subMeshIndexCounts: subMeshCounts,
+            mountainIndices: terrain.MountainIndices,
+            collisionIndices: terrain.CollisionIndices,
+            visibleMountainCellOrders: visibleOrders);
     }
 
     private static void FillMeshData(Mesh mesh, TerrainGeometry geometry)
@@ -1577,6 +1936,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         // 【阶段四】动画通道（§20-10）：仅在动画构建时写入，普通重建不写（shader 读到 0 → 不参与）
         if (geometry.UV2s != null) mesh.uv2 = geometry.UV2s;
         if (geometry.UV3s != null) mesh.uv3 = geometry.UV3s;
+        if (geometry.UV4s != null) mesh.SetUVs(3, new List<Vector4>(geometry.UV4s));
         mesh.subMeshCount = geometry.SubMeshIndices.Length;
         for (int i = 0; i < geometry.SubMeshIndices.Length; i++)
         {
@@ -1586,6 +1946,39 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         mesh.RecalculateNormals();
         mesh.RecalculateTangents();
         MapController.SanitizeNormalsAndTangents(mesh);
+        mesh.RecalculateBounds();
+        // 【程序化山脉-阶段 5.7】动画构建预扩保守 bounds（CPU 逐帧写 vertices 不更新 bounds；
+        // 覆盖 start→target 全程 + 山峰 + clip 余量，防视锥/阴影剔除峰顶）。普通构建 null 跳过。
+        if (geometry.ConservativeBounds.HasValue)
+            mesh.bounds = geometry.ConservativeBounds.Value;
+    }
+
+    /// <summary>
+    /// 【程序化山脉-阶段 3.2】填充独立碰撞网格：共享渲染顶点 + CollisionIndices（单 subMesh，
+    /// 无洞基础表面，山体替换面不参与碰撞）。MeshCollider cooking 只消费位置，
+    /// 无需法线/切线，跳过 RecalculateNormals/Tangents 省开销。
+    /// 动画路径下 staging 顶点已被 ApplyAnimationStartVertices 写为旧高度（UV2.y 存目标），
+    /// 碰撞必须一次性切到终态（决策 ㉚：collision 提交时切到基础终态地表）。
+    /// </summary>
+    private static void FillCollisionMeshData(Mesh mesh, TerrainGeometry geometry)
+    {
+        Vector3[] vertices = geometry.Vertices;
+        if (geometry.UV2s != null && geometry.UV2s.Length == geometry.Vertices.Length)
+        {
+            vertices = new Vector3[geometry.Vertices.Length];
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                Vector3 v = geometry.Vertices[i];
+                v.y = geometry.UV2s[i].y;
+                vertices[i] = v;
+            }
+        }
+        mesh.Clear(false);
+        mesh.indexFormat = vertices.Length > ushort.MaxValue
+            ? UnityEngine.Rendering.IndexFormat.UInt32
+            : UnityEngine.Rendering.IndexFormat.UInt16;
+        mesh.vertices = vertices;
+        mesh.SetTriangles(geometry.CollisionIndices, 0);
         mesh.RecalculateBounds();
     }
 
@@ -1653,6 +2046,45 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             error = $"Terrain UV3={geometry.UV3s.Length}, vertices={geometry.Vertices.Length}";
             return false;
         }
+        if (geometry.UV4s != null && geometry.UV4s.Length != geometry.Vertices.Length)
+        {
+            error = $"Terrain UV4={geometry.UV4s.Length}, vertices={geometry.Vertices.Length}";
+            return false;
+        }
+        if (geometry.UV4s != null)
+        {
+            for (int i = 0; i < geometry.UV4s.Length; i++)
+            {
+                Vector4 uv4 = geometry.UV4s[i];
+                if (!IsFinite(uv4.x) || !IsFinite(uv4.y) || !IsFinite(uv4.z) || !IsFinite(uv4.w)
+                    || uv4.z < -1e-5f || uv4.z > 1.00001f)
+                {
+                    error = $"Terrain UV4 融合通道无效（顶点 {i}）";
+                    return false;
+                }
+            }
+        }
+        // 【程序化山脉-阶段 5.3】动画通道有效性（决策 ㉛）：全部顶点 start/target/delay 有限，delayEnd ≥ delayStart。
+        // 山体顶点通道由逐顶点来源集合生成（AppendMountainAnimUV），普通地形通道亦一并校验（无回归风险：
+        // solid 用本格 delta、rect/tri 用端点加权混合，均满足 delayEnd ≥ delayStart）。
+        if (geometry.UV2s != null && geometry.UV3s != null)
+        {
+            for (int i = 0; i < geometry.UV2s.Length; i++)
+            {
+                Vector2 uv2 = geometry.UV2s[i];
+                Vector2 uv3 = geometry.UV3s[i];
+                if (!IsFinite(uv2.x) || !IsFinite(uv2.y) || !IsFinite(uv3.x) || !IsFinite(uv3.y))
+                {
+                    error = $"Terrain 动画通道含非有限值（顶点 {i}）";
+                    return false;
+                }
+                if (uv3.y < uv3.x - 1e-6f)
+                {
+                    error = $"Terrain UV3 delayEnd < delayStart（顶点 {i}）";
+                    return false;
+                }
+            }
+        }
         if (geometry.SubMeshIndices == null)
         {
             error = "Terrain submeshes=null";
@@ -1662,6 +2094,44 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         {
             if (!ValidateIndices(geometry.SubMeshIndices[i], geometry.Vertices.Length, $"Terrain submesh {i}", out error))
                 return false;
+        }
+        // 【程序化山脉】山体槽/独立碰撞网格索引范围校验；
+        // HasMountain 以最终非空 MountainIndices 为准（结构一致，无需额外判断）。
+        if (!ValidateIndices(geometry.MountainIndices, geometry.Vertices.Length, "Terrain mountain", out error))
+            return false;
+        if (!ValidateIndices(geometry.CollisionIndices, geometry.Vertices.Length, "Terrain collision", out error))
+            return false;
+        // 【程序化山脉-阶段 5.8】碰撞索引不得引用仅山体渲染顶点（决策 ㉛ 回归拦截；
+        // 构造上由分槽构建保证，此校验只防未来构建顺序回归导致碰撞面挂在山体顶点上）。
+        if (geometry.CollisionIndices != null && geometry.MountainVertexRanges != null)
+        {
+            for (int i = 0; i < geometry.CollisionIndices.Length; i++)
+            {
+                int vertex = geometry.CollisionIndices[i];
+                for (int r = 0; r + 1 < geometry.MountainVertexRanges.Length; r += 2)
+                {
+                    int start = geometry.MountainVertexRanges[r];
+                    int count = geometry.MountainVertexRanges[r + 1];
+                    if (vertex >= start && vertex < start + count)
+                    {
+                        error = $"Terrain collision index {vertex} 引用了仅山体渲染顶点（区间 {start}..{start + count}）";
+                        return false;
+                    }
+                }
+            }
+        }
+        // 槽布局一致性：山脚融合槽位于 tri 后，主山体槽仅在 HasMainMountainSlot 时存在。
+        if (geometry.HasMountain)
+        {
+            int expectedSlots = 3 + (geometry.RectAs != null ? geometry.RectAs.Length : 0)
+                + (geometry.TriAs != null ? geometry.TriAs.Length : 0)
+                + (geometry.MountainBoundaryMaterials != null ? geometry.MountainBoundaryMaterials.Length : 0)
+                + (geometry.HasMainMountainSlot ? 1 : 0);
+            if (geometry.SubMeshIndices.Length != expectedSlots)
+            {
+                error = $"Terrain 山体槽布局不一致：{geometry.SubMeshIndices.Length} != {expectedSlots}";
+                return false;
+            }
         }
         return true;
     }
@@ -1789,7 +2259,141 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             }
             allMaterials[3 + geometry.RectAs.Length + i] = mat;
         }
+        Material[] boundaryMaterials = geometry.MountainBoundaryMaterials ?? System.Array.Empty<Material>();
+        int boundaryOffset = 3 + geometry.RectAs.Length + geometry.TriAs.Length;
+        for (int i = 0; i < boundaryMaterials.Length; i++)
+        {
+            Material terrain = boundaryMaterials[i];
+            if (!_mountainBoundaryMaterialCache.TryGetValue(terrain, out Material mat))
+            {
+                mat = CreateMountainBoundaryMaterial(terrain);
+                _mountainBoundaryMaterialCache[terrain] = mat;
+            }
+            ApplyMountainMaterialConfig(mat, _config != null ? _config.mountainConfig : null);
+            mat.EnableKeyword("_MOUNTAIN_TERRAIN_BLEND");
+            allMaterials[boundaryOffset + i] = mat;
+        }
+        // 【程序化山脉-阶段 4.2】山体槽专属稳定材质（Custom/MountainLowPoly_Fog；查找失败回落
+        // _terrainBaseMaterial0，只记录一次错误；Transition 变体属阶段 5，动画路径继续回落稳定材质）。
+        if (geometry.HasMainMountainSlot)
+            allMaterials[boundaryOffset + boundaryMaterials.Length] = GetOrCreateMountainMaterial();
         return allMaterials;
+    }
+
+    private Material CreateMountainBoundaryMaterial(Material terrainMaterial)
+    {
+        Material material = new Material(GetOrCreateMountainMaterial());
+        material.name = $"MountainTerrainBlend_{(terrainMaterial != null ? terrainMaterial.name : "Null")}";
+        material.EnableKeyword("_MOUNTAIN_TERRAIN_BLEND");
+        material.SetTexture("_TerrainTex", terrainMaterial != null && terrainMaterial.mainTexture != null
+            ? terrainMaterial.mainTexture : Texture2D.whiteTexture);
+        material.SetTextureScale("_TerrainTex", terrainMaterial != null ? terrainMaterial.mainTextureScale : Vector2.one);
+        material.SetTextureOffset("_TerrainTex", terrainMaterial != null ? terrainMaterial.mainTextureOffset : Vector2.zero);
+        material.SetTexture("_TerrainNormal", terrainMaterial != null && terrainMaterial.HasProperty("_BumpMap")
+            ? terrainMaterial.GetTexture("_BumpMap") : Texture2D.normalTexture);
+        material.SetColor("_TerrainColor", terrainMaterial != null && terrainMaterial.HasProperty("_Color")
+            ? terrainMaterial.GetColor("_Color") : Color.white);
+        material.SetFloat("_TerrainSmoothness", terrainMaterial != null && terrainMaterial.HasProperty("_Glossiness")
+            ? terrainMaterial.GetFloat("_Glossiness") : 0.15f);
+        return material;
+    }
+
+    /// <summary>
+    /// 【程序化山脉-阶段 4.2】懒创建山体稳定材质：优先克隆 MountainConfigSO.stableMaterial 资产
+    /// （属性全部继承），否则 Shader.Find 专属 Shader 后按配置推参数。Shader 查找只尝试一次；
+    /// 失败时回落阶段 3 的 _terrainBaseMaterial0 并只记录一次错误，禁止每 Chunk/每帧重复
+    /// Shader.Find 或刷日志。实例由本 Renderer 独占，OnDestroy 显式销毁。
+    /// </summary>
+    private Material GetOrCreateMountainMaterial()
+    {
+        MountainConfigSO mountainConfig = _config != null ? _config.mountainConfig : null;
+        Material source = mountainConfig != null ? mountainConfig.stableMaterial : null;
+        if (_mountainMaterial != null)
+        {
+            ApplyMountainMaterialConfig(_mountainMaterial, mountainConfig);
+            return _mountainMaterial;
+        }
+
+        if (!_mountainShaderLookupAttempted)
+        {
+            _mountainShaderLookupAttempted = true;
+            _mountainShader = source != null ? source.shader : Shader.Find(MountainMaterialContract.StableShaderName);
+            if (_mountainShader == null)
+                Debug.LogError($"[ChunkMapRenderer] 找不到山体稳定 Shader {MountainMaterialContract.StableShaderName}" +
+                               "（且 MountainConfigSO.stableMaterial 未配置），山体槽回落 _terrainBaseMaterial0（阶段 3 临时材质）。");
+        }
+        if (_mountainShader == null)
+            return _terrainBaseMaterial0;
+
+        _mountainMaterial = source != null ? new Material(source) : new Material(_mountainShader);
+        ApplyMountainMaterialConfig(_mountainMaterial, mountainConfig);
+        return _mountainMaterial;
+    }
+
+    /// <summary>
+    /// 同步 MountainConfigSO 到运行时材质实例。配置可能在材质实例创建后才被 Inspector 修改，
+    /// 因此不能只在首次 Instantiate 时读取一次 Rock Texture 和关键字。
+    /// </summary>
+    private void ApplyMountainMaterialConfig(Material material, MountainConfigSO mountainConfig)
+    {
+        if (material == null || mountainConfig == null)
+            return;
+
+        material.SetColor("_ColorLow", mountainConfig.tierColorLow);
+        material.SetColor("_ColorMid", mountainConfig.tierColorMid);
+        material.SetColor("_ColorHigh", mountainConfig.tierColorHigh);
+        material.SetTexture("_RockTexture", mountainConfig.rockTexture);
+        material.SetFloat("_RockTextureEnabled", mountainConfig.rockTexture != null ? 1f : 0f);
+        material.SetFloat("_TriplanarWorldScale", mountainConfig.triplanarWorldScale);
+        material.SetFloat("_TriplanarBlendSharpness", mountainConfig.triplanarBlendSharpness);
+        material.SetFloat("_Roughness", mountainConfig.roughness);
+        material.SetFloat("_Metallic", mountainConfig.metallic);
+        material.SetFloat("_ShadowStrength", mountainConfig.shadowStrength);
+
+        bool textureEnabled = mountainConfig.rockTexture != null;
+        if (textureEnabled)
+            material.EnableKeyword("_ROCK_TEXTURE");
+        else
+            material.DisableKeyword("_ROCK_TEXTURE");
+
+    }
+
+    /// <summary>
+    /// 【程序化山脉-阶段 5.4】懒创建山体 Transition 材质（动画期间 keep-below clip）：
+    /// 属性从稳定山体材质克隆 + 替换为山体 Transition Shader（Triplanar/色阶/法线/雾化契约完整保留，
+    /// 与 TerrainBase_Fog_Transition 同模式）。每 Renderer 只缓存一份；Shader 查找只尝试一次，
+    /// 缺失时回落稳定山体材质并只报一次错误，绝不回落普通 Terrain shader。
+    /// 稳定材质实例尚未创建时先走 GetOrCreateMountainMaterial（保证克隆源齐备）。
+    /// </summary>
+    private Material GetOrCreateMountainTransitionMaterial(Material stable)
+    {
+        if (_mountainTransitionMaterial != null)
+        {
+            ApplyMountainMaterialConfig(_mountainTransitionMaterial,
+                _config != null ? _config.mountainConfig : null);
+            return _mountainTransitionMaterial;
+        }
+        if (stable == null)
+            stable = GetOrCreateMountainMaterial();
+        if (!_mountainTransitionShaderLookupAttempted)
+        {
+            _mountainTransitionShaderLookupAttempted = true;
+            _mountainTransitionShader = Shader.Find(MountainMaterialContract.TransitionShaderName);
+            if (_mountainTransitionShader == null)
+                Debug.LogError($"[ChunkMapRenderer] 找不到山体 Transition Shader {MountainMaterialContract.TransitionShaderName}" +
+                               "，山体槽回落稳定山体材质（动画期间无 keep-below clip，山体槽不参与顶出）。");
+        }
+        if (_mountainTransitionShader == null)
+            return stable;
+
+        _mountainTransitionMaterial = MakeTransitionMaterial(stable, _mountainTransitionShader);
+        if (_mountainTransitionMaterial != null)
+        {
+            // 换 Shader 后同步完整表现参数与 Triplanar 关键字，保证动画期间外观与稳定态一致。
+            ApplyMountainMaterialConfig(_mountainTransitionMaterial,
+                _config != null ? _config.mountainConfig : null);
+        }
+        return _mountainTransitionMaterial ?? stable;
     }
 
     /// <summary>
@@ -1812,15 +2416,18 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         if (_transitionTriShader == null)
             _transitionTriShader = Shader.Find("Custom/ThreeMaterialBlend_Land_Transition");
 
-        // 【阶段四修订-审查修复】布局一致性校验：稳定数组 = 3 基础 + rect 组合 + tri 组合。
-        // 若与稳定路径 ResolveTerrainMaterials 的槽布局漂移（未来新增 submesh 槽/改组合顺序），
-        // 降级返回稳定材质并报错，避免 Transition 材质落错槽或 result 出现 null 混入 sharedMaterials。
+        // 【阶段四修订-审查修复】布局一致性校验：稳定数组 = 3 基础 + rect 组合 + tri 组合
+        // + (HasMountain ? 1 山体槽)。若与稳定路径 ResolveTerrainMaterials 的槽布局漂移
+        // （未来新增 submesh 槽/改组合顺序），降级返回稳定材质并报错，避免 Transition
+        // 材质落错槽或 result 出现 null 混入 sharedMaterials。
         int rectCount = geometry.RectAs != null ? geometry.RectAs.Length : 0;
         int triCount = geometry.TriAs != null ? geometry.TriAs.Length : 0;
-        if (stableMaterials.Length != 3 + rectCount + triCount)
+        int boundaryCount = geometry.MountainBoundaryMaterials != null ? geometry.MountainBoundaryMaterials.Length : 0;
+        int expectedSlots = 3 + rectCount + triCount + boundaryCount + (geometry.HasMainMountainSlot ? 1 : 0);
+        if (stableMaterials.Length != expectedSlots)
         {
             Debug.LogError($"[ChunkMapRenderer] Transition 材质布局漂移：stable={stableMaterials.Length}, " +
-                           $"rect={rectCount}, tri={triCount}，降级为稳定材质（动画期间无顶点变形）。");
+                           $"rect={rectCount}, tri={triCount}, boundary={boundaryCount}, mountain={(geometry.HasMainMountainSlot ? 1 : 0)}，降级为稳定材质（动画期间无顶点变形）。");
             return stableMaterials;
         }
 
@@ -1866,6 +2473,33 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             result[3 + rectCount + i] = mat;
         }
 
+        int boundaryOffset = 3 + rectCount + triCount;
+        if (boundaryCount > 0 && !_mountainTransitionShaderLookupAttempted)
+            GetOrCreateMountainTransitionMaterial(GetOrCreateMountainMaterial());
+        for (int i = 0; i < boundaryCount; i++)
+        {
+            Material terrain = geometry.MountainBoundaryMaterials[i];
+            if (!_mountainBoundaryTransitionCache.TryGetValue(terrain, out Material mat))
+            {
+                Material stableBoundary = stableMaterials[boundaryOffset + i];
+                mat = _mountainTransitionShader != null
+                    ? MakeTransitionMaterial(stableBoundary, _mountainTransitionShader)
+                    : stableBoundary;
+                if (mat != null) mat.EnableKeyword("_MOUNTAIN_TERRAIN_BLEND");
+                _mountainBoundaryTransitionCache[terrain] = mat;
+            }
+            ApplyMountainMaterialConfig(mat, _config != null ? _config.mountainConfig : null);
+            if (mat != null) mat.EnableKeyword("_MOUNTAIN_TERRAIN_BLEND");
+            result[boundaryOffset + i] = mat;
+        }
+
+        // 【程序化山脉-阶段 5.4】山体槽改用山体 Transition 变体（keep-below clip 与 surf/ShadowCaster
+        // 同契约；动画期间外观 = 稳定版 Triplanar/色阶/法线/雾化）。Shader 缺失时回落稳定山体材质
+        // 并只报一次（GetOrCreateMountainTransitionMaterial），绝不回落普通 Terrain shader。
+        if (geometry.HasMainMountainSlot)
+            result[boundaryOffset + boundaryCount] = GetOrCreateMountainTransitionMaterial(
+                stableMaterials[boundaryOffset + boundaryCount]);
+
         return result;
     }
 
@@ -1882,12 +2516,25 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     /// <summary>显式销毁本 Renderer 独占创建的材质（§6-2：禁止依赖"引擎自动回收"）。</summary>
     private void OnDestroy()
     {
+        // 【程序化山脉-阶段 3.7】独立碰撞双缓冲 mesh 由 Renderer 独占持有，显式销毁
+        foreach (ChunkRenderData chunk in _chunks.Values)
+        {
+            if (chunk.ActiveCollision != null) Object.Destroy(chunk.ActiveCollision);
+            if (chunk.StagingCollision != null) Object.Destroy(chunk.StagingCollision);
+        }
+
         DestroyMaterialIfNotNull(_terrainBaseMaterial0);
         DestroyMaterialIfNotNull(_terrainBaseMaterial1);
         DestroyMaterialIfNotNull(_terrainBaseMaterial2);
+        // 【程序化山脉-阶段 4.2】山体稳定材质为本 Renderer 独占创建的实例，一并显式销毁
+        DestroyMaterialIfNotNull(_mountainMaterial);
+        // 【程序化山脉-阶段 5.4】山体 Transition 材质同属本 Renderer 独占创建，一并显式销毁
+        DestroyMaterialIfNotNull(_mountainTransitionMaterial);
         foreach (Material mat in _rectMaterialCache.Values)
             DestroyMaterialIfNotNull(mat);
         foreach (Material mat in _triMaterialCache.Values)
+            DestroyMaterialIfNotNull(mat);
+        foreach (Material mat in _mountainBoundaryMaterialCache.Values)
             DestroyMaterialIfNotNull(mat);
 
         // 阶段四修订：Transition 变体材质同属本 Renderer 独占创建，一并显式销毁
@@ -1898,8 +2545,12 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             DestroyMaterialIfNotNull(mat);
         foreach (Material mat in _triTransitionCache.Values)
             DestroyMaterialIfNotNull(mat);
+        foreach (Material mat in _mountainBoundaryTransitionCache.Values)
+            if (!_mountainBoundaryMaterialCache.ContainsValue(mat)) DestroyMaterialIfNotNull(mat);
         _rectTransitionCache.Clear();
         _triTransitionCache.Clear();
+        _mountainBoundaryMaterialCache.Clear();
+        _mountainBoundaryTransitionCache.Clear();
     }
 
     private static void DestroyMaterialIfNotNull(Material material)
@@ -2070,6 +2721,30 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             starts, ends, type, subdivision, perturbIntermediate);
         _genericRectangleMeshes[(hexCellData.GenerateOrder, direction)] = rectangle;
         return rectangle;
+    }
+
+    /// <summary>
+    /// 【程序化山脉-阶段 3.6】山体 rect（缓存；与普通 rect 同键）。山格可能是 owner 也可能是
+    /// neighbor，两侧高度统一走规范化角点/边点函数（翻转对称，跨 Chunk 一致）。
+    /// </summary>
+    private MountainRectBuild GetMountainRectangleMesh(CellBuildContext ctx, Enums.HexDirection direction)
+    {
+        var key = (ctx.Cell.GenerateOrder, direction);
+        if (_mountainRectangleMeshes.TryGetValue(key, out MountainRectBuild cached))
+            return cached;
+
+        HexCellData neighbor = _mapDataService.GetNeighbor(ctx.Cell, direction);
+        Vector3[] neighborSolid = ctx.GetNeighborSolid(direction);
+        if (neighbor == null || ctx.Solid == null || neighborSolid == null)
+        {
+            throw new System.InvalidOperationException(
+                $"ChunkMapRenderer mountain rectangle dependency missing: owner={ctx.Cell.GenerateOrder}, direction={direction}.");
+        }
+        MountainRectBuild build = MountainGeometryBuilder.BuildMountainRectData(
+            ctx.Cell, neighbor, ctx.Solid, neighborSolid, direction,
+            (c, d) => _mapDataService.GetNeighbor(c, d));
+        _mountainRectangleMeshes[key] = build;
+        return build;
     }
 
     private int GetSubdivision(float heightA, float heightB)
@@ -2321,6 +2996,17 @@ public sealed class ChunkRenderData
     public Mesh StagingWater;
     public Mesh ActiveRiver;
     public Mesh StagingRiver;
+
+    /// <summary>【程序化山脉-阶段 3.2】独立碰撞双缓冲 Mesh（决策 ㉚：山体不参与 MeshCollider）。
+    /// 延迟创建：仅 HasMountain Chunk 提交时分配，无山 Chunk 保持碰撞 = 渲染 mesh。</summary>
+    public Mesh ActiveCollision;
+    public Mesh StagingCollision;
+
+    /// <summary>【程序化山脉-阶段 5.1】最后一次已提交的山体拓扑签名（决策 ㉙/㉛）。
+    /// 供下一次动画准备阶段与新的 staging 比较：仅 Height 变化 ⇒ 签名不变（可走高度动画）；
+    /// 清除/水淹/恢复/阈值跨越 ⇒ 签名改变（阶段 5.5 据此整笔事务降级同步提交）。
+    /// 无山 Chunk 恒为 MountainTopologySignature.Empty，零分配。</summary>
+    public MountainTopologySignature LastMountainTopology;
 
     /// <summary>【动态地图-阶段四】本 Chunk 的动画进度属性块（_ChunkProgress，§20-10）。</summary>
     public readonly UnityEngine.MaterialPropertyBlock AnimationBlock = new UnityEngine.MaterialPropertyBlock();

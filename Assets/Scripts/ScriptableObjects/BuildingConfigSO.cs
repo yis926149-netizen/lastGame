@@ -12,8 +12,11 @@ public class BuildingConfigSO : NormalCardConfigSO
     [Tooltip("建筑类型（直接存储枚举，不再由 ID 推导）")]
     public Enums.BulidingType buildingType;
 
-    [Tooltip("建筑模型预制体")]
+    [Tooltip("建筑模型预制体（玩家侧）")]
     public GameObject buildingModel;
+
+    [Tooltip("敌方（AI）专用建筑模型预制体；留空则回退使用 buildingModel")]
+    public GameObject enemyBuildingModel;
 
     [Tooltip("基础血量")]
     public float baseHP;

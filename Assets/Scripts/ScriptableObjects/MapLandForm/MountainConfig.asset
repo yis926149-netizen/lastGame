@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9eda50ae4712e0244a186053b753e489, type: 3}
+  m_Name: MountainConfig
+  m_EditorClassIdentifier: 
+  mountainLandForm: {fileID: 11400000, guid: 0b47c459e919a954d8f91d6070458184, type: 2}
+  ridgeCount: 0
+  minRidgeLength: 5
+  maxRidgeLength: 12
+  widthRadius: 1
+  ridgeMinSpacing: 3
+  scoreHeightWeight: 1
+  scoreDropWeight: 1
+  scoreTurnPenalty: 1
+  flatHeightThreshold: 1
+  baseHeight: 1.2
+  minHeight: 0.8
+  maxHeight: 2.5
+  heightPerLength: 0.12
+  gamma: 1.2
+  ridgeNoiseAmplitude: 0.4
+  cellNoiseScale: 0.3
+  minVisibleHeight: 0.15
+  maxSlopeRatio: 0.8
+  xzPerturbRatio: 0.15
+  peakEccentricMinRatio: 0.05
+  peakEccentricMaxRatio: 0.2
+  debugSingleCellAndStraightRidge: 0
+  debugStraightRidgeLength: 5
+  stableMaterial: {fileID: 2100000, guid: 3086f256b7664adea6928617b4422e3f, type: 2}
+  tierColorLow: {r: 0.8679245, g: 0.712577, b: 0.1514774, a: 1}
+  tierColorMid: {r: 0.745283, g: 0.745283, b: 0.745283, a: 0}
+  tierColorHigh: {r: 1, g: 1, b: 1, a: 1}
+  rockTexture: {fileID: 2800000, guid: 0a5ff2c9de054b34c8348fdf9f8925b4, type: 3}
+  triplanarWorldScale: 1
+  triplanarBlendSharpness: 4
+  roughness: 0.9
+  metallic: 0
+  shadowStrength: 1

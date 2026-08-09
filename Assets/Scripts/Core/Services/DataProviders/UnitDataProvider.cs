@@ -4,6 +4,9 @@ using UnityEngine;
 public interface IUnitDataProvider
 {
     GameObject GetUnitPrefab(int unitId);
+
+    /// <summary>敌方（AI）单位预制体；enemyUnitModel 留空时回退 unitModel。</summary>
+    GameObject GetEnemyUnitPrefab(int unitId);
     UnitData GetUnitData(int unitId);
     Sprite GetUnitIcon(int unitId);
     Sprite GetSkillIcon(int unitId);
@@ -52,6 +55,11 @@ public class UnitDataProvider : IUnitDataProvider
 
     // 旧 int 查询 API：按显式 ID 查 config 后读取字段。
     public GameObject GetUnitPrefab(int unitId) => GetUnitConfig(unitId).unitModel;
+    public GameObject GetEnemyUnitPrefab(int unitId)
+    {
+        UnitConfigSO config = GetUnitConfig(unitId);
+        return config.enemyUnitModel != null ? config.enemyUnitModel : config.unitModel;
+    }
     public UnitData GetUnitData(int unitId) => GetUnitConfig(unitId).unitData;
     public Sprite GetUnitIcon(int unitId) => GetUnitConfig(unitId).unitIcon;
     public Sprite GetSkillIcon(int unitId) => GetUnitConfig(unitId).skillIcon;

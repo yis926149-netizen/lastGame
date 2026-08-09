@@ -38,8 +38,11 @@ public class UnitConfigSO : NormalCardConfigSO
     [Tooltip("单位数据（unitData.id 即运行时单位 ID 的唯一来源）")]
     public UnitData unitData;
 
-    [Tooltip("单位模型预制体")]
+    [Tooltip("单位模型预制体（玩家侧）")]
     public GameObject unitModel;
+
+    [Tooltip("敌方（AI）专用单位模型预制体；留空则回退使用 unitModel")]
+    public GameObject enemyUnitModel;
 
     [Tooltip("单位图标")]
     public Sprite unitIcon;

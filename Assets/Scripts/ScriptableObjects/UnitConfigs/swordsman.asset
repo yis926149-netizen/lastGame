@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aae3eff17432ad0439c74337ac13b25b, type: 3}
+  m_Name: swordsman
+  m_EditorClassIdentifier: 
+  cardSprite: {fileID: 21300000, guid: a479ba87f68a687418410061514bfc31, type: 3}
+  unitData:
+    id: 13
+    unitName: "RPG\u82F1\u6770"
+    MovementPoints: 1
+    hp: 20
+    BasicAttackRange: 1
+    BasicAttackValue: 15
+    Defense: 2
+    ViewPoints: 1
+    AttackInterval: 0
+  unitModel: {fileID: 177841905923460461, guid: 0ca82c05359f720498e3262bf9fd82d4, type: 3}
+  enemyUnitModel: {fileID: 2477262918593569086, guid: fdc4efefc5c2a3d4baca5b43abbff4b0, type: 3}
+  unitIcon: {fileID: 21300000, guid: 2c261ef62acd6d441b57e84505154079, type: 3}
+  skillIcon: {fileID: 21300000, guid: 9affb0abb983c3e47b044a3e2ea0eb30, type: 3}
+  strategyType: 0
+  attackSfx:
+    primarySfx: Weapon_Whoosh 09
+    delayedSfx:
+    - sfxName: Short_Sword_Hit 04
+      delay: 0.5
+    - sfxName: Short_Sword_Hit 04
+      delay: 1
+    - sfxName: Short_Sword_Hit 03
+      delay: 0

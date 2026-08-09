@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: NormalCardPool
   m_EditorClassIdentifier: 
   cards:
-  - {fileID: 11400000, guid: 035520bc5ead6ef47b285e744299ad1f, type: 2}
+  - {fileID: 11400000, guid: 757ff58052be4a34f8d53b606333c1ff, type: 2}
   - {fileID: 11400000, guid: 45980904a474fe545b1f459945a38858, type: 2}
   - {fileID: 11400000, guid: 02cac065de3147a49afecc5ae529ea3d, type: 2}
-  - {fileID: 11400000, guid: 48fe9343aa489a3498a1d1b5e571b01e, type: 2}
+  - {fileID: 11400000, guid: 5a30204254541f74d8075aa94faed401, type: 2}
   guaranteedFirstCard: {fileID: 0}

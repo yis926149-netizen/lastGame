@@ -96,6 +96,14 @@ public class TemporaryVisibilityService : IMapVisibilityResolver
     public bool IsVisibleToFaction(HexCellData cell, int factionId)
     {
         if (cell == null) return false;
+
+        // 【程序化山脉-阶段6.2】有效山格永久视觉可见（决策 ⑪）：
+        // 只参与视觉可见性合成，不写 IsExplored/归属/探索费用，也不创建 lease；
+        // 优先级高于普通未探索雾与后勤可见性。水淹/永久清除/低于最小可见高度后
+        // MountainVisibilityRule 自动回落 false，重新走下方普通可见性链（决策 ⑦/㉕）。
+        // 结果与阵营无关：玩家/AI/中立归属的山格视觉均可见（MountainVisibilityRuleTests 覆盖）。
+        if (MountainVisibilityRule.IsPermanentlyVisible(cell)) return true;
+
         if (_temporaryVisible.Contains(cell)) return true;
 
         // 永久可见性：与 LogisticsService 语义一致（归属方已探索且后勤连通 / 中立格按观察方探索位）

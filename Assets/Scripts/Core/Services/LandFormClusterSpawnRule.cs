@@ -10,13 +10,15 @@ using System.Collections.Generic;
 ///  - 簇生成使用独立随机流（SeedService "LandFormCluster"），不消耗散落流的随机数；
 ///  - 掷中簇地貌但不在堆内的格由 RemoveScatteredForm 拦截改写为空白，
 ///    使该地貌只以堆的形式出现（总权重不变，其他地貌不受影响）。
+/// 【程序化山脉-决策 ⑮】多簇遍历：按数据库顺序处理全部 clusterSpawn 地貌，共享占用集合互斥；
+/// 山脉地貌（mountainForm=true）不入本规则（RidgeGenerator 专属 pass），山格不参与簇生长（决策 ⑫）。
 /// </summary>
 public static class LandFormClusterSpawnRule
 {
-    /// <summary>格是否可作为簇成员：非水域、非河流（与散落生成的排除规则一致）。</summary>
+    /// <summary>格是否可作为簇成员：非水域、非河流、非山脉地块（决策 ⑫ 与散落生成一致的排除规则 + 山格排除）。</summary>
     public static bool IsEligible(HexCellData cell)
     {
-        return cell != null && !cell.hasRiver && !WaterLevelConfig.IsWater(cell);
+        return cell != null && !cell.hasRiver && !WaterLevelConfig.IsWater(cell) && !MountainCellRule.IsMountainCell(cell);
     }
 
     /// <summary>从数据库中找到开启簇生成的地貌；没有则返回 null。</summary>
@@ -26,10 +28,42 @@ public static class LandFormClusterSpawnRule
 
         foreach (MapLandFormSO form in database.landForms)
         {
-            if (form != null && form.clusterSpawn)
+            if (form != null && form.clusterSpawn && !form.mountainForm)
                 return form;
         }
         return null;
+    }
+
+    /// <summary>
+    /// 多簇遍历（决策 ⑮）：按数据库顺序生成所有 clusterSpawn 地貌。
+    /// 共享占用集合（reserved = 已有山格 + 已生成的其他簇格）保证互斥；
+    /// 每个地貌独立执行 PlaceClusters + RemoveScatteredForm（簇外散落命中改写为空白）。
+    /// </summary>
+    public static void PlaceAllClusters(
+        MapLandFormDatabaseSO database, List<HexCellData> cells,
+        Func<HexCellData, List<HexCellData>> neighborsOf, Random random)
+    {
+        if (database == null || database.landForms == null || cells == null || cells.Count == 0
+            || neighborsOf == null || random == null)
+            return;
+
+        // 共享占用集合：先纳入全部山脉地块（山格不参与簇生长，决策 ⑫）
+        var reserved = new HashSet<HexCellData>();
+        foreach (HexCellData cell in cells)
+        {
+            if (cell != null && MountainCellRule.IsMountainCell(cell))
+                reserved.Add(cell);
+        }
+
+        foreach (MapLandFormSO form in database.landForms)
+        {
+            if (form == null || !form.clusterSpawn || form.mountainForm) continue;
+
+            HashSet<HexCellData> claimed = PlaceClusters(form, cells, neighborsOf, random, reserved);
+            RemoveScatteredForm(form, cells, claimed);
+            foreach (HexCellData cell in claimed)
+                reserved.Add(cell);
+        }
     }
 
     /// <summary>
@@ -37,9 +71,11 @@ public static class LandFormClusterSpawnRule
     /// 掷点失败自动重试（上限 clusterCount * 100 + 500 次，防止死循环）；
     /// 地图过小无法满足时降级返回已选中的堆心。
     /// </summary>
+    /// <param name="reserved">共享占用集合（已有山格/其他簇格）；堆心不得落在其中。</param>
     public static List<HexCellData> SelectCenters(
         MapLandFormSO form, List<HexCellData> cells,
-        Func<HexCellData, List<HexCellData>> neighborsOf, Random random)
+        Func<HexCellData, List<HexCellData>> neighborsOf, Random random,
+        HashSet<HexCellData> reserved = null)
     {
         var centers = new List<HexCellData>();
         if (form == null || !form.clusterSpawn || form.clusterCount <= 0 || random == null
@@ -53,6 +89,7 @@ public static class LandFormClusterSpawnRule
         {
             HexCellData candidate = cells[random.Next(cells.Count)];
             if (!IsEligible(candidate) || blocked.Contains(candidate)) continue;
+            if (reserved != null && reserved.Contains(candidate)) continue;
 
             centers.Add(candidate);
             MarkBlocked(blocked, candidate, Math.Max(0, form.clusterMinSpacing - 1), neighborsOf);
@@ -62,12 +99,13 @@ public static class LandFormClusterSpawnRule
 
     /// <summary>
     /// 以堆心为起点按概率生长一团不规则簇：中心必填，其余格以 clusterFillProbability
-    /// 填充；未填充或不合格（水域/河流）的格成为死路不再扩展；达到目标格数预算或
+    /// 填充；未填充或不合格（水域/河流/山脉地块）的格成为死路不再扩展；达到目标格数预算或
     /// 最大半径即停止。返回簇内格集合（含堆心）。
     /// </summary>
     public static HashSet<HexCellData> GrowCluster(
         MapLandFormSO form, HexCellData center,
-        Func<HexCellData, List<HexCellData>> neighborsOf, Random random)
+        Func<HexCellData, List<HexCellData>> neighborsOf, Random random,
+        HashSet<HexCellData> reserved = null)
     {
         var cluster = new HashSet<HexCellData>();
         if (form == null || !form.clusterSpawn || center == null || neighborsOf == null || random == null)
@@ -91,7 +129,8 @@ public static class LandFormClusterSpawnRule
             foreach (HexCellData neighbor in neighbors)
             {
                 if (cluster.Contains(neighbor)) continue;
-                if (!IsEligible(neighbor)) continue;                              // 水域/河流：死路
+                if (!IsEligible(neighbor)) continue;                              // 水域/河流/山格：死路
+                if (reserved != null && reserved.Contains(neighbor)) continue;   // 共享占用：其他簇格
                 if (random.NextDouble() >= form.clusterFillProbability) continue; // 概率未命中：死路
 
                 cluster.Add(neighbor);
@@ -107,18 +146,20 @@ public static class LandFormClusterSpawnRule
     /// 执行簇生成并写回地块：选堆心 → 逐堆生长 → 将簇内格覆盖为 form。
     /// 返回被占用的格集合，供调用方做散落拦截（RemoveScatteredForm）。
     /// </summary>
+    /// <param name="reserved">共享占用集合（已有山格/其他簇格）；堆心与生长格均不得落入。</param>
     public static HashSet<HexCellData> PlaceClusters(
         MapLandFormSO form, List<HexCellData> cells,
-        Func<HexCellData, List<HexCellData>> neighborsOf, Random random)
+        Func<HexCellData, List<HexCellData>> neighborsOf, Random random,
+        HashSet<HexCellData> reserved = null)
     {
         var claimed = new HashSet<HexCellData>();
         if (form == null || !form.clusterSpawn || form.clusterCount <= 0 || random == null
             || cells == null || cells.Count == 0 || neighborsOf == null)
             return claimed;
 
-        foreach (HexCellData center in SelectCenters(form, cells, neighborsOf, random))
+        foreach (HexCellData center in SelectCenters(form, cells, neighborsOf, random, reserved))
         {
-            foreach (HexCellData cell in GrowCluster(form, center, neighborsOf, random))
+            foreach (HexCellData cell in GrowCluster(form, center, neighborsOf, random, reserved))
                 claimed.Add(cell);
         }
 

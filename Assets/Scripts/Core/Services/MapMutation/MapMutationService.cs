@@ -155,6 +155,21 @@ public class MapMutationService
         if (options.LockAffectedCells)
             _interactionGate.LockCells(changedSet);
 
+        // 【程序化山脉-阶段 5.5】写数据前快照变化格的有效山体可见性（动画拓扑路由用）。
+        // 只快照 changedSet 本身即可：脏 Chunk 山体几何 = f(本 Chunk 格 ∪ 一环 halo 的
+        // HasVisibleMountain)，而 halo 在本事务中不变（补丁只作用于 changedSet）——
+        // 前后比较等价于含 halo 的完整集合。清除/水淹/阈值跨越/恢复/新增都会翻转可见性。
+        Dictionary<int, bool> mountainVisibilityBefore = null;
+        if (animated)
+        {
+            mountainVisibilityBefore = new Dictionary<int, bool>(changedSet.Count);
+            foreach (HexCellData cell in changedSet)
+            {
+                if (cell == null) continue;
+                mountainVisibilityBefore[cell.GenerateOrder] = MountainGeometryBuilder.HasVisibleMountain(cell);
+            }
+        }
+
         // 阶段四：写数据前快照旧数据（动画起点，§12.1）——
         // oldHeights（Height 级差，供几何 startVertexY 计算）与 oldCenterWorldY（世界 Y，供单位视觉跟随）
         Dictionary<int, float> oldHeights = null;
@@ -183,6 +198,16 @@ public class MapMutationService
             foreach (var (cell, patch) in _pending)
                 ApplyPatch(cell, patch);
             ApplyOwners(ref dirtyFlags);
+
+            // 【程序化山脉-阶段 5.5】拓扑变化检测：写入后用纯函数比较旧/新有效山格集合摘要。
+            // 检测到任何山体拓扑变化（清除/水淹/恢复/阈值跨越/新增）⇒ 整笔事务降级 Duration=0
+            // 同步提交：不创建 TerrainGhost、不切山体 Transition 材质、不启动 MapVisualTransitionService
+            // （首版硬约束：拓扑增删不进入普通高度动画管线，避免旧山体 Ghost 突消与材质槽漂移）。
+            if (animated && MountainTopologyChanged(changedSet, mountainVisibilityBefore))
+            {
+                LogMountainTopologyDowngrade(commitId, changedSet, mountainVisibilityBefore);
+                animated = false;
+            }
 
             // 2. 单位处理：先取消途经不可通行格的移动任务（可能回落到同样不可通行的起点），再兜底弹射
             _unitMovementSystem.CancelMovesIntersecting(changedSet);
@@ -296,6 +321,60 @@ public class MapMutationService
         _inTransaction = false;
     }
 
+    // 【程序化山脉-阶段 5.5】山体拓扑变化检测与同步降级路由 ───────────
+
+    /// <summary>
+    /// 比较写前/写后变化格的有效山体可见性（GenerateOrder 键），任一格翻转即视为拓扑变化。
+    /// 覆盖决策 ㉕ 清除、决策 ⑦ 陆水、阈值跨越（minVisibleHeight，决策 ⑳）、恢复/新增——
+    /// 脏 Chunk 山体几何 = f(本 Chunk 格 ∪ 一环 halo 的 HasVisibleMountain)，halo 本事务不变，
+    /// 故比较 changedSet 即可等价覆盖 rect/tri 山格计数变化。
+    /// </summary>
+    private static bool MountainTopologyChanged(
+        IReadOnlyCollection<HexCellData> changedSet,
+        IReadOnlyDictionary<int, bool> visibilityBefore)
+    {
+        foreach (HexCellData cell in changedSet)
+        {
+            if (cell == null) continue;
+            bool before = visibilityBefore != null
+                && visibilityBefore.TryGetValue(cell.GenerateOrder, out bool v) && v;
+            if (before != MountainGeometryBuilder.HasVisibleMountain(cell))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>整笔事务降级日志：只记录一次明确原因（Clear/Water/VisibilityThreshold/Restore），禁止每 Chunk 刷屏。</summary>
+    private static void LogMountainTopologyDowngrade(
+        int commitId,
+        IReadOnlyCollection<HexCellData> changedSet,
+        IReadOnlyDictionary<int, bool> visibilityBefore)
+    {
+        var reasons = new HashSet<string>();
+        int flipped = 0;
+        foreach (HexCellData cell in changedSet)
+        {
+            if (cell == null) continue;
+            bool before = visibilityBefore != null
+                && visibilityBefore.TryGetValue(cell.GenerateOrder, out bool v) && v;
+            bool now = MountainGeometryBuilder.HasVisibleMountain(cell);
+            if (before == now) continue;
+            flipped++;
+            if (!now)
+            {
+                reasons.Add(cell.mountainCleared ? "Clear"
+                    : WaterLevelConfig.IsWater(cell) ? "Water" : "VisibilityThreshold");
+            }
+            else
+            {
+                reasons.Add("Restore");
+            }
+        }
+        Debug.Log($"[MapMutationService] MountainTopologyChanged: {string.Join(",", reasons)} " +
+                  $"（{flipped} 格翻转，Commit #{commitId}）⇒ 整笔事务降级为同步提交" +
+                  "（山体拓扑变化不走普通高度动画管线，首版硬约束：不创建 Ghost、不切 Transition、不启动视觉过渡）。");
+    }
+
     public bool HasActiveTransaction => _inTransaction;
 
     // ── 分帧提交（阶段五，§阶段五-分帧提交）──────────────────
@@ -329,6 +408,13 @@ public class MapMutationService
 
         MapDirtyFlags dirtyFlags = ComputeDirtyFlags(_pending);
 
+        // 【程序化山脉-阶段 5.6】分帧提交是同步路径：若同 Chunk 已有旧动画，先强制完成冲突的
+        // 旧动画（等价 Commit 动画路径的 ForceCompleteConflicting），再同步提交，
+        // 避免旧动画 Finalize/进度驱动把过期 subMesh 布局或 keep-below 平面带到新 mesh。
+        IReadOnlyList<ChunkIndex> dirtyIndices = _renderBackend.ComputeDirtyChunkIndices(changedSet);
+        if (_visualTransition != null && _visualTransition.IsAnimating)
+            _visualTransition.ForceCompleteConflicting(dirtyIndices);
+
         if (options == null || options.LockAffectedCells)
             _interactionGate.LockCells(changedSet);
 
@@ -343,7 +429,6 @@ public class MapMutationService
             _unitMovementSystem.EjectUnitsFromImpassableCells(changedSet);
 
             // 脏 Chunk 列表入队（分帧构建）
-            IReadOnlyList<ChunkIndex> dirtyIndices = _renderBackend.ComputeDirtyChunkIndices(changedSet);
             var pendingChunks = new List<ChunkIndex>(dirtyIndices ?? Array.Empty<ChunkIndex>());
             _slicedState = new SlicedCommitState
             {
@@ -488,14 +573,16 @@ public class MapMutationService
                 cell.hasRiverOutgoing = false;
                 cell.RiverIncomingDirection = Enums.HexDirection.None;
                 cell.RiverOutgoingDirection = Enums.HexDirection.None;
+                // 【程序化山脉】决策 ⑦：水→陆后山格规则必须重新派生——
+                // 山格恢复不可通行（DeriveMovementCost 对山格返回 MaxValue），不能默认重置为 1
                 if (!patch.HasMovementCost)
-                    cell.movementCost = 1f;
+                    cell.movementCost = MountainCellRule.DeriveMovementCost(cell);
             }
             else if (!wasWater && nowWater)
             {
                 // 陆地 → 水：反向重置（第一版仅支持水域判断字段）
                 if (!patch.HasMovementCost)
-                    cell.movementCost = float.MaxValue;
+                    cell.movementCost = MountainCellRule.DeriveMovementCost(cell);
             }
         }
 
@@ -509,7 +596,21 @@ public class MapMutationService
             cell.IsUnexplorable = patch.IsUnexplorable;
 
         if (patch.ClearLandForm)
+        {
+            // 【程序化山脉】决策 ㉕：清除山格 = 永久移除（mountainCleared），重建时跳过、不恢复；
+            // 山体几何/规则随 landForm 清除同步消失，移动力重新派生为可通行
+            if (MountainCellRule.IsMountainCell(cell))
+            {
+                cell.mountainCleared = true;
+                cell.mountainRidge = null;
+                cell.mountainRidgeStatus = Enums.MountainRidgeStatus.None;
+                cell.RidgeDirectionA = Enums.HexDirection.None;
+                cell.RidgeDirectionB = Enums.HexDirection.None;
+                if (!patch.HasMovementCost)
+                    cell.movementCost = MountainCellRule.DeriveMovementCost(cell);
+            }
             cell.landForm = null;
+        }
 
         if (patch.ClearResource)
             cell.resource = null;
@@ -533,7 +634,7 @@ public class MapMutationService
     private static MapDirtyFlags ComputeDirtyFlags(IReadOnlyList<(HexCellData Cell, HexCellPatch Patch)> patches)
     {
         MapDirtyFlags flags = MapDirtyFlags.None;
-        foreach (var (_, patch) in patches)
+        foreach (var (cell, patch) in patches)
         {
             if (patch.HasHeight)
                 flags |= MapDirtyFlags.Terrain | MapDirtyFlags.Water | MapDirtyFlags.River |
@@ -543,7 +644,14 @@ public class MapMutationService
             if (patch.ClearRiver)
                 flags |= MapDirtyFlags.Terrain | MapDirtyFlags.River;
             if (patch.ClearLandForm || patch.ClearResource)
+            {
                 flags |= MapDirtyFlags.Objects;
+                // 【程序化山脉】源码审计修正 A-5：清除山格补齐 Terrain 脏位，
+                // 山体几何随重建消失；当前提交路径即使只有 Objects 也会重建 Chunk，
+                // 但补齐语义可防未来按脏位分流时回归
+                if (patch.ClearLandForm && MountainCellRule.IsMountainCell(cell))
+                    flags |= MapDirtyFlags.Terrain;
+            }
             if (patch.HasMovementCost)
                 flags |= MapDirtyFlags.Navigation;
             if (patch.HasIsUnexplorable)

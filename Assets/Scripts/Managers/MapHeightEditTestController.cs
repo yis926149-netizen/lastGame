@@ -79,7 +79,10 @@ public class MapHeightEditTestController : ITickable
         return null;
     }
 
-    /// <summary>高亮仅在指针格变化时重建（RebuildChannel 每次调用都会重建 mesh）。</summary>
+    /// <summary>高亮仅在指针格变化时重建（RebuildChannel 每次调用都会重建 mesh）。
+    /// 【程序化山脉-阶段6.4】调试豁免：本控制器是开发调试工具（仅编辑器/开发构建绑定），
+    /// 使用显式诊断豁免入口——被高度编辑的格即使是山格也必须可见指示，
+    /// 不被玩家可见通道的山格门禁吞掉。</summary>
     private void RefreshHover(HexCellData cell)
     {
         if (cell == _hoveredCell) return;
@@ -88,7 +91,7 @@ public class MapHeightEditTestController : ITickable
         if (cell == null)
             _highlightRenderer.ClearChannel(HexHighlightChannel.Selection);
         else
-            _highlightRenderer.SetHighlightedCells(HexHighlightChannel.Selection, new[] { cell }, Color.cyan);
+            _highlightRenderer.SetHighlightedCellsDiagnostic(HexHighlightChannel.Selection, new[] { cell }, Color.cyan);
     }
 
     /// <summary>单格高度 ±Step 的完整事务（读的是 cell 最新 Height，连发天然累加）。

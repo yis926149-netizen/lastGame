@@ -176,6 +176,67 @@ public class UnitMovementSystemTests
     }
 
     [Test]
+    public void Pathfinding_MountainCells_BlockRouteAndDestination()
+    {
+        // 阶段 7.6：山格不可通行（决策 ①）——山墙封死路径 ⇒ 不可达；山格作为终点 ⇒ 拒绝。
+        var form = ScriptableObject.CreateInstance<MapLandFormSO>();
+        form.mountainForm = true;
+        float prevWaterLevel = WaterLevelConfig.WaterLevel;
+        WaterLevelConfig.WaterLevel = 0f;
+        try
+        {
+            Vector3 start = new Vector3(0, 0, 0);
+            Vector3 target = new Vector3(4, -4, 0);
+            // 山墙：目标格 (4,-4,0) 的 3 个界内邻居全部封为山格（其余邻居越界）⇒ 目标不可达
+            MakeMountain(new Vector3(4, -5, 1), form);
+            MakeMountain(new Vector3(3, -4, 1), form);
+            MakeMountain(new Vector3(3, -3, 0), form);
+            bool walled = _system.CalculateMinMovementCostBetweenTwoHexes(
+                new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
+                start, target, Enums.MovementPurpose.MoveToDestination, out _, out _);
+            Assert.IsFalse(walled, "山墙封死路径 ⇒ 目标不可达（决策 ①）");
+
+            // 山格作为终点：普通可达目标被设为山格 ⇒ 拒绝
+            Vector3 mountainTarget = new Vector3(2, -3, 1);
+            bool reachableBefore = _system.CalculateMinMovementCostBetweenTwoHexes(
+                new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
+                new Vector3(2, -2, 0), mountainTarget, Enums.MovementPurpose.MoveToDestination, out _, out _);
+            Assert.IsTrue(reachableBefore, "前置：该目标在无山时可达");
+            MakeMountain(mountainTarget, form);
+            bool asTarget = _system.CalculateMinMovementCostBetweenTwoHexes(
+                new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
+                new Vector3(2, -2, 0), mountainTarget, Enums.MovementPurpose.MoveToDestination, out _, out _);
+            Assert.IsFalse(asTarget, "山格作为终点 ⇒ 正确拒绝（决策 ①）");
+        }
+        finally
+        {
+            WaterLevelConfig.WaterLevel = prevWaterLevel;
+            Object.DestroyImmediate(form);
+        }
+    }
+
+    private void MakeMountain(Vector3 coord, MapLandFormSO form)
+    {
+        HexCellData cell = _mockMapData.GetCell(coord);
+        cell.landForm = form;
+        cell.mountainCleared = false;
+        cell.mountainRidge = new MountainRidgeData
+        {
+            ridgeId = 1,
+            seed = 1,
+            length = 8,
+            widthRadius = 1.5f,
+            gamma = 1f,
+            hMax = 2f,
+            minVisibleHeight = 0.15f,
+        };
+        cell.mountainRidgeStatus = Enums.MountainRidgeStatus.RidgeCell;
+        cell.mountainDistToRidge = 0f;
+        cell.mountainPosAlongRidge = 1f;
+        cell.movementCost = MountainCellRule.DeriveMovementCost(cell);
+    }
+
+    [Test]
     public void CalculateMinMovementCostBetweenTwoHexes_ReturnsCorrectCost()
     {
         var allPoints = new List<Vector3>(_mockMapData.GetAllHexCoordinates());

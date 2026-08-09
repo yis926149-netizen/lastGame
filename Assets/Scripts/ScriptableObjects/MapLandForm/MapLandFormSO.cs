@@ -34,6 +34,10 @@ public class MapLandFormSO : ScriptableObject
     [Tooltip("该地貌所在格不可部署建筑（如金矿）；单位部署不受限制")]
     public bool blockBuildingSpawn;
 
+    [Header("程序化山脉")]
+    [Tooltip("山脉地貌标记：由 RidgeGenerator 专属 pass 生成，不参与散落/簇生成；必须 modelPrefab/markerPrefab 留空、effectType=None、blockBuildingSpawn=true")]
+    public bool mountainForm;
+
     [Header("生成")]
     [Tooltip("生成权重；0 = 本地貌不生成。簇生成地貌必须保留原权重以锁定散落随机流（同种子下其他地貌位置不变），实际分布由簇逻辑决定")]
     public int spawnWeight = 1;

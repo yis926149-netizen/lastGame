@@ -18,8 +18,7 @@ public class AIManager : MonoBehaviour, IAIManager
     [Inject] private GoldWallet _goldWallet;
     [Inject] private MapGenerationConfigSO _config;
 
-    // 城市预制体：Inspector 序列化引用，注入后转交工厂（场景引用无法直接注入普通类）。
-    public GameObject AICity;
+    // 城市预制体已移入 BuildingDatabaseSO（enemyCityModel），经 BuildingDataProvider 读取，不再由场景序列化。
 
     /// <summary>AI 无操作开关：勾选后 AI 不执行任何操作（探索、出牌、单位AI），方便开发调试。</summary>
     public bool AIDisabled;
@@ -28,16 +27,11 @@ public class AIManager : MonoBehaviour, IAIManager
 
     private void Start()
     {
-        // 把场景序列化的城市预制体交给工厂（工厂是普通类，拿不到 Inspector 引用）。
-        if (_factory != null) _factory.CityPrefab = AICity;
     }
 
     // AI初始化（开局时调用）
     public void AIInit()
     {
-        // 确保工厂已拿到城市预制体（AIInit 可能早于 Start 被 GameFlow 调用）
-        if (_factory != null) _factory.CityPrefab = AICity;
-
         // 【探索重构-阶段7】初始化 AI 金币
         _goldWallet.InitPlayer(1);
 

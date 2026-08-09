@@ -115,13 +115,13 @@ public class ExplorationRewardSystem
             Vector3 spawnPosition = targetCell.RealCenterWorldCoordinate;
             HexCellData spawnCell = targetCell;
 
-            // 目标格已有单位 → 尝试溢出到邻格
-            if (targetCell.IsHaveUnit())
+            // 目标格已有单位或为山格/水域 → 尝试溢出到邻格（决策 ①：山格不可部署）
+            if (targetCell.IsHaveUnit() || !MountainCellRule.CanSpawnUnitOnCell(targetCell))
             {
                 spawnCell = FindOverflowCell(targetCell);
                 if (spawnCell == null)
                 {
-                    Debug.LogWarning($"[ExplorationReward] 无法生成第 {i + 1} 个单位：目标格及邻格均已占用");
+                    Debug.LogWarning($"[ExplorationReward] 无法生成第 {i + 1} 个单位：目标格及邻格均已占用或不可部署");
                     continue; // 跳过该单位
                 }
                 spawnPosition = spawnCell.RealCenterWorldCoordinate;
@@ -167,6 +167,7 @@ public class ExplorationRewardSystem
                     if (!visited.Add(neighbor.HexCoordinate)) continue;
 
                     if (neighbor.HexType != Enums.HexType.LakeOrSea &&
+                        MountainCellRule.CanSpawnUnitOnCell(neighbor) &&
                         neighbor.BulidingTypeOnHex_Building.Key == Enums.BulidingType.NoBuilding &&
                         !neighbor.IsHaveUnit())
                     {

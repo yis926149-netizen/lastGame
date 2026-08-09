@@ -1641,7 +1641,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 222bdc7e85faeed4b9300c2a5747da44, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  AICity: {fileID: 5877676752127630691, guid: 1c0e0cb695955dc41866402cd01838a2, type: 3}
   AIDisabled: 1
 --- !u!114 &286174322
 MonoBehaviour:

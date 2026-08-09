@@ -21,6 +21,24 @@ public class HexCellData
     //地块的移动力消耗(暂且都设置为1)
     public float movementCost = 1;
 
+    // ── 【程序化山脉】山脉地块数据（决策 ①/②/⑯/㉕）──────────────
+    // 山脉占用标记 = landForm == MountainConfigSO.mountainLandForm（modelPrefab/markerPrefab 留空，
+    // effectType=None、blockBuildingSpawn=true）；mountainRidge 为生成时固化的脊线参数快照（共享引用）。
+    /// <summary>所属脊线的固化参数快照；null = 本格不是山脉地块。</summary>
+    public MountainRidgeData mountainRidge;
+    /// <summary>山脉地块角色：脊线格 / 宽度化坡面格。</summary>
+    public Enums.MountainRidgeStatus mountainRidgeStatus = Enums.MountainRidgeStatus.None;
+    /// <summary>脊线格两端通过方向（无向，决策 ⑯；端点只有一端有效）。</summary>
+    public Enums.HexDirection RidgeDirectionA = Enums.HexDirection.None;
+    /// <summary>脊线格另一端通过方向（无向；端点 = None）。</summary>
+    public Enums.HexDirection RidgeDirectionB = Enums.HexDirection.None;
+    /// <summary>格中心到脊线最近投影的 XZ 距离（格距；脊线格 = 0，决策 ㉑）。高度场派生输入。</summary>
+    public float mountainDistToRidge;
+    /// <summary>沿脊线位置 s（格距，0 = 脊线起点）。沿脊线起伏的派生输入。</summary>
+    public float mountainPosAlongRidge;
+    /// <summary>该山脉地块是否已被永久清除（决策 ㉕：清除后不恢复，重建时跳过）。</summary>
+    public bool mountainCleared;
+
 
     //地块的六边形坐标
     public Vector3 HexCoordinate;

@@ -102,7 +102,8 @@ public class RiverGenerator : MonoBehaviour
                 continue;
             }
             HexCellData hexCellData = _mapDataService.GetCell(riverSources[i]);
-            if (hexCellData.hasRiver || WaterLevelConfig.IsWater(hexCellData))
+            // 【程序化山脉】决策 ③：山与河不共格——源头不得为山格
+            if (hexCellData.hasRiver || WaterLevelConfig.IsWater(hexCellData) || MountainCellRule.IsMountainCell(hexCellData))
             {
                 continue;
             }
@@ -289,6 +290,8 @@ public class RiverGenerator : MonoBehaviour
             if (!CheckHeight(hexCellData, Neighbor[j], _mapDataService)) { InvalidDirectionIndex.Add(j); }
             //不交叉条件
             else if (!CheckCross(hexCellData, Neighbor[j], _mapDataService)) { InvalidDirectionIndex.Add(j); }
+            //山体条件（决策 ③：山与河不共格，流向与交叉均排除山格）
+            else if (!CheckMountain(hexCellData, Neighbor[j], _mapDataService)) { InvalidDirectionIndex.Add(j); }
         }
         //开始剔除
         for (int j = InvalidDirectionIndex.Count - 1; j >= 0; j--)
@@ -316,5 +319,12 @@ public class RiverGenerator : MonoBehaviour
         bool NeighborHasRiver = _mapDataService.GetNeighbor(hexCellData, direction) != null ? _mapDataService.GetNeighbor(hexCellData, direction).hasRiver : true;
         //邻居没河流时，才能流经
         return !NeighborHasRiver;
+    }
+
+    //剔除不可流往的方向 - 山体条件（决策 ③：山与河不共格；山格不可流经）
+    private static bool CheckMountain(HexCellData hexCellData, Enums.HexDirection direction, IMapDataService _mapDataService)
+    {
+        HexCellData neighbor = _mapDataService.GetNeighbor(hexCellData, direction);
+        return neighbor != null && !MountainCellRule.IsMountainCell(neighbor);
     }
 }

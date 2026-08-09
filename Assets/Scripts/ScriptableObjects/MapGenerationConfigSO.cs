@@ -160,6 +160,12 @@ public class MapGenerationConfigSO : ScriptableObject
     [Range(0f, 2f)]
     public float fogEdgeAnimSpeed = 0.25f;
 
+    [Header("程序化山脉")]
+    [Tooltip("山脉生成配置（决策 ㉔ 山专属参数块）；留空 = 不生成山脉")]
+    public MountainConfigSO mountainConfig;
+    [Tooltip("山脉高度全局缩放：乘在 MountainConfig 计算出的 H_max 上（1 = 原始高度，调大更高、调小更矮）。只影响视觉隆起，不改变格级 Height 与玩法规则；有效 H_max 上限 = MountainConfig.maxHeight × 本值")]
+    [Min(0.01f)] public float mountainHeightScale = 1f;
+
     [Header("竞技场（动态地图-阶段二）")]
     [Tooltip("竞技场激活时机（GameTime 秒，暂停冻结）；0 = 开局即突起")]
     public float ArenaActivateTime = 90f;

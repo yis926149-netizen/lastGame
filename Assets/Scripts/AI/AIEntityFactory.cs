@@ -31,8 +31,8 @@ public class AIEntityFactory
     private readonly EndGame _endGame;
     private readonly ILogisticsService _logisticsService;
 
-    // 城市预制体：由 AIManager 从其 Inspector 序列化字段传入（场景引用无法直接注入到普通类）。
-    public GameObject CityPrefab { get; set; }
+    // 城市预制体：经 IBuildingDataProvider 从 BuildingDatabaseSO 读取（AI 专用 enemyCityModel，留空回退 cityModel）。
+    public GameObject CityPrefab => _buildingDataProvider.GetEnemyCityModel();
 
     public AIEntityFactory(
         IMapDataService mapDataService,
@@ -144,7 +144,7 @@ public class AIEntityFactory
     /// <summary>AI 单位生成</summary>
     public void GenerateUnit(int UnitIndex, Vector3 position)
     {
-        GameObject g = Object.Instantiate(_unitDataProvider.GetUnitPrefab(UnitIndex));
+        GameObject g = Object.Instantiate(_unitDataProvider.GetEnemyUnitPrefab(UnitIndex));
         g.transform.SetParent(GameObject.Find("EnemyUnit").transform, false);
         g.transform.position = position;
         g.tag = "EnemyUnit";
@@ -226,7 +226,10 @@ public class AIEntityFactory
         Vector3 v = _mapDataService.WorldToHexCoordinate(position);
         HexCellData h = _mapDataService.GetCellByWorldPosition(position);
 
-        GameObject g = Object.Instantiate(config != null ? config.buildingModel : _buildingDataProvider.GetBuildingPrefab(bulidingTypeInt));
+        GameObject prefab = config != null && config.enemyBuildingModel != null
+            ? config.enemyBuildingModel
+            : (config != null ? config.buildingModel : _buildingDataProvider.GetBuildingPrefab(bulidingTypeInt));
+        GameObject g = Object.Instantiate(prefab);
         g.transform.SetParent(GameObject.Find("EnemyBuilding").transform, false);
         g.transform.position = position;
         g.tag = "EnemyBuilding";
