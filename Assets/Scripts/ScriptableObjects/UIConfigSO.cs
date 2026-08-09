@@ -10,6 +10,13 @@ public class UIConfigSO : ScriptableObject
     public GameObject enemyUnitIndicatorPrefab;
     //卡牌预制体
     public GameObject cardPrefab;
+    //普通卡牌卡槽间隔（像素）
+    [Tooltip("普通卡牌卡槽间隔（像素）")]
+    public float cardSlotSpacing = 150f;
+    //次卡槽与首张手牌之间额外增加的间隔（像素）
+    [Min(0f)]
+    [Tooltip("次卡槽与首张手牌之间额外增加的间隔（像素）；0 表示与普通卡牌等间距")]
+    public float nextCardSlotGap = 0f;
 
     //移动力点数图标
     public Sprite movementPointsIcon;

@@ -35,6 +35,7 @@ Shader "Custom/ThreeMaterialBlend_Land_Transition"
         // 混合控制：RGB三通道遮罩图（R=A权重，G=B权重，B=C权重）
         _MaskTex ("Blend Mask (RGB三通道遮罩)", 2D) = "white" {}
         _BlendSmooth ("Blend Smoothness (过渡柔和度)", Range(0.01, 0.5)) = 0.1
+        _WorldTexScale ("World Texture Scale", Float) = 0.238095
 
         _ChunkProgress ("Chunk Animation Progress", Range(0,1)) = 0.0
         // 【顶出方案-修订】clip 平面参数（每 Chunk 经 MaterialPropertyBlock 设置，动画期间恒定）：
@@ -62,24 +63,28 @@ Shader "Custom/ThreeMaterialBlend_Land_Transition"
         // 材质 A 变量声明
         sampler2D _MainTexA;
         sampler2D _NormalMapA;
+        float4 _MainTexA_ST;
         half _MetallicA;
         half _SmoothnessA;
 
         // 材质 B 变量声明
         sampler2D _MainTexB;
         sampler2D _NormalMapB;
+        float4 _MainTexB_ST;
         half _MetallicB;
         half _SmoothnessB;
 
         // 材质 C 变量声明（新增）
         sampler2D _MainTexC;
         sampler2D _NormalMapC;
+        float4 _MainTexC_ST;
         half _MetallicC;
         half _SmoothnessC;
 
         // 混合控制变量
         sampler2D _MaskTex;
         half _BlendSmooth;
+        float _WorldTexScale;
 
         float _ChunkProgress;
         float _ChunkAnimBaseY;
@@ -88,7 +93,7 @@ Shader "Custom/ThreeMaterialBlend_Land_Transition"
         // 输入结构体（与稳定版一致，动画数据只在 vert 内读取，不占插值器）
         struct Input
         {
-            float2 uv_MainTexA;    // 三材质 + 遮罩共用这一套 UV
+            float2 uv_MaskTex;     // 重心坐标，仅用于三材质混合权重
             float2 fogCoord;       // 迷雾整图归一化 UV（不能叫 uv_FogTex，见 TerrainBase_Fog 注释）
             float3 worldPos;       // 【顶出方案】片元世界坐标（clip 平面用，vert 变形后自动计算）
         };
@@ -111,7 +116,7 @@ Shader "Custom/ThreeMaterialBlend_Land_Transition"
             clip(animClipY - IN.worldPos.y + 0.02);
 
             // 1. 采样RGB三通道遮罩，获取三种材质的基础权重
-            fixed4 mask = tex2D(_MaskTex, IN.uv_MainTexA);
+            fixed4 mask = tex2D(_MaskTex, IN.uv_MaskTex);
             half weightA = mask.r; // R通道 = 材质A权重
             half weightB = mask.g; // G通道 = 材质B权重
             half weightC = mask.b; // B通道 = 材质C权重
@@ -139,22 +144,26 @@ Shader "Custom/ThreeMaterialBlend_Land_Transition"
                 weightC /= totalWeight;
             }
 
-            // 3. 采样三种材质属性（强制非金属+低光滑度）。三套贴图共用 uv_MainTexA。
+            // 3. 采样三种材质属性（强制非金属+低光滑度）。
             // 材质A
-            fixed4 albedoA = tex2D(_MainTexA, IN.uv_MainTexA);
-            fixed3 normalA = UnpackNormal(tex2D(_NormalMapA, IN.uv_MainTexA));
+            float2 worldUV = IN.worldPos.xz * _WorldTexScale;
+            float2 terrainUVA = worldUV * _MainTexA_ST.xy + _MainTexA_ST.zw;
+            float2 terrainUVB = worldUV * _MainTexB_ST.xy + _MainTexB_ST.zw;
+            float2 terrainUVC = worldUV * _MainTexC_ST.xy + _MainTexC_ST.zw;
+            fixed4 albedoA = tex2D(_MainTexA, terrainUVA);
+            fixed3 normalA = UnpackNormal(tex2D(_NormalMapA, terrainUVA));
             half metallicA = 0.0; // 土地强制非金属
             half smoothnessA = _SmoothnessA;
 
             // 材质B
-            fixed4 albedoB = tex2D(_MainTexB, IN.uv_MainTexA);
-            fixed3 normalB = UnpackNormal(tex2D(_NormalMapB, IN.uv_MainTexA));
+            fixed4 albedoB = tex2D(_MainTexB, terrainUVB);
+            fixed3 normalB = UnpackNormal(tex2D(_NormalMapB, terrainUVB));
             half metallicB = 0.0; // 土地强制非金属
             half smoothnessB = _SmoothnessB;
 
             // 材质C（新增）
-            fixed4 albedoC = tex2D(_MainTexC, IN.uv_MainTexA);
-            fixed3 normalC = UnpackNormal(tex2D(_NormalMapC, IN.uv_MainTexA));
+            fixed4 albedoC = tex2D(_MainTexC, terrainUVC);
+            fixed3 normalC = UnpackNormal(tex2D(_NormalMapC, terrainUVC));
             half metallicC = 0.0; // 土地强制非金属
             half smoothnessC = _SmoothnessC;
 

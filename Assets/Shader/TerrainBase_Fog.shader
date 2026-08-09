@@ -7,6 +7,7 @@ Shader "Custom/TerrainBase_Fog"
         _Glossiness ("Smoothness", Range(0,1)) = 0.5
         _Metallic ("Metallic", Range(0,1)) = 0.0
         _BumpMap ("Normal Map", 2D) = "bump" {}
+        _WorldTexScale ("World Texture Scale", Float) = 0.238095
     }
 
     SubShader
@@ -30,13 +31,15 @@ Shader "Custom/TerrainBase_Fog"
         // 未探索(顶点色黑)=纯黑，且 surf/迷雾混合根本不执行。精简到 3 个插值量后可正常编译。
         sampler2D _MainTex;
         sampler2D _BumpMap;
+        float4 _MainTex_ST;
+        float _WorldTexScale;
 
         struct Input
         {
-            float2 uv_MainTex;
             float2 fogCoord;       // 迷雾整图归一化 UV（vert 里由世界 XZ 计算）。
                                    // 注意：不能叫 uv_FogTex —— surface shader 会把 uv_<纹理名> 字段
                                    // 自动填成该纹理的 mesh UV，覆盖 vert 赋的世界 UV，导致每面片各铺一张。
+            float3 worldPos;       // solid、rect、tri 共用世界 XZ，避免各面片重新铺纹理。
         };
 
         half _Glossiness;
@@ -52,16 +55,18 @@ Shader "Custom/TerrainBase_Fog"
 
         void surf(Input IN, inout SurfaceOutputStandard o)
         {
-            fixed4 c = tex2D(_MainTex, IN.uv_MainTex) * _Color;
+            float2 terrainUV = IN.worldPos.xz * _WorldTexScale;
+            terrainUV = terrainUV * _MainTex_ST.xy + _MainTex_ST.zw;
+            fixed4 c = tex2D(_MainTex, terrainUV) * _Color;
 
             o.Albedo = c.rgb;
             o.Smoothness = _Glossiness;
             o.Metallic = _Metallic;
             o.Alpha = c.a;
 
-            // 基础地形材质无独立法线贴图，复用 uv_MainTex 采样，省一套插值器；
+            // 基础地形材质无独立法线贴图，复用连续的世界地形 UV 采样；
             // 贴图为空时默认为 "bump"(平面法线)，不影响光照。
-            o.Normal = UnpackNormal(tex2D(_BumpMap, IN.uv_MainTex));
+            o.Normal = UnpackNormal(tex2D(_BumpMap, terrainUV));
         }
 
         // 未探索片元最终颜色 = 纯迷雾自发光，消除面片交界的光照接缝

@@ -71,7 +71,7 @@ public class MapController : MonoBehaviour
     /// <returns>配置完成的混合材质</returns>
     // 材质构造入口公开：ChunkMapRenderer 运行时重建按材质键缓存复用，
     // 避免重复重建时泄漏材质实例（§六-2）。
-    public static Material ConfigureBlendMaterial(Material baseMaterialA, Material baseMaterialB, Texture2D blendMask, float blendContrast, float blendSmooth)
+    public static Material ConfigureBlendMaterial(Material baseMaterialA, Material baseMaterialB, Texture2D blendMask, float blendContrast, float blendSmooth, float worldTextureScale)
     {
         Shader blendShader = Shader.Find("Custom/RealMaterialMaskBlend");
         if (blendShader == null)
@@ -92,20 +92,25 @@ public class MapController : MonoBehaviour
 
         // 配置材质 A 属性
         blendMaterial.SetTexture("_MainTexA", baseMaterialA.mainTexture ?? Texture2D.whiteTexture);
+        blendMaterial.SetTextureScale("_MainTexA", baseMaterialA.mainTextureScale);
+        blendMaterial.SetTextureOffset("_MainTexA", baseMaterialA.mainTextureOffset);
         blendMaterial.SetTexture("_NormalMapA", GetNormalMapFromMaterial(baseMaterialA) ?? Texture2D.normalTexture);
         blendMaterial.SetFloat("_MetallicA", baseMaterialA.HasProperty("_Metallic") ? baseMaterialA.GetFloat("_Metallic") : 0.0f);
-        blendMaterial.SetFloat("_SmoothnessA", baseMaterialA.HasProperty("_Smoothness") ? baseMaterialA.GetFloat("_Smoothness") : 0.5f);
+        blendMaterial.SetFloat("_SmoothnessA", GetSmoothnessFromMaterial(baseMaterialA));
 
         // 配置材质 B 属性
         blendMaterial.SetTexture("_MainTexB", baseMaterialB.mainTexture ?? Texture2D.whiteTexture);
+        blendMaterial.SetTextureScale("_MainTexB", baseMaterialB.mainTextureScale);
+        blendMaterial.SetTextureOffset("_MainTexB", baseMaterialB.mainTextureOffset);
         blendMaterial.SetTexture("_NormalMapB", GetNormalMapFromMaterial(baseMaterialB) ?? Texture2D.normalTexture);
         blendMaterial.SetFloat("_MetallicB", baseMaterialB.HasProperty("_Metallic") ? baseMaterialB.GetFloat("_Metallic") : 0.0f);
-        blendMaterial.SetFloat("_SmoothnessB", baseMaterialB.HasProperty("_Smoothness") ? baseMaterialB.GetFloat("_Smoothness") : 0.5f);
+        blendMaterial.SetFloat("_SmoothnessB", GetSmoothnessFromMaterial(baseMaterialB));
 
         // 配置混合参数
         blendMaterial.SetTexture("_MaskTex", blendMask);
         blendMaterial.SetFloat("_BlendSmooth", blendSmooth);
         blendMaterial.SetFloat("_BlendContrast", blendContrast);
+        blendMaterial.SetFloat("_WorldTexScale", worldTextureScale);
 
         return blendMaterial;
     }
@@ -120,7 +125,7 @@ public class MapController : MonoBehaviour
     /// <param name="globalSmoothness">全局光滑度 </param>
     /// <param name="blendContrast">混合对比度 </param
     /// <returns>配置完成的三材质混合材质</returns>
-    public static Material ConfigureBlendMaterial(Material baseMaterialA, Material baseMaterialB, Material baseMaterialC, Texture2D blendMask, float blendContrast, float globalSmoothness)
+    public static Material ConfigureBlendMaterial(Material baseMaterialA, Material baseMaterialB, Material baseMaterialC, Texture2D blendMask, float blendContrast, float globalSmoothness, float worldTextureScale)
     {
         // 1. 加载三材质Shader（关键：替换为三材质Shader路径）
         Shader threeMatShader = Shader.Find("Custom/ThreeMaterialBlend_Land");
@@ -141,25 +146,32 @@ public class MapController : MonoBehaviour
 
         // 3. 配置材质A属性（土地强制非金属）
         blendMaterial.SetTexture("_MainTexA", baseMaterialA?.mainTexture ?? Texture2D.whiteTexture);
+        blendMaterial.SetTextureScale("_MainTexA", baseMaterialA.mainTextureScale);
+        blendMaterial.SetTextureOffset("_MainTexA", baseMaterialA.mainTextureOffset);
         blendMaterial.SetTexture("_NormalMapA", GetNormalMapFromMaterial(baseMaterialA) ?? Texture2D.normalTexture);
         blendMaterial.SetFloat("_MetallicA", 0.0f); // 土地强制非金属
-        blendMaterial.SetFloat("_SmoothnessA", baseMaterialA?.HasProperty("_Smoothness") ?? false ? baseMaterialA.GetFloat("_Smoothness") : 0.15f);
+        blendMaterial.SetFloat("_SmoothnessA", GetSmoothnessFromMaterial(baseMaterialA));
 
         // 4. 配置材质B属性（同上）
         blendMaterial.SetTexture("_MainTexB", baseMaterialB?.mainTexture ?? Texture2D.whiteTexture);
+        blendMaterial.SetTextureScale("_MainTexB", baseMaterialB.mainTextureScale);
+        blendMaterial.SetTextureOffset("_MainTexB", baseMaterialB.mainTextureOffset);
         blendMaterial.SetTexture("_NormalMapB", GetNormalMapFromMaterial(baseMaterialB) ?? Texture2D.normalTexture);
         blendMaterial.SetFloat("_MetallicB", 0.0f);
-        blendMaterial.SetFloat("_SmoothnessB", baseMaterialB?.HasProperty("_Smoothness") ?? false ? baseMaterialB.GetFloat("_Smoothness") : 0.15f);
+        blendMaterial.SetFloat("_SmoothnessB", GetSmoothnessFromMaterial(baseMaterialB));
 
         // 5. 配置材质C属性（新增：三材质专属）
         blendMaterial.SetTexture("_MainTexC", baseMaterialC?.mainTexture ?? Texture2D.whiteTexture);
+        blendMaterial.SetTextureScale("_MainTexC", baseMaterialC.mainTextureScale);
+        blendMaterial.SetTextureOffset("_MainTexC", baseMaterialC.mainTextureOffset);
         blendMaterial.SetTexture("_NormalMapC", GetNormalMapFromMaterial(baseMaterialC) ?? Texture2D.normalTexture);
         blendMaterial.SetFloat("_MetallicC", 0.0f);
-        blendMaterial.SetFloat("_SmoothnessC", baseMaterialC?.HasProperty("_Smoothness") ?? false ? baseMaterialC.GetFloat("_Smoothness") : 0.2f);
+        blendMaterial.SetFloat("_SmoothnessC", GetSmoothnessFromMaterial(baseMaterialC));
 
         // 6. 配置混合控制参数（适配三材质Shader）
         blendMaterial.SetTexture("_MaskTex", blendMask);
         blendMaterial.SetFloat("_BlendSmooth", globalSmoothness);
+        blendMaterial.SetFloat("_WorldTexScale", worldTextureScale);
 
         return blendMaterial;
     }
@@ -214,6 +226,13 @@ public class MapController : MonoBehaviour
             return mat.GetTexture("_BumpMap") as Texture2D;
         }
         return null;
+    }
+
+    private static float GetSmoothnessFromMaterial(Material material)
+    {
+        if (material.HasProperty("_Glossiness")) return material.GetFloat("_Glossiness");
+        if (material.HasProperty("_Smoothness")) return material.GetFloat("_Smoothness");
+        return 0.15f;
     }
 
     /// <summary>
@@ -298,7 +317,7 @@ public class MapController : MonoBehaviour
         return float.IsNaN(value) || float.IsInfinity(value);
     }
 
-    public static Material CreateTerrainFogMaterial(Material sourceMaterial, Shader terrainFogShader)
+    public static Material CreateTerrainFogMaterial(Material sourceMaterial, Shader terrainFogShader, float worldTextureScale)
     {
         // 克隆源 Standard 材质（完整保留 _MainTex 及其 tiling/offset、_BumpMap、_Color、
         // 关键字等所有属性），再只替换 Shader。设置 .shader 时 Unity 会保留两个 Shader 中
@@ -308,6 +327,7 @@ public class MapController : MonoBehaviour
         Material mat = new Material(sourceMaterial);
         if (terrainFogShader != null)
             mat.shader = terrainFogShader;
+        mat.SetFloat("_WorldTexScale", worldTextureScale);
         return mat;
     }
 

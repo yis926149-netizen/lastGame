@@ -18,6 +18,8 @@ public interface IUIConfigProvider
 
     Vector3 CardSize { get; }
     Vector3 NextCardSize { get; }
+    float CardSlotSpacing { get; }
+    float NextCardSlotGap { get; }
 }
 
 public class UIConfigProvider : IUIConfigProvider
@@ -47,6 +49,8 @@ public class UIConfigProvider : IUIConfigProvider
     public GameObject NextCardPlaceholder { get; set; } // ����ʱ�洢
     public Vector3 CardSize => _cardSize;
     public Vector3 NextCardSize => _nextCardSize;
+    public float CardSlotSpacing => _uiConfig.cardSlotSpacing;
+    public float NextCardSlotGap => _uiConfig.nextCardSlotGap;
 
     public void SetNextCardPlaceholder(GameObject placeholder)
     {

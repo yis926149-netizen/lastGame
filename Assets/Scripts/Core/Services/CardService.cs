@@ -70,7 +70,9 @@ public class CardService : ICardService
 
     public Vector2 GetSlotOffset(int slot)
     {
-        return new Vector2((slot + 1) * 150, 0);
+        float offsetFromNextCard = _uiConfig.NextCardSlotGap
+                                 + (slot + 1) * _uiConfig.CardSlotSpacing;
+        return new Vector2(offsetFromNextCard, 0);
     }
 
     public bool CanDrawThisTurn() => !_hasDrawnThisTurn;

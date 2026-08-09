@@ -27,6 +27,8 @@ public class CardServiceTests
         _container = new DiContainer();
 
         _mockUiConfig = Substitute.For<IUIConfigProvider>();
+        _mockUiConfig.CardSlotSpacing.Returns(125f);
+        _mockUiConfig.NextCardSlotGap.Returns(50f);
 
         _mockUnlockRules = Substitute.For<ICardUnlockRuleProvider>();
         _mockUnlockRules.GetUnlockedCards().Returns(new List<NormalCardConfigSO> { unit0, unit1 });
@@ -83,5 +85,13 @@ public class CardServiceTests
         _service.RegisterCardView(0, view);
         _service.RemoveCard(0);
         Assert.AreEqual(0, _service.GetFirstEmptySlot());
+    }
+
+    [Test]
+    public void GetSlotOffset_AddsNextCardGapBeforeHandSlots()
+    {
+        Assert.AreEqual(new Vector2(175f, 0f), _service.GetSlotOffset(0));
+        Assert.AreEqual(new Vector2(300f, 0f), _service.GetSlotOffset(1));
+        Assert.AreEqual(new Vector2(425f, 0f), _service.GetSlotOffset(2));
     }
 }

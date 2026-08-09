@@ -2224,12 +2224,13 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     private Material[] ResolveTerrainMaterials(TerrainGeometry geometry)
     {
         Material[] allMaterials = new Material[geometry.SubMeshIndices.Length];
+        float worldTextureScale = 1f / Mathf.Max(0.0001f, 2f * _config.OuterRadius * _config.SolidAreaRatio);
         if (_terrainBaseMaterial0 == null)
         {
             Shader terrainFogShader = Shader.Find("Custom/TerrainBase_Fog") ?? Shader.Find("Standard");
-            _terrainBaseMaterial0 = MapController.CreateTerrainFogMaterial(geometry.BaseMaterials[0], terrainFogShader);
-            _terrainBaseMaterial1 = MapController.CreateTerrainFogMaterial(geometry.BaseMaterials[1], terrainFogShader);
-            _terrainBaseMaterial2 = MapController.CreateTerrainFogMaterial(geometry.BaseMaterials[2], terrainFogShader);
+            _terrainBaseMaterial0 = MapController.CreateTerrainFogMaterial(geometry.BaseMaterials[0], terrainFogShader, worldTextureScale);
+            _terrainBaseMaterial1 = MapController.CreateTerrainFogMaterial(geometry.BaseMaterials[1], terrainFogShader, worldTextureScale);
+            _terrainBaseMaterial2 = MapController.CreateTerrainFogMaterial(geometry.BaseMaterials[2], terrainFogShader, worldTextureScale);
         }
         allMaterials[0] = _terrainBaseMaterial0;
         allMaterials[1] = _terrainBaseMaterial1;
@@ -2241,7 +2242,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             if (!_rectMaterialCache.TryGetValue(key, out Material mat))
             {
                 mat = MapController.ConfigureBlendMaterial(
-                    key.Item2, key.Item1, _config.blendMask, _config.blendContrast, _config.blendSmooth);
+                    key.Item2, key.Item1, _config.blendMask, _config.blendContrast, _config.blendSmooth, worldTextureScale);
                 _rectMaterialCache[key] = mat;
             }
             allMaterials[3 + i] = mat;
@@ -2254,7 +2255,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             if (!_triMaterialCache.TryGetValue(key, out Material mat))
             {
                 mat = MapController.ConfigureBlendMaterial(
-                    key.Item1, key.Item2, key.Item3, triMask, _config.blendContrast, _config.globalSmoothness);
+                    key.Item1, key.Item2, key.Item3, triMask, _config.blendContrast, _config.globalSmoothness, worldTextureScale);
                 _triMaterialCache[key] = mat;
             }
             allMaterials[3 + geometry.RectAs.Length + i] = mat;

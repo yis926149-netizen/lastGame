@@ -49,6 +49,16 @@ public class UIController : MonoBehaviour
     // 本实例若为“下一回合”按钮，缓存其 Button 组件用于启用/禁用
     private Button _nextTurnButtonComponent = null;
 
+    // 【时间停止按钮】状态图标，可在 Inspector 中配置
+    [Tooltip("时间流动（未停止）时按钮显示的精灵")]
+    [SerializeField] private Sprite _runSprite;
+    [Tooltip("时间停止后按钮显示的精灵")]
+    [SerializeField] private Sprite _stopSprite;
+
+    // 时间停止按钮的 Image 组件与当前状态缓存
+    private Image _nextTurnButtonImage = null;
+    private bool _lastPausedState = false;
+
     // 远程攻击状态
     private bool _isRangedAttackMode = false;
     private GameObject _rangedAttacker = null;
@@ -69,10 +79,13 @@ public class UIController : MonoBehaviour
         {
             //Debug.Log("挂载了【下一回合按钮】");
             _nextTurnButtonComponent = transform.GetComponent<Button>();
+            _nextTurnButtonImage = transform.GetComponent<Image>();
             UITool.AddButtonClickEvent(_nextTurnButtonComponent, NextTurn);
 
             // 【检查点 6】回合制已停用，按钮始终可点击，无阶段变化订阅
             RefreshNextTurnButtonInteractable();
+            _lastPausedState = _gameLoop != null && _gameLoop.IsPaused;
+            RefreshTimeStopButtonSprite();
         }
 
         // 单位信息面板 - 技能按钮
@@ -156,6 +169,13 @@ public class UIController : MonoBehaviour
 
     void Update()
     {
+        // 时间停止按钮图标随暂停状态切换（EndGame/天赋卡牌选择等也会调用 SetPaused，故每帧检测变化）
+        if (UIType == "nextTurnButton" && _gameLoop != null && _gameLoop.IsPaused != _lastPausedState)
+        {
+            _lastPausedState = _gameLoop.IsPaused;
+            RefreshTimeStopButtonSprite();
+        }
+
         // 让Canvas朝向摄像机
         if (UIType == "unitCanvas" || UIType == "buildingCanvas")
         {
@@ -208,6 +228,15 @@ public class UIController : MonoBehaviour
     {
         _audioManager.PlaySFX("Trumpet-009");
         _gameLoop?.SetPaused(!(_gameLoop?.IsPaused ?? false));
+        RefreshTimeStopButtonSprite();
+    }
+
+    // 根据暂停状态切换按钮精灵：停止时显示 _stopSprite，运行时显示 _runSprite
+    private void RefreshTimeStopButtonSprite()
+    {
+        if (_nextTurnButtonImage == null) return;
+        bool paused = _gameLoop != null && _gameLoop.IsPaused;
+        _nextTurnButtonImage.sprite = paused ? _stopSprite : _runSprite;
     }
 
     // 【批次 C】暂停/继续按钮始终可点击（无回合阶段限制）

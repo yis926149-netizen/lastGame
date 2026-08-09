@@ -18,6 +18,7 @@ Shader "Custom/RealMaterialMaskBlend"
         _MaskTex ("Blend Mask (混合遮罩)", 2D) = "white" {}
         _BlendSmooth ("Blend Width (过渡宽度)", Range(0.05, 1.0)) = 0.3
         _BlendContrast ("Blend Contrast (混合对比度)", Range(1.0, 5.0)) = 2.0
+        _WorldTexScale ("World Texture Scale", Float) = 0.238095
     }
     SubShader
     {
@@ -35,12 +36,14 @@ Shader "Custom/RealMaterialMaskBlend"
         // 材质 A 纹理与属性
         sampler2D _MainTexA;
         sampler2D _NormalMapA;
+        float4 _MainTexA_ST;
         half _MetallicA;
         half _SmoothnessA;
 
         // 材质 B 纹理与属性
         sampler2D _MainTexB;
         sampler2D _NormalMapB;
+        float4 _MainTexB_ST;
         half _MetallicB;
         half _SmoothnessB;
 
@@ -48,13 +51,13 @@ Shader "Custom/RealMaterialMaskBlend"
         sampler2D _MaskTex;
         half _BlendSmooth;
         half _BlendContrast;
+        float _WorldTexScale;
 
         struct Input
         {
-            float2 uv_MainTexA;
-            float2 uv_MainTexB;
             float2 uv_MaskTex;
             float2 fogCoord;   // 迷雾整图归一化 UV（不能叫 uv_FogTex，见 TerrainBase_Fog 注释）
+            float3 worldPos;
         };
 
         void vert(inout appdata_full v, out Input o)
@@ -74,14 +77,17 @@ Shader "Custom/RealMaterialMaskBlend"
             half blendWeight = smoothstep(blendMin, blendMax, mask);
 
             // 2. 采样材质 A（强制非金属+低光滑度）
-            fixed4 albedoA = tex2D(_MainTexA, IN.uv_MainTexA);
-            fixed3 normalA = UnpackNormal(tex2D(_NormalMapA, IN.uv_MainTexA));
+            float2 worldUV = IN.worldPos.xz * _WorldTexScale;
+            float2 terrainUVA = worldUV * _MainTexA_ST.xy + _MainTexA_ST.zw;
+            float2 terrainUVB = worldUV * _MainTexB_ST.xy + _MainTexB_ST.zw;
+            fixed4 albedoA = tex2D(_MainTexA, terrainUVA);
+            fixed3 normalA = UnpackNormal(tex2D(_NormalMapA, terrainUVA));
             half metallicA = 0.0; // 土地强制非金属，覆盖外部参数
             half smoothnessA = _SmoothnessA;
 
             // 3. 采样材质 B（同上，强制非金属）
-            fixed4 albedoB = tex2D(_MainTexB, IN.uv_MainTexB);
-            fixed3 normalB = UnpackNormal(tex2D(_NormalMapB, IN.uv_MainTexB));
+            fixed4 albedoB = tex2D(_MainTexB, terrainUVB);
+            fixed3 normalB = UnpackNormal(tex2D(_NormalMapB, terrainUVB));
             half metallicB = 0.0; // 土地强制非金属，覆盖外部参数
             half smoothnessB = _SmoothnessB;
 

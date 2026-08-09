@@ -215,8 +215,13 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
         int emptySlot = _cardService.GetFirstEmptySlot();
         if (emptySlot == -1) return;
 
+        RectTransform placeholderRect = _uiConfig.NextCardPlaceholder != null
+            ? _uiConfig.NextCardPlaceholder.GetComponent<RectTransform>()
+            : null;
+        if (placeholderRect == null) return;
+
         Vector2 slotOffset = _cardService.GetSlotOffset(emptySlot);
-        Vector3 targetPosition = (Vector3)_nextCardView.RectTransform.anchoredPosition
+        Vector3 targetPosition = (Vector3)placeholderRect.anchoredPosition
                                + new Vector3(slotOffset.x, slotOffset.y, 0);
 
         _nextCardView.PlacementID = emptySlot;
@@ -227,6 +232,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
         _cardViews.Add(_nextCardView);
 
         // 滑动 + 放大（保持 0.3s）
+        _nextCardView.RectTransform.DOKill();
         _nextCardView.RectTransform.DOAnchorPos(targetPosition, 0.3f).SetEase(Ease.OutQuad);
         _nextCardView.RectTransform.DOScale(_uiConfig.CardSize, 0.3f).SetEase(Ease.OutQuad);
 
