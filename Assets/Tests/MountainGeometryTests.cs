@@ -835,6 +835,132 @@ public class MountainGeometryTests
             "第三格也是有效山格时由 3 山格 tri 路由负责，不得叠加肩部");
     }
 
+    // ── 2026-08-10 封闭墙鞍部（单格宽封闭墙防镂空）─────────────────
+
+    /// <summary>把夹具改成墙鞍交汇：A/B 同脊线连续（closedWallCols 标记），C 普通格。</summary>
+    private void BuildWallColFixture(bool flagged = true)
+    {
+        BuildMountainFixture();
+        _cellB.mountainRidge.ridgeId = _cellA.mountainRidge.ridgeId;
+        _cellA.mountainRidge.closedWallCols = flagged;
+        _cellB.mountainRidge.closedWallCols = flagged;
+        _cellC.landForm = null;
+        _cellC.mountainRidge = null;
+        _cellC.mountainRidgeStatus = Enums.MountainRidgeStatus.None;
+        _cellC.movementCost = 1f;
+    }
+
+    [Test]
+    public void CornerHeight_WallColJunction_ReturnsPairMean_GatedByFlag()
+    {
+        // A 角点2 = {A, B(NE), C(E)}：两封闭墙脊线格 + 一格普通格 ⇒ 鞍部 = 两峰均值（hA=2.0, hB=1.6 ⇒ 1.8）。
+        BuildWallColFixture();
+        float hA = MountainGeometryBuilder.ComputeMountainHeight(_cellA);
+        float hB = MountainGeometryBuilder.ComputeMountainHeight(_cellB);
+        float col = (hA + hB) * 0.5f;
+        Assert.AreEqual(col, MountainGeometryBuilder.CornerLift(_cellA, 2, _neighborOf), 1e-5f,
+            "封闭墙鞍部角点 = 连续脊线对两格山高均值");
+        Assert.AreEqual(col, MountainGeometryBuilder.CornerLift(_cellB, 4, _neighborOf), 1e-5f,
+            "同一交汇点从 B 侧计算一致（规范化对称，决策 ㉓）");
+
+        BuildWallColFixture(flagged: false);
+        Assert.AreEqual(0f, MountainGeometryBuilder.CornerLift(_cellA, 2, _neighborOf), 1e-6f,
+            "未标记封闭墙的脊线维持决策 ④ 锚点（含普通格角点恒 0）");
+    }
+
+    [Test]
+    public void WallColJunction_MountainPlainRect_PlainSideStaysAtZero()
+    {
+        // A(山)—C(普通) rect：A 侧角点2 抬到鞍部高度；C 侧（普通）端点恒原始高度，
+        // 否则普通半 rect 翘起、与普通格顶面裂缝。
+        BuildWallColFixture();
+        float col = (MountainGeometryBuilder.ComputeMountainHeight(_cellA)
+            + MountainGeometryBuilder.ComputeMountainHeight(_cellB)) * 0.5f;
+        Vector3[] solidA = CreateSolid(_cellA.CenterWorldCoordinate);
+        Vector3[] solidC = CreateSolid(_cellC.CenterWorldCoordinate);
+        MountainRectBuild build = MountainGeometryBuilder.BuildMountainRectData(
+            _cellA, _cellC, solidA, solidC, Enums.HexDirection.E, _neighborOf);
+
+        Assert.IsNotNull(build.PlainRect, "山-普通 rect 必须劈半");
+        Assert.AreEqual(2f + col, build.Rect.Profiles[0].Points[0].y, 1e-4f,
+            "山侧角 profile 起点 = 基础地形 + 鞍部高度（profile0 ↔ A 角点2）");
+        Assert.AreEqual(2f, build.Rect.Profiles[0].Points[1].y, 1e-4f, "格界锚点恒原始高度");
+        foreach (Vector3 v in build.PlainRect.Vertices)
+            Assert.AreEqual(2f, v.y, 1e-4f, "普通半 rect 全部顶点保持原始高度（不受鞍部规则影响）");
+    }
+
+    [Test]
+    public void WallColTriangle_ClosesWithRectCornerProfiles()
+    {
+        // 墙鞍三角与三条相接 rect 角 profile 逐段共点闭合：
+        // [aV+col, abMid+col, bV+col] = A-B rect 角 profile；[aV+col, apBnd] / [bpBnd, pV] 段
+        // 与山-普通 rect 角 profile 共点；普通角点 pV 不抬升。
+        BuildWallColFixture();
+        float col = (MountainGeometryBuilder.ComputeMountainHeight(_cellA)
+            + MountainGeometryBuilder.ComputeMountainHeight(_cellB)) * 0.5f;
+        Vector3[] solidA = CreateSolid(_cellA.CenterWorldCoordinate);
+        Vector3[] solidB = CreateSolid(_cellB.CenterWorldCoordinate);
+        Vector3[] solidC = CreateSolid(_cellC.CenterWorldCoordinate);
+        var solids = new Dictionary<int, Vector3[]>
+        {
+            [_cellA.GenerateOrder] = solidA,
+            [_cellB.GenerateOrder] = solidB,
+            [_cellC.GenerateOrder] = solidC,
+        };
+        var plainRects = new Dictionary<(int, Enums.HexDirection), RectangleTransitionMeshData>
+        {
+            [(_cellA.GenerateOrder, Enums.HexDirection.NE)] = BuildPlainRect(
+                _cellA, _cellB, Enums.HexDirection.NE, solids),
+            [(_cellB.GenerateOrder, Enums.HexDirection.SE)] = BuildPlainRect(
+                _cellB, _cellC, Enums.HexDirection.SE, solids),
+            [(_cellA.GenerateOrder, Enums.HexDirection.E)] = BuildPlainRect(
+                _cellA, _cellC, Enums.HexDirection.E, solids),
+        };
+        TriangleTransitionMeshData plainTri = BuildPlainTri(
+            _cellA, _cellB, _cellC,
+            new[] { Enums.HexDirection.NE, Enums.HexDirection.E }, plainRects);
+
+        CellGeometry wallCol = MountainGeometryBuilder.BuildWallColTriangle(_cellA, _cellB, _cellC, plainTri);
+        Assert.IsNotNull(wallCol, "封闭墙鞍部交汇必须生成鞍部三角");
+        Assert.AreEqual(18, wallCol.Vertices.Length, "鞍部三角 = 6 扇面 flat 拆分 = 18 顶点");
+        Assert.AreEqual(0, MountainGeometryBuilder.CountDegenerateTriangles(
+            wallCol.Vertices, wallCol.Indices));
+        Assert.AreEqual(wallCol.Vertices.Length, wallCol.AnimSources.Count);
+        Assert.IsTrue(MountainVertexAnimSource.IsValid(wallCol.AnimSources));
+
+        // 未标记封闭墙 ⇒ 不生成（自然脊线行为不变）
+        BuildWallColFixture(flagged: false);
+        Assert.IsNull(MountainGeometryBuilder.BuildWallColTriangle(_cellA, _cellB, _cellC, plainTri),
+            "未标记封闭墙的脊线不得生成鞍部三角");
+        BuildWallColFixture();
+
+        // 与实际 rect 构建产物逐点比对（闭合契约）
+        MountainRectBuild ridgeRect = MountainGeometryBuilder.BuildMountainRectData(
+            _cellA, _cellB, solidA, solidB, Enums.HexDirection.NE, _neighborOf);
+        MountainRectBuild plainRectAC = MountainGeometryBuilder.BuildMountainRectData(
+            _cellA, _cellC, solidA, solidC, Enums.HexDirection.E, _neighborOf);
+        MountainRectBuild plainRectBC = MountainGeometryBuilder.BuildMountainRectData(
+            _cellB, _cellC, solidB, solidC, Enums.HexDirection.SE, _neighborOf);
+        var distinct = wallCol.Vertices.Distinct().ToList();
+        void AssertContains(Vector3 expected, string name)
+        {
+            Assert.IsTrue(distinct.Any(v => (v - expected).sqrMagnitude < 1e-8f),
+                $"鞍部三角必须含点 {name} = {expected}");
+        }
+        // A-B rect 角 profile（profile3 ↔ 交汇角点）：[aV+col, abMid+col, bV+col]
+        AssertContains(ridgeRect.Rect.Profiles[3].Points[0], "aV（A-B rect 角 profile 起点）");
+        AssertContains(ridgeRect.Rect.Profiles[3].Points[1], "abMid（A-B rect 角 profile 中点）");
+        AssertContains(ridgeRect.Rect.Profiles[3].Points[2], "bV（A-B rect 角 profile 终点）");
+        // A-C rect 山侧半角 profile：[aV+col, apBnd]；plain 半：[apBnd, pV]
+        AssertContains(plainRectAC.Rect.Profiles[0].Points[1], "apBnd（A-C 格界点）");
+        AssertContains(plainRectAC.PlainRect.Profiles[0].Points[1], "pV（C 普通角点，不抬升）");
+        // B-C rect 山侧半角 profile（profile3 ↔ B 角点4）：[bV+col, bpBnd]
+        AssertContains(plainRectBC.Rect.Profiles[3].Points[1], "bpBnd（B-C 格界点）");
+        Assert.AreEqual(7, distinct.Count, "6 环点 + 1 中心点 = 7 个去重点位");
+        Assert.IsTrue(distinct.Count(v => v.y > 2f + col - 1e-4f) == 3,
+            "恰好 3 个环点抬到鞍部高度（aV/abMid/bV），其余贴原地形");
+    }
+
     [Test]
     public void Determinism_SameInputSameGeometryHash()
     {

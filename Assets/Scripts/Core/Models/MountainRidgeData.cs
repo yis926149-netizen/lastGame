@@ -52,4 +52,11 @@ public class MountainRidgeData
 
     /// <summary>该脊线的山脉地块总数（脊线格 + 宽度化格；诊断/测试用）。</summary>
     public int mountainCellCount;
+
+    /// <summary>
+    /// 封闭围墙脊线（竞技场边界环，2026-08-10）：单格宽闭环脊线不存在 3 山格交汇，
+    /// 两脊线格 + 一格普通格的交汇角点按"墙鞍部"规则抬到两格山高均值（否则墙面呈
+    /// 锯齿尖牙、角点处镂空见背景）。仅 ArenaEventManager 设置；自然脊线恒 false 行为不变。
+    /// </summary>
+    public bool closedWallCols;
 }

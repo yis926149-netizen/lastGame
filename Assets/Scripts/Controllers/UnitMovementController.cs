@@ -112,6 +112,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
     private bool _isMeleeAttackInProgress = false;
     private bool _isDeathScheduled = false;
+    /// <summary>死亡流程已触发（动画播放中，等待销毁）。供外部（CombatResolver 等）只读查询。</summary>
+    public bool IsDeathScheduled => _isDeathScheduled;
 
     // 【批次 D】动画-only 标志：为 true 时 CommenceAttack 分支不施加伤害（伤害已由 CombatResolver 结算）
     private bool _animOnly = false;
@@ -322,6 +324,15 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         if (_isDeathScheduled || characterData == null || characterData.currentHp > 0) return;
 
         _isDeathScheduled = true;
+
+        // 取消所有挂起的攻击相关 Invoke（StopAttackAnimation / SetReturnToOriginalPositionTrue 等），
+        // 防止死亡动画期间继续冲刺/返回原位。
+        CancelInvoke();
+
+        // 暂停 Brain，阻止决策层在死亡动画期间发起新攻击。
+        var brain = GetComponent<UnitBrainBase>();
+        if (brain != null) brain.IsPaused = true;
+
         _unitRemovalService.DeactivateUnit(gameObject);
         foreach (var collider in GetComponentsInChildren<Collider>())
         {
@@ -361,6 +372,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
     private void UnitAttacked()
     {
+        if (_isDeathScheduled) return; // 死亡后不再接受受击处理
         if (isAttacked != lastAttackedState)
         {
             if (enemyAttacker != null)
@@ -431,6 +443,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     /// </summary>
     private void UnitAttack()
     {
+        if (_isDeathScheduled) return; // 死亡后不再继续任何攻击流程
+
         // ----- 1. 处理攻击冲刺（GoToAttackPosition）-----
         if (GoToAttackPosition)
         {
@@ -724,7 +738,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     /// </summary>
     public void PlayAttackAnim(GameObject target)
     {
-        if (target == null || isAttackingInProgress) return;
+        if (_isDeathScheduled || target == null || isAttackingInProgress) return;
 
         _animOnly = true;            // 告诉 CommenceAttack 分支跳过伤害
         attackedUnit = target;
@@ -753,7 +767,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     /// </summary>
     public void PlayRangedAttackAnim(GameObject target)
     {
-        if (target == null || isAttackingInProgress) return;
+        if (_isDeathScheduled || target == null || isAttackingInProgress) return;
 
         _animOnly = true;
         attackedUnit = target;

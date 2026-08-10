@@ -1,5 +1,15 @@
 {
   "dependencies": {
+    "com.coplaydev.coplay": {
+      "version": "https://github.com/CoplayDev/coplay-unity-plugin.git#beta",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.inputsystem": "1.1.1",
+        "com.unity.cloud.gltfast": "6.12.1"
+      },
+      "hash": "620446adff3fa0b064fdea90ee35100370006146"
+    },
     "com.unity.ads": {
       "version": "4.4.2",
       "depth": 0,
@@ -19,6 +29,16 @@
       },
       "url": "https://packages.unity.cn"
     },
+    "com.unity.burst": {
+      "version": "1.8.21",
+      "depth": 2,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.mathematics": "1.2.1",
+        "com.unity.modules.jsonserialize": "1.0.0"
+      },
+      "url": "https://packages.unity.cn"
+    },
     "com.unity.cinemachine": {
       "version": "2.10.7",
       "depth": 0,
@@ -28,11 +48,34 @@
       },
       "url": "https://packages.unity.cn"
     },
+    "com.unity.cloud.gltfast": {
+      "version": "6.12.1",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.burst": "1.8.4",
+        "com.unity.collections": "1.2.4",
+        "com.unity.mathematics": "1.2.6",
+        "com.unity.modules.jsonserialize": "1.0.0",
+        "com.unity.modules.unitywebrequest": "1.0.0"
+      },
+      "url": "https://packages.unity.cn"
+    },
     "com.unity.collab-proxy": {
       "version": "2.9.3",
       "depth": 0,
       "source": "registry",
       "dependencies": {},
+      "url": "https://packages.unity.cn"
+    },
+    "com.unity.collections": {
+      "version": "1.2.4",
+      "depth": 2,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.burst": "1.6.6",
+        "com.unity.test-framework": "1.1.31"
+      },
       "url": "https://packages.unity.cn"
     },
     "com.unity.editorcoroutines": {
@@ -86,6 +129,15 @@
       "depth": 1,
       "source": "registry",
       "dependencies": {},
+      "url": "https://packages.unity.cn"
+    },
+    "com.unity.inputsystem": {
+      "version": "1.14.0",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.modules.uielements": "1.0.0"
+      },
       "url": "https://packages.unity.cn"
     },
     "com.unity.mathematics": {

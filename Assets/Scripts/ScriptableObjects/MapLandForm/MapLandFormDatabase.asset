@@ -13,9 +13,5 @@ MonoBehaviour:
   m_Name: MapLandFormDatabase
   m_EditorClassIdentifier: 
   landForms:
-  - {fileID: 11400000, guid: 587eabd226aa432fb6bbd7dfa288a51d, type: 2}
-  - {fileID: 11400000, guid: 3e882e042f6f40fd94f9bf43065910b7, type: 2}
-  - {fileID: 11400000, guid: d302aad2a71e4b7dba57eb43b95fb3e0, type: 2}
-  - {fileID: 11400000, guid: ef839e2f247341658eeb3e07b718d45b, type: 2}
   - {fileID: 11400000, guid: 27fa13095d06afc4fbb60d306d261aef, type: 2}
   emptySpawnWeight: 10

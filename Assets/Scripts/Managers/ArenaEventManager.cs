@@ -317,7 +317,9 @@ public class ArenaEventManager : ITickable
                 xzPerturb = mountain.xzPerturbRatio * innerRadius,
                 peakEccentricMin = mountain.peakEccentricMinRatio * innerRadius,
                 peakEccentricMax = mountain.peakEccentricMaxRatio * innerRadius,
-                mountainCellCount = path.Count
+                mountainCellCount = path.Count,
+                // 封闭墙鞍部：单格宽闭环无 3 山格交汇，启用角点鞍部抬升防墙面镂空（2026-08-10）
+                closedWallCols = true
             };
 
             for (int i = 0; i < path.Count; i++)

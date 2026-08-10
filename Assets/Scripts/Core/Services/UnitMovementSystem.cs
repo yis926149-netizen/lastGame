@@ -356,6 +356,14 @@ public class UnitMovementSystem : ITickable
             RestoreStartCell(mu);
             ReleaseReservation(mu);
             _movingUnits.RemoveAt(i);
+
+            // 通知 UnitMovementController 重置 isMoving，否则动画会卡在行走状态
+            var ctrl = mu.Unit?.gameObject?.GetComponent<UnitMovementController>();
+            if (ctrl != null)
+            {
+                ctrl.isMoving = false;
+                ctrl.movementPurpose = Enums.MovementPurpose.None;
+            }
         }
     }
 

@@ -11,7 +11,8 @@ using Zenject;
 //   - HexEdge 段：标准水平城墙；
 //   - Transition 段：高度差小→水平墙；高度差大→运行时 Mesh 变形墙。
 //
-// 预制体未指定时，回退到旧的描边面片渲染（保证不配置也能跑）。
+// 城墙/城墩各有两套预制体：玩家一套、AI 一套。
+// 城墙、城墩各自独立判定：某部件的预制体未指定时，只跳过该部件（玩家与 AI 互不影响）。
 //
 // 使用方式：在场景中建空物体，挂本组件，Inspector 指定城墙/城墩预制体。
 //   Zenject 绑定：FromComponentInHierarchy。
@@ -27,38 +28,38 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
     [Inject] private PlayerModelManager _playerModelManager;
     [Inject] private EnemyModelManager _enemyModelManager;
 
-    [Header("实体模型预制体（不指定则回退面片渲染）")]
-    [Tooltip("城墙预制体：Pivot 底部中心，Z 轴为长度方向，原始长度=六边形边长")]
+    [Header("玩家势力实体模型预制体（不指定则不生成）")]
+    [Tooltip("玩家城墙预制体：Pivot 底部中心，Z 轴为长度方向，原始长度=六边形边长")]
     [SerializeField] private GameObject _wallPrefab;
-    [Tooltip("城墩预制体：Pivot 底部中心，放在边界折线节点上")]
+    [Tooltip("玩家城墩预制体：Pivot 底部中心，放在边界折线节点上")]
     [SerializeField] private GameObject _towerPrefab;
+
+    [Header("AI 势力实体模型预制体（不指定则不生成）")]
+    [Tooltip("AI 城墙预制体，未指定时 AI 势力不生成模型")]
+    [SerializeField] private GameObject _enemyWallPrefab;
+    [Tooltip("AI 城墩预制体，未指定时 AI 势力不生成模型")]
+    [SerializeField] private GameObject _enemyTowerPrefab;
 
     [Header("过渡墙坡度处理")]
     [Tooltip("高度差小于此值视为水平墙（忽略随机扰动）")]
     [SerializeField] private float _heightTolerance = 0.15f;
 
     // ── 对象池 ────────────────────────────────────────────
-    private readonly List<GameObject> _wallPool = new List<GameObject>();
-    private readonly List<GameObject> _towerPool = new List<GameObject>();
-    private int _activeWallCount;
-    private int _activeTowerCount;
+    private readonly List<GameObject> _playerWallPool = new List<GameObject>();
+    private readonly List<GameObject> _playerTowerPool = new List<GameObject>();
+    private readonly List<GameObject> _enemyWallPool = new List<GameObject>();
+    private readonly List<GameObject> _enemyTowerPool = new List<GameObject>();
+    private int _activePlayerWallCount;
+    private int _activePlayerTowerCount;
+    private int _activeEnemyWallCount;
+    private int _activeEnemyTowerCount;
     private Transform _poolRoot;
-
-    // ── 旧面片渲染回退用 ──────────────────────────────────
-    private GameObject _playerSphere;
-    private List<GameObject> _enemySpheres = new List<GameObject>();
 
     // ── 势力颜色 ──────────────────────────────────────────
     private static readonly Color PlayerColor = new Color(1f, 0.84f, 0f);     // 金黄色
     private static readonly Color EnemyColor   = new Color(0.5f, 0f, 0.5f);    // 紫色
     private readonly List<BoundarySegment> _segBuffer = new List<BoundarySegment>();
     private readonly List<Vector3> _cornerBuffer = new List<Vector3>();
-
-    private bool UseModels => _wallPrefab != null && _towerPrefab != null;
-
-    // 预制体基准缩放（保留美术在预制体上设定的 scale，不强制归一）
-    private Vector3 WallBaseScale => _wallPrefab != null ? _wallPrefab.transform.localScale : Vector3.one;
-    private Vector3 TowerBaseScale => _towerPrefab != null ? _towerPrefab.transform.localScale : Vector3.one;
 
     private void Start()
     {
@@ -73,19 +74,11 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
     {
         if (_mapVisualEvent != null)
             _mapVisualEvent.OnMapVisualChanged.RemoveListener(RefreshAllSpheres);
-
-        DestroySphere(ref _playerSphere);
-        foreach (var sphere in _enemySpheres)
-            DestroySphere(sphere);
-        _enemySpheres.Clear();
     }
 
     private void RefreshAllSpheres()
     {
-        if (UseModels)
-            RefreshWithModels();
-        else
-            RefreshWithMesh();
+        RefreshWithModels();
     }
 
     // ══════════════════════════════════════════════════════
@@ -95,46 +88,62 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
     private void RefreshWithModels()
     {
         // 回收全部激活实例
-        _activeWallCount = 0;
-        _activeTowerCount = 0;
+        _activePlayerWallCount = 0;
+        _activePlayerTowerCount = 0;
+        _activeEnemyWallCount = 0;
+        _activeEnemyTowerCount = 0;
 
-        // 玩家势力：完整显示
+        // 玩家势力：完整显示（城墙/城墩按各自预制体是否指定独立生成）
         if (_playerModelManager.SphereOfInfluence_HexC_HexCellData.Count > 0)
         {
             var cells = _playerModelManager.SphereOfInfluence_HexC_HexCellData.Values.ToList();
-            BuildModelsForSphere(cells, cells, PlayerColor);
+            BuildModelsForSphere(cells, cells, PlayerColor, _wallPrefab, _towerPrefab,
+                _playerWallPool, _playerTowerPool, ref _activePlayerWallCount, ref _activePlayerTowerCount);
         }
 
-        // 敌方势力：【探索重构-阶段1】始终显示完整势力范围，不再按 IsVisible 裁切
+        // 敌方势力：【探索重构-阶段1】始终显示完整势力范围，不再按 IsVisible 裁切（城墙/城墩按各自预制体是否指定独立生成）
         foreach (var kv in _enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData)
         {
             var fullSphere = kv.Value.Values.Where(c => c != null).ToList();
             if (fullSphere.Count == 0) continue;
-            BuildModelsForSphere(fullSphere, fullSphere, EnemyColor);
+            BuildModelsForSphere(fullSphere, fullSphere, EnemyColor, _enemyWallPrefab, _enemyTowerPrefab,
+                _enemyWallPool, _enemyTowerPool, ref _activeEnemyWallCount, ref _activeEnemyTowerCount);
         }
 
         // 停用多余实例
-        DeactivateExtra(_wallPool, _activeWallCount);
-        DeactivateExtra(_towerPool, _activeTowerCount);
+        DeactivateExtra(_playerWallPool, _activePlayerWallCount);
+        DeactivateExtra(_playerTowerPool, _activePlayerTowerCount);
+        DeactivateExtra(_enemyWallPool, _activeEnemyWallCount);
+        DeactivateExtra(_enemyTowerPool, _activeEnemyTowerCount);
     }
 
-    private void BuildModelsForSphere(List<HexCellData> hexCells, ICollection<HexCellData> membershipCells, Color factionColor)
+    private void BuildModelsForSphere(
+        List<HexCellData> hexCells, ICollection<HexCellData> membershipCells, Color factionColor,
+        GameObject wallPrefab, GameObject towerPrefab,
+        List<GameObject> wallPool, List<GameObject> towerPool,
+        ref int activeWallCount, ref int activeTowerCount)
     {
         _meshGenerator.ExtractSphereOfInfluenceBoundary(
             hexCells, membershipCells, _mapDataService, _segBuffer, _cornerBuffer);
 
-        // 城墙
-        foreach (var seg in _segBuffer)
-            PlaceWall(seg, factionColor);
+        // 城墙（城墙预制体未指定则跳过）
+        if (wallPrefab != null)
+        {
+            foreach (var seg in _segBuffer)
+                PlaceWall(seg, factionColor, wallPrefab, wallPool, ref activeWallCount);
+        }
 
-        // 城墩
-        foreach (var corner in _cornerBuffer)
-            PlaceTower(corner, factionColor);
+        // 城墩（城墩预制体未指定则跳过）
+        if (towerPrefab != null)
+        {
+            foreach (var corner in _cornerBuffer)
+                PlaceTower(corner, factionColor, towerPrefab, towerPool, ref activeTowerCount);
+        }
     }
 
-    private void PlaceWall(BoundarySegment seg, Color factionColor)
+    private void PlaceWall(BoundarySegment seg, Color factionColor, GameObject prefab, List<GameObject> pool, ref int activeCount)
     {
-        GameObject wall = GetPooled(_wallPool, _wallPrefab, ref _activeWallCount);
+        GameObject wall = GetPooled(pool, prefab, ref activeCount);
         ApplyModelColor(wall, factionColor);
 
         Vector3 start = seg.Start;
@@ -157,17 +166,17 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
             Vector3 horizontalDir = new Vector3(end.x - start.x, 0f, end.z - start.z);
             if (horizontalDir.sqrMagnitude > 0.0001f)
                 wall.transform.rotation = Quaternion.LookRotation(horizontalDir.normalized);
-            wall.transform.localScale = WallBaseScale;
+            wall.transform.localScale = prefab.transform.localScale;
 
             // 用原始预制体 Mesh 作为源
-            Mesh sourceMesh = _wallPrefab.GetComponentInChildren<MeshFilter>()?.sharedMesh;
+            Mesh sourceMesh = prefab.GetComponentInChildren<MeshFilter>()?.sharedMesh;
             if (sourceMesh != null)
                 WallMeshDeformer.ApplyDeformedMesh(filter, sourceMesh, heightDelta);
         }
         else
         {
             // 标准水平墙：还原可能残留的变形 Mesh，放中点、水平朝向、平均高度
-            if (filter != null) RestoreOriginalMesh(wall, filter);
+            if (filter != null) RestoreOriginalMesh(wall, filter, prefab);
 
             Vector3 mid = seg.Midpoint;
             // 水平墙：Y 取两端平均，忽略微小扰动
@@ -177,17 +186,17 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
             Vector3 horizontalDir = new Vector3(end.x - start.x, 0f, end.z - start.z);
             if (horizontalDir.sqrMagnitude > 0.0001f)
                 wall.transform.rotation = Quaternion.LookRotation(horizontalDir.normalized);
-            wall.transform.localScale = WallBaseScale;
+            wall.transform.localScale = prefab.transform.localScale;
         }
     }
 
-    private void PlaceTower(Vector3 corner, Color factionColor)
+    private void PlaceTower(Vector3 corner, Color factionColor, GameObject prefab, List<GameObject> pool, ref int activeCount)
     {
-        GameObject tower = GetPooled(_towerPool, _towerPrefab, ref _activeTowerCount);
+        GameObject tower = GetPooled(pool, prefab, ref activeCount);
         ApplyModelColor(tower, factionColor);
         tower.transform.position = corner;
         tower.transform.rotation = Quaternion.identity;
-        tower.transform.localScale = TowerBaseScale;
+        tower.transform.localScale = prefab.transform.localScale;
     }
 
     // ── 对象池辅助 ────────────────────────────────────────
@@ -222,12 +231,12 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
     }
 
     // 还原预制体原始 Mesh（清除上次的变形 Mesh）
-    private void RestoreOriginalMesh(GameObject wall, MeshFilter filter)
+    private void RestoreOriginalMesh(GameObject wall, MeshFilter filter, GameObject prefab)
     {
         if (filter.sharedMesh != null && filter.sharedMesh.name == "WallDeformed")
         {
             WallMeshDeformer.ReleaseDeformedMesh(filter);
-            Mesh sourceMesh = _wallPrefab.GetComponentInChildren<MeshFilter>()?.sharedMesh;
+            Mesh sourceMesh = prefab.GetComponentInChildren<MeshFilter>()?.sharedMesh;
             if (sourceMesh != null) filter.sharedMesh = sourceMesh;
         }
     }
@@ -240,84 +249,5 @@ public class SphereOfInfluenceRenderer : MonoBehaviour
         {
             renderer.material.SetColor("_Color", color);
         }
-    }
-
-    // ══════════════════════════════════════════════════════
-    //  旧面片渲染（预制体未指定时回退）
-    // ══════════════════════════════════════════════════════
-
-    private void RefreshWithMesh()
-    {
-        DestroySphere(ref _playerSphere);
-        foreach (var go in _enemySpheres)
-            DestroySphere(go);
-        _enemySpheres.Clear();
-
-        if (_playerModelManager.SphereOfInfluence_HexC_HexCellData.Count > 0)
-        {
-            var cells = _playerModelManager.SphereOfInfluence_HexC_HexCellData.Values.ToList();
-            _playerSphere = CreateSphereMesh(cells, cells, PlayerColor, "PlayerSphereOfInfluence");
-        }
-
-        foreach (var kv in _enemyModelManager.Enemy_SphereOfInfluence_HexC_HexCellData)
-        {
-            var fullSphere = kv.Value.Values.Where(c => c != null).ToList();
-            // 【探索重构-阶段1】始终显示完整势力范围
-            if (fullSphere.Count == 0) continue;
-            Color color = EnemyColor;
-            GameObject go = CreateSphereMesh(fullSphere, fullSphere, color, $"EnemySphereOfInfluence_{kv.Key}");
-            _enemySpheres.Add(go);
-        }
-    }
-
-    private GameObject CreateSphereMesh(List<HexCellData> hexCells, ICollection<HexCellData> membershipCells, Color color, string objectName)
-    {
-        int edgeCount;
-        var verticeList = _meshGenerator.GetOneSphereOfInfluenceVertices(hexCells, membershipCells, out edgeCount, _mapDataService);
-        List<Vector3> vertices = new List<Vector3>();
-        foreach (var list in verticeList) vertices.AddRange(list);
-
-        List<Vector2> uv = new List<Vector2>();
-        List<int> drawOrder = new List<int>();
-
-        for (int i = 0; i < vertices.Count / 4; i++)
-        {
-            var order = _meshGenerator.GetOneSphereOfInfluenceDrawOrder();
-            for (int j = 0; j < order.Count; j++) order[j] += i * 4;
-            drawOrder.AddRange(order);
-            uv.AddRange(_meshGenerator.GetOneSphereOfInfluenceUV());
-        }
-
-        Shader shader = Shader.Find("Custom/SphereOfInfluence") ?? Shader.Find("Unlit/Transparent") ?? Shader.Find("Hidden/InternalErrorShader");
-        Material mat = new Material(shader);
-        mat.SetColor("_Color", color);
-
-        GameObject obj = new GameObject(objectName);
-        MapController.CreatMesh(vertices.ToArray(), uv.ToArray(), drawOrder.ToArray(), obj, mat, addCollider: false);
-        return obj;
-    }
-
-    private static void DestroySphere(ref GameObject sphere)
-    {
-        DestroySphere(sphere);
-        sphere = null;
-    }
-
-    private static void DestroySphere(GameObject sphere)
-    {
-        if (sphere == null) return;
-
-        var renderer = sphere.GetComponent<MeshRenderer>();
-        var filter = sphere.GetComponent<MeshFilter>();
-        if (renderer != null && renderer.sharedMaterial != null)
-            Destroy(renderer.sharedMaterial);
-        if (filter != null && filter.sharedMesh != null)
-            Destroy(filter.sharedMesh);
-        Destroy(sphere);
-    }
-
-    private Color GetEnemyColor(int enemyIndex)
-    {
-        return EnemyColor;
     }
 }

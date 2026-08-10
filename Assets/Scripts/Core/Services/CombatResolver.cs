@@ -31,6 +31,10 @@ public class CombatResolver
     public void Resolve(CharacterData attacker, CharacterData target)
     {
         if (attacker?.model == null || target?.model == null) return;
+        // 攻击者已死亡（HP≤0 或死亡流程已触发）时不允许再结算伤害
+        if (attacker.currentHp <= 0) return;
+        if (attacker.unitMovementController != null &&
+            attacker.unitMovementController.IsDeathScheduled) return;
         if (target.currentHp <= 0) return;
 
         float damage = ComputeUnitDamage(attacker, target);

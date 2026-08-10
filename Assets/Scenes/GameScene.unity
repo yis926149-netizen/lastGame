@@ -1712,8 +1712,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5f5a307d6dbd4e4f85a69dd55598590a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _wallPrefab: {fileID: 1401764333517022154, guid: 7a6220c5d75a83f4195d33264b187889, type: 3}
-  _towerPrefab: {fileID: 5710108422007156544, guid: 584acc0c22d90384cb13ad90aa6b6307, type: 3}
+  _wallPrefab: {fileID: 2842812053138206593, guid: ab471868e89c33649be957553119ab0a, type: 3}
+  _towerPrefab: {fileID: 2627136214319293818, guid: 7f0d47ce07e22a442aff58c5730505c5, type: 3}
+  _enemyWallPrefab: {fileID: 2842812053138206593, guid: b8722941eeb195b4db56ce85a1046b33, type: 3}
+  _enemyTowerPrefab: {fileID: 2627136214319293818, guid: 7f0d47ce07e22a442aff58c5730505c5, type: 3}
   _heightTolerance: 0.15
 --- !u!1 &286199655
 GameObject:

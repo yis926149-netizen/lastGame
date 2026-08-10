@@ -1358,6 +1358,32 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 else
                 {
                     TriangleTransitionMeshData triangle = GetGenericTriangleMesh(ctx, pair[0], pair[1]);
+
+                    // 【2026-08-10 封闭墙鞍部】两封闭墙脊线格 + 一格普通格：原 terrain tri 只进
+                    // collision（替换式拓扑，与 3 山格三角同模型），鞍部三角进山体槽；
+                    // 普通格表面不动，角点抬升由 CornerHeight 墙鞍规则统一供给（扇面/rect/本三角同源）。
+                    CellGeometry wallCol = MountainGeometryBuilder.BuildWallColTriangle(
+                        hexCellData, neighborA, neighborB, triangle);
+                    if (wallCol != null)
+                    {
+                        verticesList.AddRange(triangle.Vertices);
+                        uvList.AddRange(triangle.UVs);
+                        if (anim != null)
+                            AppendTriangleAnimUV(anim, hexCellData, pair, triangle, uv2List, uv3List);
+                        foreach (int i in triangle.Indices) collisionIndices.Add(i + IndexOffset);
+
+                        int colOffset = verticesList.Count;
+                        verticesList.AddRange(wallCol.Vertices);
+                        mountainRanges.Add(colOffset);
+                        mountainRanges.Add(wallCol.Vertices.Length);
+                        uvList.AddRange(wallCol.UVs);
+                        if (anim != null)
+                            MountainGeometryBuilder.AppendMountainAnimUV(wallCol,
+                                c => anim.DeltaY(c), c => anim.Delay(c), c => anim.DelayEnd(c), uv2List, uv3List);
+                        foreach (int i in wallCol.Indices) mountainIndices.Add(i + colOffset);
+                        continue;
+                    }
+
                     verticesList.AddRange(triangle.Vertices);
                     uvList.AddRange(triangle.UVs);
                     OtherMeshDrawOrderElementAddRule(hexCellData, triangle.Indices, ref ints, IndexOffset);
@@ -2704,7 +2730,12 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
 
         Enums.TransitionEdgeType type;
         int subdivision;
-        if (_config.useHeightBasedSubdivision)
+        // 【2026-08-10】含山边强制直坡：山体 rect（山-山整面 / 山-普通格界劈半）恒为直斜面，
+        // 若通用 rect 在 ΔH≥2 时用阶梯 profile，交界 tri 继承阶梯角点序列会与山体 rect 的直
+        // profile 错开成三角裂缝（低角度透视可见）；普通-普通边维持阶梯不变。
+        bool edgeMountain = MountainGeometryBuilder.HasVisibleMountain(hexCellData)
+            || MountainGeometryBuilder.HasVisibleMountain(neighbor);
+        if (_config.useHeightBasedSubdivision && !edgeMountain)
         {
             bool sameHeight = Mathf.Approximately(hexCellData.Height, neighbor.Height);
             type = sameHeight ? Enums.TransitionEdgeType.Slope : Enums.TransitionEdgeType.Step;

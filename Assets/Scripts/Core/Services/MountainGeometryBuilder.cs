@@ -118,11 +118,24 @@ public static class MountainGeometryBuilder
     /// 山脊连接，仍保留峰/垭口起伏（决策 ⑱/㉔：相邻对均值 ≤ 对中较高峰，最高峰依然突出）。
     /// 规则对 3 格对称、确定性、跨 Chunk 一致（决策 ㉓）；仍要求 3 格全有效山才隆起，
     /// 含普通格交汇角点恒 0（决策 ④ 固定锚点，防裂缝约束不变）。
+    /// 【2026-08-10 封闭墙鞍部修订】唯一例外：恰好两格为封闭墙脊线（closedWallCols）
+    /// 连续脊线对、第三格非有效山时，角点 = 两格山高均值（鞍部）。单格宽封闭墙不存在
+    /// 3 山格交汇，角点恒 0 会把墙面撕成锯齿尖牙、角点镂空见背景；抬升由
+    /// BuildWallColTriangle 的鞍部三角封口（普通格表面不动，决策 ④ 锚点保持）。
     /// </summary>
     public static float CornerHeight(HexCellData a, HexCellData b, HexCellData c)
     {
         if (a == null || b == null || c == null) return 0f;
-        if (!HasVisibleMountain(a) || !HasVisibleMountain(b) || !HasVisibleMountain(c)) return 0f;
+        bool visibleA = HasVisibleMountain(a);
+        bool visibleB = HasVisibleMountain(b);
+        bool visibleC = HasVisibleMountain(c);
+        if (!visibleA || !visibleB || !visibleC)
+        {
+            if (!visibleA && IsWallColPair(b, c)) return WallColHeight(b, c);
+            if (!visibleB && IsWallColPair(a, c)) return WallColHeight(a, c);
+            if (!visibleC && IsWallColPair(a, b)) return WallColHeight(a, b);
+            return 0f;
+        }
         float hA = ComputeMountainHeight(a);
         float hB = ComputeMountainHeight(b);
         float hC = ComputeMountainHeight(c);
@@ -132,6 +145,20 @@ public static class MountainGeometryBuilder
         if (IsRidgeConsecutive(b, c)) crest = Mathf.Max(crest, (hB + hC) * 0.5f);
         if (crest >= 0f) return crest;
         return (hA + hB + hC) / 3f;
+    }
+
+    /// <summary>封闭墙鞍部对：两格为同一封闭墙脊线（closedWallCols）的连续脊线格且均可见。
+    /// 可见性纳入判定：任一格低于 minVisibleHeight 时角点不抬升、鞍部三角不生成，二者同源防裂缝。</summary>
+    public static bool IsWallColPair(HexCellData x, HexCellData y)
+    {
+        return HasVisibleMountain(x) && HasVisibleMountain(y)
+            && IsRidgeConsecutive(x, y) && x.mountainRidge.closedWallCols;
+    }
+
+    /// <summary>封闭墙鞍部高度 = 连续脊线对两格山高均值（与脊线边带/rect 同源）。</summary>
+    public static float WallColHeight(HexCellData x, HexCellData y)
+    {
+        return (ComputeMountainHeight(x) + ComputeMountainHeight(y)) * 0.5f;
     }
 
     /// <summary>
@@ -370,18 +397,20 @@ public static class MountainGeometryBuilder
         var ends = new List<Vector3>(4);
         var startLifts = new float[4];
         var endLifts = new float[4];
+        bool ownerVisible = HasVisibleMountain(owner);
+        bool neighborVisible = HasVisibleMountain(neighbor);
         for (int p = 0; p < 4; p++)
         {
             Vector3 s = ownerSolid[startIndices[p]];
             Vector3 e = neighborSolid[endIndices[p]];
-            startLifts[p] = RectEndpointLift(owner, startIndices[p], neighborOf);
-            endLifts[p] = RectEndpointLift(neighbor, endIndices[p], neighborOf);
+            // 【2026-08-10 封闭墙鞍部】非山侧端点隆起强制 0：鞍部角点值是山体表面特征，
+            // 普通侧表面（plain 半 rect / 普通格顶面）保持原始高度，由墙鞍三角在格界处闭合。
+            startLifts[p] = ownerVisible ? RectEndpointLift(owner, startIndices[p], neighborOf) : 0f;
+            endLifts[p] = neighborVisible ? RectEndpointLift(neighbor, endIndices[p], neighborOf) : 0f;
             starts.Add(new Vector3(s.x, s.y + startLifts[p], s.z));
             ends.Add(new Vector3(e.x, e.y + endLifts[p], e.z));
         }
 
-        bool ownerVisible = HasVisibleMountain(owner);
-        bool neighborVisible = HasVisibleMountain(neighbor);
         if (ownerVisible && neighborVisible)
         {
             if (IsRidgeConsecutive(owner, neighbor))
@@ -586,6 +615,109 @@ public static class MountainGeometryBuilder
         }
         return triangle.Vertices[best];
     }
+
+    /// <summary>
+    /// 【2026-08-10 封闭墙鞍部三角】两封闭墙脊线格（closedWallCols 连续对）+ 一格普通格的
+    /// 三格交汇：原 terrain tri 只进 collision，本件进山体渲染槽。
+    /// 6 顶点环 = [山角0+col, 脊边格界中点+col, 山角1+col, 脊1侧格界点, 普通角点, 脊0侧格界点]，
+    /// 与山-山 rect 角 profile（[aV+col, abMid+col, bV+col]）和山-普通 rect 角 profile
+    ///（[aV+col, 格界 0] + [格界 0, pV 0]）逐段共点闭合；普通格表面不动（决策 ④ 锚点保持）。
+    /// col = 两格山高均值（与脊线边带同值），墙面成连续山脊、无镂空；rules 与遍历顺序/Chunk 无关。
+    /// 动画来源与所接 rect 角 profile 端点逐点一致（决策 ㉙ 共享边同规则）。
+    /// </summary>
+    public static CellGeometry BuildWallColTriangle(
+        HexCellData owner, HexCellData neighborA, HexCellData neighborB,
+        TriangleTransitionMeshData plainTriangle)
+    {
+        if (owner == null || neighborA == null || neighborB == null || plainTriangle == null
+            || plainTriangle.Vertices == null || plainTriangle.UVs == null)
+            return null;
+
+        HexCellData ridge0 = null, ridge1 = null, third = null;
+        Vector2 uv0 = default, uv1 = default, uvThird = default;
+        if (IsWallColPair(owner, neighborA) && !HasVisibleMountain(neighborB))
+        {
+            ridge0 = owner; ridge1 = neighborA; third = neighborB;
+            uv0 = Vector2.zero; uv1 = new Vector2(1f, 0f); uvThird = new Vector2(0f, 1f);
+        }
+        else if (IsWallColPair(owner, neighborB) && !HasVisibleMountain(neighborA))
+        {
+            ridge0 = owner; ridge1 = neighborB; third = neighborA;
+            uv0 = Vector2.zero; uv1 = new Vector2(0f, 1f); uvThird = new Vector2(1f, 0f);
+        }
+        else if (IsWallColPair(neighborA, neighborB) && !HasVisibleMountain(owner))
+        {
+            ridge0 = neighborA; ridge1 = neighborB; third = owner;
+            uv0 = new Vector2(1f, 0f); uv1 = new Vector2(0f, 1f); uvThird = Vector2.zero;
+        }
+        if (ridge0 == null || !HasVisibleMountain(ridge0) || !HasVisibleMountain(ridge1)) return null;
+
+        Vector3 p0 = FindTriangleCorner(plainTriangle, uv0);
+        Vector3 p1 = FindTriangleCorner(plainTriangle, uv1);
+        Vector3 pThird = FindTriangleCorner(plainTriangle, uvThird);
+        float col = WallColHeight(ridge0, ridge1);
+
+        // 6 顶点环：与三条相接 rect 的角 profile 逐段共点（闭合契约会）。
+        Vector3 aV = new Vector3(p0.x, p0.y + col, p0.z);
+        Vector3 bV = new Vector3(p1.x, p1.y + col, p1.z);
+        Vector3 abMid = new Vector3((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f + col, (p0.z + p1.z) * 0.5f);
+        Vector3 apBnd = new Vector3((p0.x + pThird.x) * 0.5f, (p0.y + pThird.y) * 0.5f, (p0.z + pThird.z) * 0.5f);
+        Vector3 bpBnd = new Vector3((p1.x + pThird.x) * 0.5f, (p1.y + pThird.y) * 0.5f, (p1.z + pThird.z) * 0.5f);
+        Vector3 pV = pThird;
+
+        var points = new List<Vector3> { aV, abMid, bV, bpBnd, pV, apBnd };
+        var pointLifts = new float[] { col, col, col, 0f, 0f, 0f };
+        Vector3 centroid = (aV + abMid + bV + bpBnd + pV + apBnd) / 6f;
+        float centroidLift = col * 0.5f;
+        points.Add(centroid);
+
+        var pointSources = new[]
+        {
+            MountainVertexAnimSource.Uniform(new[] { ridge0 }),
+            MountainVertexAnimSource.Lerp(ridge0, ridge1, 0.5f),
+            MountainVertexAnimSource.Uniform(new[] { ridge1 }),
+            MountainVertexAnimSource.Lerp(ridge1, third, 0.5f),
+            MountainVertexAnimSource.Uniform(new[] { third }),
+            MountainVertexAnimSource.Lerp(ridge0, third, 0.5f),
+            MountainVertexAnimSource.Uniform(new[] { ridge0, ridge1, third }),
+        };
+
+        MountainRidgeData ridge = ridge0.mountainRidge ?? ridge1.mountainRidge;
+        float hMax = ridge != null ? Mathf.Max(1e-4f, ridge.hMax) : 1f;
+        float ridgeKey01 = MountainMaterialContract.RidgeKey01(ridge);
+
+        var vertices = new List<Vector3>(18);
+        var uvs = new List<Vector2>(18);
+        var weights = new List<HexCellData[]>(18);
+        var animSources = new List<MountainVertexAnimSource[]>(18);
+        var local = new List<int>(3);
+        for (int i = 0; i < 6; i++)
+        {
+            local.Clear();
+            AddUpwardTriangle(local, points, 6, i, (i + 1) % 6);
+            float avgLift = (centroidLift + pointLifts[i] + pointLifts[(i + 1) % 6]) / 3f;
+            int tier = Mathf.Clamp(Mathf.FloorToInt(avgLift / hMax * MountainMaterialContract.FaceTierCount), 0,
+                MountainMaterialContract.FaceTierCount - 1);
+            Vector2 materialUV = new Vector2(ridgeKey01, MountainMaterialContract.EncodeFaceTier(tier));
+            for (int v = 0; v < 3; v++)
+            {
+                int pointIndex = local[v];
+                vertices.Add(points[pointIndex]);
+                uvs.Add(materialUV);
+                weights.Add(new[] { ridge0, ridge1, third });
+                animSources.Add(pointSources[pointIndex]);
+            }
+        }
+        return new CellGeometry
+        {
+            Vertices = vertices.ToArray(),
+            UVs = uvs.ToArray(),
+            Indices = LinearIndices(vertices.Count),
+            Weights = weights,
+            AnimSources = animSources,
+        };
+    }
+
 
     /// <summary>
     /// 由预构建 profiles 构建 rect（与 RectangleTransitionMesh.Build 同绕序；UV.u = k/3）。
