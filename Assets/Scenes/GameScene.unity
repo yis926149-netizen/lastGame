@@ -6443,8 +6443,8 @@ MonoBehaviour:
   portraitFOVMultiplier: 1.3
   moveSpeed: 15
   smoothMoveTime: 0.1
-  minZoomDistance: 50
-  maxZoomDistance: 75
+  minZoomDistance: 25
+  maxZoomDistance: 60
   zoomSpeed: 35
   smoothZoomTime: 0.1
   rotateSpeed: 30

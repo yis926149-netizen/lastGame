@@ -45,8 +45,6 @@ public class ArenaEventManager : ITickable
 
     private VisibilityLease _lease;
     private CentralChest _chest;
-    private Dictionary<HexCellData, ArenaMountainPlacement> _pendingMountainPlacements;
-    private int _arenaRiseCommitId = -1;
 
     public ArenaState State { get; private set; } = ArenaState.Inactive;
     public HexCellData CenterCell => _centerCell;
@@ -180,8 +178,8 @@ public class ArenaEventManager : ITickable
     }
 
     /// <summary>
-    /// 突起：先让 37 格同高平台中心向外升起，动画完成后再同步叠加永久山脉边界。
-    /// 清空内 2 环 → 边界环保持不可通行（入口保留）→ 单位弹射/取消由 MapMutationService 处理 →
+    /// 突起：清空旧地貌（同步）→ 37 格平台 + 边界山脉一笔动画事务中心向外顶出（连续无接缝）→
+    /// 边界环保持不可通行（入口保留）→ 单位弹射/取消由 MapMutationService 处理 →
     /// Arena VisibilityLease 点亮 37 格 → 生成宝箱。
     /// </summary>
     private void Activate()
@@ -191,9 +189,10 @@ public class ArenaEventManager : ITickable
 
         float floorHeight = _config.ArenaFloorHeight;
         bool animationRequested = _renderBackend.SupportsAnimatedTransition && _visualTransition != null;
-        _pendingMountainPlacements = BuildArenaMountainPlacements();
+        Dictionary<HexCellData, ArenaMountainPlacement> placements = BuildArenaMountainPlacements();
 
-        // 准备事务先同步清理旧地貌，确保后续纯高度事务不会因山体拓扑变化被降级。
+        // 准备事务先同步清理旧地貌：若预留区内存在既有山体，其"移除"方向仍会强制降级
+        // （阶段 5.5 修订），拆到本同步事务中消失，保证后续动画事务只含"新增"方向。
         _mutationService.BeginTransaction();
         foreach (HexCellData cell in _innerCells)
         {
@@ -222,10 +221,33 @@ public class ArenaEventManager : ITickable
         }
         _mutationService.Commit(new MapTransitionOptions { Duration = 0f, LockAffectedCells = true });
 
-        // 纯高度事务保持拓扑不变，可稳定进入中心向外的顶点动画管线。
+        // 突起事务 = 高度 + 边界山体一笔提交（阶段 5.5 修订：纯山体新增不再降级）。
+        // 山体几何随平台进入同一中心向外顶点动画：keep-below clip 在 progress=0 把新山体
+        // 整体藏于旧地形之下，随进度从山脚顶出到峰顶——平台与山脉连续一段运动，无接缝。
         _mutationService.BeginTransaction();
         foreach (HexCellData cell in _arenaCells)
-            _mutationService.Apply(cell, HexCellPatch.HeightPatch(floorHeight));
+        {
+            if (placements != null && placements.TryGetValue(cell, out ArenaMountainPlacement placement))
+            {
+                _mutationService.Apply(cell, new HexCellPatch
+                {
+                    HasHeight = true,
+                    Height = floorHeight,
+                    HasMountain = true,
+                    MountainLandForm = _config.mountainConfig.mountainLandForm,
+                    MountainRidge = placement.Ridge,
+                    MountainRidgeStatus = Enums.MountainRidgeStatus.RidgeCell,
+                    MountainDistToRidge = 0f,
+                    MountainPosAlongRidge = placement.Position,
+                    RidgeDirectionA = placement.DirectionA,
+                    RidgeDirectionB = placement.DirectionB
+                });
+            }
+            else
+            {
+                _mutationService.Apply(cell, HexCellPatch.HeightPatch(floorHeight));
+            }
+        }
 
         var options = new MapTransitionOptions
         {
@@ -236,14 +258,8 @@ public class ArenaEventManager : ITickable
             LockAffectedCells = true
         };
         MapCommitResult riseResult = _mutationService.Commit(options);
-        _arenaRiseCommitId = riseResult?.CommitId ?? -1;
         bool animated = riseResult != null && _visualTransition != null
             && _visualTransition.IsTransitionActive(riseResult.CommitId);
-
-        if (animated)
-            _mutationService.MapChanged += OnArenaRiseChanged;
-        else
-            ApplyPendingArenaMountains();
 
         // 迷雾视觉点亮（不置探索位）：Arena VisibilityLease + 立即刷新（突破 20fps 限频）
         // 【实机修订-2026-08-04】snapCells=_arenaCells：突起帧 37 格瞬间点亮（§18.2），
@@ -262,44 +278,7 @@ public class ArenaEventManager : ITickable
 
         // 全单位路径失效（MapMutationService.Commit 已统一处理，此处仅日志）
         Debug.Log($"[ArenaEventManager] 竞技场突起完成：平台 {_innerCells.Count} 格 + 永久山脉边界 {_wallCells.Count} 格（入口 2）" +
-                   (animated ? $"，动画 {ArenaRiseDurationSeconds}s 中心向外错峰。" : "（同步提交）。"));
-    }
-
-    private void OnArenaRiseChanged(MapChangedEvent mapEvent)
-    {
-        if (mapEvent == null || mapEvent.CommitId != _arenaRiseCommitId) return;
-        if (mapEvent.Phase != MapChangedPhase.Finalized && mapEvent.Phase != MapChangedPhase.Cancelled) return;
-
-        _mutationService.MapChanged -= OnArenaRiseChanged;
-        _arenaRiseCommitId = -1;
-        ApplyPendingArenaMountains();
-    }
-
-    private void ApplyPendingArenaMountains()
-    {
-        Dictionary<HexCellData, ArenaMountainPlacement> placements = _pendingMountainPlacements;
-        _pendingMountainPlacements = null;
-        if (placements == null || placements.Count == 0) return;
-
-        _mutationService.BeginTransaction();
-        foreach (HexCellData cell in _wallCells)
-        {
-            if (!placements.TryGetValue(cell, out ArenaMountainPlacement placement)) continue;
-            _mutationService.Apply(cell, new HexCellPatch
-            {
-                HasMountain = true,
-                MountainLandForm = _config.mountainConfig.mountainLandForm,
-                MountainRidge = placement.Ridge,
-                MountainRidgeStatus = Enums.MountainRidgeStatus.RidgeCell,
-                MountainDistToRidge = 0f,
-                MountainPosAlongRidge = placement.Position,
-                RidgeDirectionA = placement.DirectionA,
-                RidgeDirectionB = placement.DirectionB,
-                HasMovementCost = true,
-                MovementCost = float.MaxValue
-            });
-        }
-        _mutationService.Commit(new MapTransitionOptions { Duration = 0f, LockAffectedCells = true });
+                   (animated ? $"，动画 {ArenaRiseDurationSeconds}s 中心向外错峰，山体随平台同动画顶出。" : "（同步提交）。"));
     }
 
     private Dictionary<HexCellData, ArenaMountainPlacement> BuildArenaMountainPlacements()
@@ -578,10 +557,6 @@ public class ArenaEventManager : ITickable
     /// <summary>对局结束时强制收尾：释放 lease、强制完成动画、注销并销毁宝箱（由 EndGame.EndThisGame 调用）。</summary>
     public void Shutdown()
     {
-        _mutationService.MapChanged -= OnArenaRiseChanged;
-        _arenaRiseCommitId = -1;
-        _pendingMountainPlacements = null;
-
         // 阶段五：分帧提交对局结束兜底（几何立即构建完成，防锁残留/句柄泄漏）
         if (_mutationService.HasSlicedCommitPending)
             _mutationService.ForceCompleteSliced();

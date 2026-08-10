@@ -160,23 +160,26 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             attackTargetPosition = attackedUnit.transform.position;
         }
 
-        // --- 先设定状态 ---
-        // 这样如果 RequestMove 内部立即调用了 OnMoveFinished，
-        // OnMoveFinished 会把这里的 true 改回 false。
-        isMoving = true;
         movementPurpose = purpose;
 
-        // 向系统请求移动
+        // 向系统请求移动。
+        // 特殊情况：RequestMove 在 MoveToAttack 且路径为空时会同步调用 OnMoveFinished（仍返回 true），
+        // OnMoveFinished 会把 isMoving 设回 false、movementPurpose 设回 None，并触发攻击序列。
         bool success = _movementSystem.RequestMove(this, targetHex, purpose);
 
         if (!success)
         {
-            // 如果请求失败，再把状态重置回来
-            isMoving = false;
             movementPurpose = Enums.MovementPurpose.None;
             attackedUnit = null;
-            Debug.Log("[UnitMovementController] Move request rejected.");
+            // Move request rejected — 正常情况（目标不可达/已被占用），不记录日志避免刷屏。
+            return;
         }
+
+        // RequestMove 成功后，若 movementPurpose 尚未被同步的 OnMoveFinished 重置为 None，
+        // 说明是正常入队（非同步完成）场景，此时才设 isMoving = true。
+        // 这样避免原来"先设 true 再失败改回 false"在同帧完成、Update() 观测不到动画切换的问题。
+        if (movementPurpose != Enums.MovementPurpose.None)
+            isMoving = true;
     }
 
     public void CancelMove()
@@ -269,6 +272,19 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         currentMovementPoints = MaxMovementPoints;
 
         animator = GetComponent<Animator>();
+        if (animator == null)
+        {
+            Debug.LogWarning($"[UnitMovementController] {gameObject.name} (PlayerIndex={PlayerIndex}): Animator 组件为 null！移动动画将无法播放。请检查预制体根节点是否挂载了 Animator。", gameObject);
+        }
+        else
+        {
+            var ctrl = animator.runtimeAnimatorController;
+            if (ctrl == null)
+                Debug.LogWarning($"[UnitMovementController] {gameObject.name} (PlayerIndex={PlayerIndex}): Animator 存在但 runtimeAnimatorController 为 null！请为预制体 Animator 挂载控制器。", gameObject);
+            else
+                Debug.Log($"[UnitMovementController] {gameObject.name} (PlayerIndex={PlayerIndex}): Animator 初始化正常，控制器={ctrl.name}", gameObject);
+        }
+
         lastIsMoving = isMoving;
     }
 
@@ -282,6 +298,19 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         // 动画状态同步
         if (isMoving != lastIsMoving)
         {
+            if (animator == null)
+            {
+                // 兜底：尝试重新获取（运行时动态挂载 Animator 的情况）
+                animator = GetComponent<Animator>();
+                if (animator == null)
+                {
+                    Debug.LogWarning($"[UnitMovementController] {gameObject.name} (PlayerIndex={PlayerIndex}): isMoving 切换为 {isMoving}，但 Animator 仍为 null，跳过 SetBool。", gameObject);
+                    lastIsMoving = isMoving;
+                    return;
+                }
+            }
+
+            Debug.Log($"[UnitMovementController] {gameObject.name} (PlayerIndex={PlayerIndex}): isMoving 切换 {lastIsMoving} → {isMoving}，调用 animator.SetBool(\"isMoving\", {isMoving})", gameObject);
             animator.SetBool("isMoving", isMoving);
             lastIsMoving = isMoving;
         }

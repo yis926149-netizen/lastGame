@@ -654,7 +654,6 @@ public class UnitMovementSystem : ITickable
                 {
                     totalCost = -1;
                     shortestPath = null;
-                    Debug.Log("目标点不可达");
                     return false;
                 }
 

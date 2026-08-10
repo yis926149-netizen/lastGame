@@ -13,11 +13,15 @@ public class CameraController : MonoBehaviour, ITickable
     private Camera _mainCamera;
 
     [Header("B4: 竖屏适配")]
+    [Tooltip("横屏基准 FOV（竖屏时按 portraitFOVMultiplier 放大）")]
     public float baseFOV = 60f; // 横屏基准 FOV
+    [Tooltip("竖屏 FOV 放大系数（宽高比 < 1 时生效）")]
     public float portraitFOVMultiplier = 1.3f; // 竖屏 FOV 放大系数
 
-    [Header("������ƶ�����")]
+    [Header("相机移动范围")]
+    [Tooltip("相机平移速度（世界单位/秒）")]
     public float moveSpeed = 5f;
+    [Tooltip("相机平移平滑时间（秒），值越大跟随越慢")]
     public float smoothMoveTime = 0.1f;
     private float _minX = -50f;
     private float _maxX = 50f;
@@ -26,28 +30,36 @@ public class CameraController : MonoBehaviour, ITickable
     private float _boundsPlaneY;
     private readonly Vector3[] _frustumCorners = new Vector3[4];
 
-    [Header("�������������")]
+    [Header("相机缩放距离")]
     [Tooltip("相机目标位置的世界 Y 坐标下限")]
     public float minZoomDistance = 20f;
     [Tooltip("相机目标位置的世界 Y 坐标上限")]
     public float maxZoomDistance = 75f;
+    [Tooltip("鼠标滚轮缩放速度（每格滚轮移动的世界单位量）")]
     public float zoomSpeed = 0.1f;
+    [Tooltip("相机缩放平滑时间（秒）")]
     public float smoothZoomTime = 0.1f;
 
-    [Header("�������ת����")]
-    public float rotateSpeed = 30f;                   
-    public float smoothRotateTime = 0.1f;            
-    public float returnRotateSpeed = 60f;           
-    public float defaultRotationDistance = 50f;       
+    [Header("相机旋转范围")]
+    [Tooltip("相机绕屏幕中心旋转速度（度/秒），按住 Ctrl + A / Ctrl + D 触发")]
+    public float rotateSpeed = 30f;
+    [Tooltip("相机旋转平滑时间（秒）")]
+    public float smoothRotateTime = 0.1f;
+    [Tooltip("相机回正旋转速度（度/秒）")]
+    public float returnRotateSpeed = 60f;
+    [Tooltip("屏幕中心未命中地图时，默认旋转中心与相机的距离")]
+    public float defaultRotationDistance = 50f;
+    [Tooltip("旋转中心检测图层：从屏幕中心发射射线命中的物体作为旋转中心")]
     public LayerMask rotationRaycastLayers;
 
     private Vector3 _targetCameraPosition;
     private Quaternion _targetCameraRotation;
 
-    public float returnDuration = 0.2f;   // �� �ع鶯��ʱ�����룩����������־��ܵ�����
-    private float _returnStartTime;       // �� ��¼��ʼ�ع��ʱ��
+    [Tooltip("相机回正动画时长（秒），修改后需要重新测试")]
+    public float returnDuration = 0.2f;   // 回移动画时间（秒），修改后需要重新测试
+    private float _returnStartTime;       // 记录开始回正的时间
 
-    // ��ת״̬��¼
+    // 旋转状态记录
     private Vector3 _rotationStartPosition;
     private Quaternion _rotationStartRotation;
     private bool _isReturningToStart = false;
@@ -97,7 +109,7 @@ public class CameraController : MonoBehaviour, ITickable
         _mainCamera = Camera.main;
         if (_mainCamera == null)
         {
-            Debug.LogError("CameraController: ������û���������");
+            Debug.LogError("CameraController: 场景中没有找到主相机");
             return;
         }
 
@@ -127,7 +139,7 @@ public class CameraController : MonoBehaviour, ITickable
         _mainCamera.transform.position = _targetCameraPosition;
     }
 
-    // ==================== һ���ָ�Ĭ��ֵ ====================
+    // ==================== 一键恢复默认值 ====================
     private void Reset()
     {
         moveSpeed = 5f;
@@ -204,7 +216,7 @@ public class CameraController : MonoBehaviour, ITickable
         _maxZ += edgePaddingZ;
 
         _boundsInitialized = true;
-        //Debug.Log("CameraController �߽��ʼ���ɹ�");
+        //Debug.Log("CameraController 边界初始化成功");
     }
 
     private void HandleKeyboardInput()
@@ -246,12 +258,12 @@ public class CameraController : MonoBehaviour, ITickable
         ClampTargetToBounds(ref _targetCameraPosition);
     }
 
-    // ====================== ��ת�߼�������ϸ��־�� ======================
+    // ====================== 旋转逻辑与详细日志 ======================
     private void HandleRotationInput()
     {
         if (_mainCamera == null) return;
 
-        //Debug.Log($"[Camera Rotation Debug] HandleRotationInput ������ | Ctrl: {_input.GetKey(KeyCode.LeftControl) || _input.GetKey(KeyCode.RightControl)} | _isRotating: {_isRotating}");
+        //Debug.Log($"[Camera Rotation Debug] HandleRotationInput 被调用 | Ctrl: {_input.GetKey(KeyCode.LeftControl) || _input.GetKey(KeyCode.RightControl)} | _isRotating: {_isRotating}");
 
         var canvasList = _uiConfig.RuntimeCanvases;
         bool isCtrlPressed = _input.GetKey(KeyCode.LeftControl) || _input.GetKey(KeyCode.RightControl);
@@ -270,13 +282,13 @@ public class CameraController : MonoBehaviour, ITickable
         if (_input.GetKey(KeyCode.A))
         {
             rotateAmount = rotateSpeed * Time.deltaTime;
-            //Debug.Log($"[Camera Rotation Debug] �� Ctrl + A ���£�rotateAmount = {rotateAmount:F3}");
+            //Debug.Log($"[Camera Rotation Debug] 按 Ctrl + A 按下，rotateAmount = {rotateAmount:F3}");
             HideAllCanvases();
         }
         else if (_input.GetKey(KeyCode.D))
         {
             rotateAmount = -rotateSpeed * Time.deltaTime;
-            //Debug.Log($"[Camera Rotation Debug] �� Ctrl + D ���£�rotateAmount = {rotateAmount:F3}");
+            //Debug.Log($"[Camera Rotation Debug] 按 Ctrl + D 按下，rotateAmount = {rotateAmount:F3}");
             HideAllCanvases();
         }
         else
@@ -297,7 +309,7 @@ public class CameraController : MonoBehaviour, ITickable
                 _rotationStartPosition = _targetCameraPosition;
                 _rotationStartRotation = _targetCameraRotation;
                 _isRotating = true;
-                //Debug.Log($"[Camera Rotation Debug] �״���ת��ʼ����� | ��ת���� = {_currentRotationCenter}");
+                //Debug.Log($"[Camera Rotation Debug] 首次旋转开始记录 | 旋转中心 = {_currentRotationCenter}");
             }
 
             Vector3 offsetFromCenter = _targetCameraPosition - _currentRotationCenter;
@@ -309,7 +321,7 @@ public class CameraController : MonoBehaviour, ITickable
             _targetCameraRotation = Quaternion.LookRotation(_currentRotationCenter - _targetCameraPosition);
             ClampTargetToBounds(ref _targetCameraPosition);
 
-            //Debug.Log($"[Camera Rotation Debug] ��ת��Ӧ�� | rotateAmount={rotateAmount:F3} | λ�ñ仯 | Y��ת: {oldRotY:F1}�� �� {_targetCameraRotation.eulerAngles.y:F1}��");
+            //Debug.Log($"[Camera Rotation Debug] 旋转响应记录 | rotateAmount={rotateAmount:F3} | 位置变化 | Y轴旋转: {oldRotY:F1}度 → {_targetCameraRotation.eulerAngles.y:F1}度");
         }
     }
 
@@ -340,14 +352,14 @@ public class CameraController : MonoBehaviour, ITickable
         _targetReturnAngle = _returnTotalAngle;
         _currentReturnAngle = 0;
 
-        _returnStartTime = Time.time;   // ��¼��ʼ�ع��ʱ��
+        _returnStartTime = Time.time;   // 记录开始回正的时间
     }
 
     private void HandleReturnToStart()
     {
         if (_mainCamera == null) return;
 
-        // �ָ�����
+        // 恢复画布
         var canvasList = _uiConfig.RuntimeCanvases;
         foreach (Canvas c in canvasList)
         {
@@ -357,9 +369,9 @@ public class CameraController : MonoBehaviour, ITickable
             c.gameObject.SetActive(true);
         }
 
-        // ==================== �̶�0.3������ɻع� ====================
+        // ==================== 固定0.3秒内完成回正 ====================
         float elapsed = Time.time - _returnStartTime;
-        float t = Mathf.Clamp01(elapsed / returnDuration);           // t �� 0 �� 1������ 0.3 ��
+        float t = Mathf.Clamp01(elapsed / returnDuration);           // t 从 0 到 1，历时 0.3 秒
         float targetAngle = Mathf.LerpAngle(0f, _targetReturnAngle, t);
 
         float rotateAngle = targetAngle - _currentReturnAngle;

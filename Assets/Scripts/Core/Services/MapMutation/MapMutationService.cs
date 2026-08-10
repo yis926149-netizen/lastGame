@@ -199,11 +199,15 @@ public class MapMutationService
                 ApplyPatch(cell, patch);
             ApplyOwners(ref dirtyFlags);
 
-            // 【程序化山脉-阶段 5.5】拓扑变化检测：写入后用纯函数比较旧/新有效山格集合摘要。
-            // 检测到任何山体拓扑变化（清除/水淹/恢复/阈值跨越/新增）⇒ 整笔事务降级 Duration=0
-            // 同步提交：不创建 TerrainGhost、不切山体 Transition 材质、不启动 MapVisualTransitionService
-            // （首版硬约束：拓扑增删不进入普通高度动画管线，避免旧山体 Ghost 突消与材质槽漂移）。
-            if (animated && MountainTopologyChanged(changedSet, mountainVisibilityBefore))
+            // 【程序化山脉-阶段 5.5·修订】拓扑变化降级细分：仅"移除/隐藏"（可见→不可见）⇒
+            // 整笔事务降级 Duration=0 同步提交（旧山体必须在提交帧立即消失，动画期间保留旧山体
+            // 的 Ghost 能力首版不具备，防 Ghost 突消/材质槽漂移）。
+            // "新增/恢复"（不可见→可见）⇒ 允许动画：动画 staging 的山体几何自带 UV2/UV3 通道
+            // （阶段 5.3），keep-below clip 在 progress=0 时把新山体整体藏于 clip 线之下
+            // （线起点 = 全部动画顶点的最低 startY），随进度从山脚顶出到峰顶——无需 Ghost；
+            // 材质槽在 CommitChunkStaging 时已按新布局解析（ResolveTerrainMaterials），
+            // SwitchToTransitionMaterials 读取的即新布局稳定数组，无槽位漂移。
+            if (animated && MountainRemovalChanged(changedSet, mountainVisibilityBefore))
             {
                 LogMountainTopologyDowngrade(commitId, changedSet, mountainVisibilityBefore);
                 animated = false;
@@ -321,15 +325,18 @@ public class MapMutationService
         _inTransaction = false;
     }
 
-    // 【程序化山脉-阶段 5.5】山体拓扑变化检测与同步降级路由 ───────────
+    // 【程序化山脉-阶段 5.5·修订】山体移除方向检测与同步降级路由 ───────────
 
     /// <summary>
-    /// 比较写前/写后变化格的有效山体可见性（GenerateOrder 键），任一格翻转即视为拓扑变化。
-    /// 覆盖决策 ㉕ 清除、决策 ⑦ 陆水、阈值跨越（minVisibleHeight，决策 ⑳）、恢复/新增——
+    /// 比较写前/写后变化格的有效山体可见性（GenerateOrder 键），任一格"可见→不可见"翻转
+    /// 即视为移除方向拓扑变化（整笔事务降级同步提交）。覆盖决策 ㉕ 清除、决策 ⑦ 陆→水水淹、
+    /// 阈值跌落（minVisibleHeight，决策 ⑳）。
+    /// "不可见→可见"（新增/水→陆恢复/阈值跨越上升）不算移除：新山体几何由动画 keep-below
+    /// clip 在 progress=0 整体隐藏、随进度顶出（竞技场突起合并事务即依赖此路径）。
     /// 脏 Chunk 山体几何 = f(本 Chunk 格 ∪ 一环 halo 的 HasVisibleMountain)，halo 本事务不变，
     /// 故比较 changedSet 即可等价覆盖 rect/tri 山格计数变化。
     /// </summary>
-    private static bool MountainTopologyChanged(
+    private static bool MountainRemovalChanged(
         IReadOnlyCollection<HexCellData> changedSet,
         IReadOnlyDictionary<int, bool> visibilityBefore)
     {
@@ -338,13 +345,14 @@ public class MapMutationService
             if (cell == null) continue;
             bool before = visibilityBefore != null
                 && visibilityBefore.TryGetValue(cell.GenerateOrder, out bool v) && v;
-            if (before != MountainGeometryBuilder.HasVisibleMountain(cell))
+            if (before && !MountainGeometryBuilder.HasVisibleMountain(cell))
                 return true;
         }
         return false;
     }
 
-    /// <summary>整笔事务降级日志：只记录一次明确原因（Clear/Water/VisibilityThreshold/Restore），禁止每 Chunk 刷屏。</summary>
+    /// <summary>整笔事务降级日志：只记录一次明确原因（Clear/Water/VisibilityThreshold；混合事务中
+    /// 同笔含新增方向格时附加 Restore），禁止每 Chunk 刷屏。</summary>
     private static void LogMountainTopologyDowngrade(
         int commitId,
         IReadOnlyCollection<HexCellData> changedSet,
