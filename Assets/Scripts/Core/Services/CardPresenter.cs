@@ -4,7 +4,7 @@ using UnityEngine.UI;
 using Zenject;
 using DG.Tweening;
 
-public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropHandler
+public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBuildingSpawnService, ICardDropHandler
 {
     [Inject] private ICardService _cardService;
     [Inject] private IMapDataService _mapDataService;
@@ -406,6 +406,13 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, ICardDropH
     }
 
     // ====================== 建筑生成 ======================
+
+    /// <summary>IPlayerBuildingSpawnService 实现：外部系统（如探索奖励）调用此方法生成玩家建筑。</summary>
+    public bool SpawnPlayerBuilding(int buildingID, Vector3 worldPosition)
+    {
+        return SpawnBuilding(buildingID, worldPosition);
+    }
+
     private bool SpawnBuilding(int buildingID, Vector3 position)
     {
         Vector3 v = _mapDataService.WorldToHexCoordinate(position);

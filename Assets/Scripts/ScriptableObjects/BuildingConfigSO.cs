@@ -26,4 +26,8 @@ public class BuildingConfigSO : NormalCardConfigSO
 
     [Tooltip("兵营产出单位（兵营专用，动态 AddComponent 的 BarracksSpawner 由此初始化）")]
     public UnitConfigSO producedUnit;
+
+    [Tooltip("金矿每秒金币收入（金矿专用；其他建筑保持为 0）")]
+    [Min(0f)]
+    public float goldIncomePerSecond;
 }

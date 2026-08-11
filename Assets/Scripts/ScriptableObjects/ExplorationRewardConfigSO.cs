@@ -16,6 +16,7 @@ public class ExplorationRewardConfigSO : ScriptableObject
         Gold = 1,         // 金币奖励：即时金币
         MilitaryUnit = 2, // 军事单位奖励：生成单位
         TacticalCard = 3, // 战术卡牌奖励：获得一张战术牌
+        Building = 4,     // 建筑奖励：在被探索地块上直接放置建筑（格子不合格时降级为金币）
     }
 
     [Header("第一次随机：奖励类型权重")]
@@ -31,6 +32,9 @@ public class ExplorationRewardConfigSO : ScriptableObject
     [Tooltip("战术卡牌奖励权重（策划案对应：战术 10%）")]
     public int tacticalRewardWeight = 10;
 
+    [Tooltip("建筑奖励权重（高价值奖励，建议低权重）")]
+    public int buildingRewardWeight = 5;
+
     [Header("第二次随机：金币档位（金币奖励）")]
     [Tooltip("金币奖励档位数组，等概率随机选择一档。")]
     public int[] goldTiers = new int[] { 25, 50, 100, 200, 400 };
@@ -43,13 +47,17 @@ public class ExplorationRewardConfigSO : ScriptableObject
     public UnitConfigSO[] rewardUnits;
 
     [Header("第二次随机：战术卡牌（战术卡牌奖励）")]
-    [Tooltip("战术卡牌数据库：战术奖励时从中随机抽取一张。")]
-    public TacticalCardDatabaseSO tacticalCardDatabase;
+    [Tooltip("奖励可获得的战术卡牌（等概率随机抽取一张）。")]
+    public TacticalCardSO[] rewardTacticalCards;
+
+    [Header("第二次随机：建筑（建筑奖励）")]
+    [Tooltip("奖励可放置的建筑配置（等概率随机选择；请勿放入 City/GoldMine/PublicBuilding）。")]
+    public BuildingConfigSO[] rewardBuildings;
 
     /// <summary>第一次掷骰：按权重返回奖励类型。</summary>
     public ExplorationRewardType RollRewardType()
     {
-        int total = noneRewardWeight + goldRewardWeight + militaryRewardWeight + tacticalRewardWeight;
+        int total = noneRewardWeight + goldRewardWeight + militaryRewardWeight + tacticalRewardWeight + buildingRewardWeight;
         if (total <= 0) return ExplorationRewardType.None;
 
         int roll = Random.Range(0, total);
@@ -58,7 +66,9 @@ public class ExplorationRewardConfigSO : ScriptableObject
         if (roll < goldRewardWeight) return ExplorationRewardType.Gold;
         roll -= goldRewardWeight;
         if (roll < militaryRewardWeight) return ExplorationRewardType.MilitaryUnit;
-        return ExplorationRewardType.TacticalCard;
+        roll -= militaryRewardWeight;
+        if (roll < tacticalRewardWeight) return ExplorationRewardType.TacticalCard;
+        return ExplorationRewardType.Building;
     }
 
     /// <summary>第二次掷骰（金币）：返回金币数量。</summary>
@@ -82,14 +92,20 @@ public class ExplorationRewardConfigSO : ScriptableObject
         return rewardUnits[Random.Range(0, rewardUnits.Length)];
     }
 
-    /// <summary>第二次掷骰（战术）：从战术卡牌数据库随机抽取一张，返回 null 表示无可发牌。</summary>
+    /// <summary>第二次掷骰（战术）：从奖励战术卡牌数组中随机抽取一张，返回 null 表示无可发牌。</summary>
     public TacticalCardSO RollTacticalCard()
     {
-        if (tacticalCardDatabase == null || tacticalCardDatabase.cards == null ||
-            tacticalCardDatabase.cards.Count == 0)
+        if (rewardTacticalCards == null || rewardTacticalCards.Length == 0)
         {
             return null;
         }
-        return tacticalCardDatabase.cards[Random.Range(0, tacticalCardDatabase.cards.Count)];
+        return rewardTacticalCards[Random.Range(0, rewardTacticalCards.Length)];
+    }
+
+    /// <summary>第二次掷骰（建筑）：从奖励建筑配置数组中等概率返回一个配置；空数组返回 null。</summary>
+    public BuildingConfigSO RollBuildingConfig()
+    {
+        if (rewardBuildings == null || rewardBuildings.Length == 0) return null;
+        return rewardBuildings[Random.Range(0, rewardBuildings.Length)];
     }
 }

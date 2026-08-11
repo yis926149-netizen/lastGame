@@ -19,5 +19,6 @@ MonoBehaviour:
   - {fileID: 11400000, guid: a9de7c76d554f394ea52629675ecc8b7, type: 2}
   - {fileID: 11400000, guid: 45980904a474fe545b1f459945a38858, type: 2}
   - {fileID: 11400000, guid: 02cac065de3147a49afecc5ae529ea3d, type: 2}
+  - {fileID: 11400000, guid: 78d405b375b14d13bdc015c7eac27aaa, type: 2}
   cityModel: {fileID: 7847675344765151247, guid: a365a2962e7415f4cbacef42cb6eb13d, type: 3}
   enemyCityModel: {fileID: 581689171768584157, guid: 22936d8a872f1044c8201ed0fd67a331, type: 3}

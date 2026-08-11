@@ -35,15 +35,20 @@ public class AIManager : MonoBehaviour, IAIManager
         // 【探索重构-阶段7】初始化 AI 金币
         _goldWallet.InitPlayer(1);
 
-        // 开局上方随机位置：选一个合法地块放城市
+        // 开局上方、地图 x 列中间（第 xNumber/2 列）、顶边缘前一行（z = zNumber-2）：选一个合法地块放城市
         List<HexCellData> candidates = new List<HexCellData>();
+        int middleColumn = _config.xNumber / 2;
+        float targetRow = _config.zNumber - 2f; // 顶边缘(z = zNumber-1)的前一行
+        float bestDist = float.MaxValue;
         foreach (HexCellData cell in _mapDataService.GetAllCells())
         {
-            if (IsUnoccupiedLandCell(cell) &&
-                _config.aiZone.Contains(cell.HexCoordinate.z))
-            {
-                candidates.Add(cell);
-            }
+            if (!IsUnoccupiedLandCell(cell)) continue;
+            // 六边形行偏移：列号 i = HexCoordinate.x + floor(z / 2)；取最接近 (中间列, 目标行) 者
+            float column = cell.HexCoordinate.x + Mathf.Floor(cell.HexCoordinate.z / 2f);
+            float dist = Mathf.Abs(column - middleColumn) + Mathf.Abs(cell.HexCoordinate.z - targetRow);
+            if (dist > bestDist) continue;
+            if (dist < bestDist) { bestDist = dist; candidates.Clear(); }
+            candidates.Add(cell);
         }
 
         if (candidates.Count == 0)

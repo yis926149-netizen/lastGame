@@ -133,6 +133,10 @@ public class AIAutoExplorer : ITickable
                 // AI 战术牌系统尚未实现，战术奖励暂不发放
                 Debug.Log("[AIAutoExplorer] 探索奖励：战术卡牌（AI 暂不发放）");
                 break;
+
+            case ExplorationRewardConfigSO.ExplorationRewardType.Building:
+                SpawnRewardBuilding(cell, _rewardConfig.RollBuildingConfig());
+                break;
         }
     }
 
@@ -161,6 +165,41 @@ public class AIAutoExplorer : ITickable
             }
             _aiFactory.GenerateUnit(unitConfig.Id, spawnPos);
         }
+    }
+
+    /// <summary>
+    /// AI 建筑奖励：直接放置在被探索地块上；格子不合格或生成失败时降级为金币（与玩家侧同规则）。
+    /// </summary>
+    private void SpawnRewardBuilding(HexCellData cell, BuildingConfigSO config)
+    {
+        if (_aiFactory == null) return;
+
+        if (config == null)
+        {
+            Debug.LogWarning("[AIAutoExplorer] 探索奖励：建筑奖励但 rewardBuildings 为空，降级为金币");
+            DegradeToGold(cell);
+            return;
+        }
+
+        // 建造资格：与玩家侧共用同一规则（RewardBuildingRule）
+        if (!RewardBuildingRule.CanPlace(cell))
+        {
+            Debug.Log("[AIAutoExplorer] 探索奖励：地块不可建造，建筑奖励降级为金币");
+            DegradeToGold(cell);
+            return;
+        }
+
+        _aiFactory.GenerateBuilding(config, cell.RealCenterWorldCoordinate);
+        Debug.Log($"[AIAutoExplorer] 探索奖励：建筑 {config.name}");
+    }
+
+    /// <summary>降级结算：掷金币档位列入 AI 钱包。</summary>
+    private void DegradeToGold(HexCellData cell)
+    {
+        int goldAmount = _rewardConfig.RollGold();
+        if (goldAmount > 0)
+            _goldWallet.AddGold(AIIndex, goldAmount);
+        Debug.Log($"[AIAutoExplorer] 探索奖励降级：金币 +{goldAmount}");
     }
 
     private HexCellData FindOverflowCell(HexCellData origin)

@@ -24,7 +24,7 @@ MonoBehaviour:
   OuterRadius: 3
   SolidAreaRatio: 0.7
   xNumber: 18
-  zNumber: 32
+  zNumber: 22
   useFixedSeed: 1
   randomSeed: 20260729
   generatorVersion: 2

@@ -67,8 +67,7 @@ public static class LandFormEffectRule
         float total = 0f;
         foreach (var cell in cells)
         {
-            if (cell == null || cell.Player_City_Index.Key != factionId) continue;
-            if (logisticsService != null && !logisticsService.IsLogisticsConnected(cell, factionId)) continue;
+            if (!IncomeEligibilityRule.IsIncomeEligible(cell, factionId, logisticsService)) continue;
             if (TryGetGoldIncomeBonus(cell.landForm, out float bonus))
                 total += bonus;
         }

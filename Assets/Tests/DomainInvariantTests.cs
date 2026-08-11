@@ -469,6 +469,139 @@ public class DomainInvariantTests
         }
     }
 
+    [Test]
+    public void BuildingIncomeRule_SumGoldMineIncome_CountsOwnedLivingMinesOnly()
+    {
+        var database = ScriptableObject.CreateInstance<BuildingDatabaseSO>();
+        var config = ScriptableObject.CreateInstance<BuildingConfigSO>();
+        var playerMineObject = new GameObject("Player Gold Mine");
+        var aiMineObject = new GameObject("AI Gold Mine");
+
+        try
+        {
+            config.buildingType = Enums.BulidingType.GoldMine;
+            config.goldIncomePerSecond = 1f;
+            database.buildings.Add(config);
+
+            var playerMine = CreateCell(Vector3.zero);
+            playerMine.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+            playerMine.BulidingTypeOnHex_Building =
+                new System.Collections.Generic.KeyValuePair<Enums.BulidingType, GameObject>(
+                    Enums.BulidingType.GoldMine, playerMineObject);
+
+            var aiMine = CreateCell(new Vector3(1, -1, 0));
+            aiMine.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(1, 0);
+            aiMine.BulidingTypeOnHex_Building =
+                new System.Collections.Generic.KeyValuePair<Enums.BulidingType, GameObject>(
+                    Enums.BulidingType.GoldMine, aiMineObject);
+
+            var destroyedMine = CreateCell(new Vector3(2, -2, 0));
+            destroyedMine.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+            destroyedMine.BulidingTypeOnHex_Building =
+                new System.Collections.Generic.KeyValuePair<Enums.BulidingType, GameObject>(
+                    Enums.BulidingType.GoldMine, null);
+
+            var cells = new System.Collections.Generic.List<HexCellData>
+            {
+                playerMine, aiMine, destroyedMine
+            };
+
+            Assert.AreEqual(1f, BuildingIncomeRule.SumGoldMineIncome(cells, 0, database));
+            Assert.AreEqual(1f, BuildingIncomeRule.SumGoldMineIncome(cells, 1, database));
+        }
+        finally
+        {
+            Object.DestroyImmediate(playerMineObject);
+            Object.DestroyImmediate(aiMineObject);
+            Object.DestroyImmediate(config);
+            Object.DestroyImmediate(database);
+        }
+    }
+
+    [Test]
+    public void GoldIncomeService_GetIncomePerTick_CombinesLandformAndBuildingMines()
+    {
+        var landform = ScriptableObject.CreateInstance<MapLandFormSO>();
+        var database = ScriptableObject.CreateInstance<BuildingDatabaseSO>();
+        var config = ScriptableObject.CreateInstance<BuildingConfigSO>();
+        var buildingObject = new GameObject("Gold Mine");
+
+        try
+        {
+            landform.effectType = LandFormEffectType.GoldIncomeBoost;
+            landform.effect.goldIncomePerSecond = 2f;
+            config.buildingType = Enums.BulidingType.GoldMine;
+            config.goldIncomePerSecond = 1f;
+            database.buildings.Add(config);
+
+            var mine = CreateCell(Vector3.zero);
+            mine.landForm = landform;
+            mine.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+            mine.BulidingTypeOnHex_Building =
+                new System.Collections.Generic.KeyValuePair<Enums.BulidingType, GameObject>(
+                    Enums.BulidingType.GoldMine, buildingObject);
+
+            var map = Substitute.For<IMapDataService>();
+            map.GetAllCells().Returns(new System.Collections.Generic.List<HexCellData> { mine });
+
+            var buffs = Substitute.For<IFactionBuffService>();
+            buffs.GetStatMultiplier(0, "gold").Returns(2f);
+
+            var wallet = new GoldWallet { PassiveIncomePerTick = 2 };
+            var logistics = new LogisticsService(map);
+            logistics.RegisterMainCity(0, mine);
+            var income = new GoldIncomeService(wallet, buffs, null, map, logistics, database);
+
+            Assert.AreEqual(10, income.GetIncomePerTick(0));
+        }
+        finally
+        {
+            Object.DestroyImmediate(buildingObject);
+            Object.DestroyImmediate(config);
+            Object.DestroyImmediate(database);
+            Object.DestroyImmediate(landform);
+        }
+    }
+
+    [Test]
+    public void BuildingIncomeRule_SumGoldMineIncome_CutOffMinePauses()
+    {
+        var database = ScriptableObject.CreateInstance<BuildingDatabaseSO>();
+        var config = ScriptableObject.CreateInstance<BuildingConfigSO>();
+        var buildingObject = new GameObject("Cut Off Gold Mine");
+
+        try
+        {
+            config.buildingType = Enums.BulidingType.GoldMine;
+            config.goldIncomePerSecond = 1f;
+            database.buildings.Add(config);
+
+            var mine = CreateCell(Vector3.zero);
+            mine.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+            mine.BulidingTypeOnHex_Building =
+                new System.Collections.Generic.KeyValuePair<Enums.BulidingType, GameObject>(
+                    Enums.BulidingType.GoldMine, buildingObject);
+
+            var mainCity = CreateCell(new Vector3(10, -10, 0));
+            mainCity.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
+
+            var cells = new System.Collections.Generic.List<HexCellData> { mine, mainCity };
+            var map = Substitute.For<IMapDataService>();
+            map.GetAllCells().Returns(cells);
+
+            var logistics = new LogisticsService(map);
+            logistics.RegisterMainCity(0, mainCity);
+
+            Assert.AreEqual(0f, BuildingIncomeRule.SumGoldMineIncome(cells, 0, database, logistics));
+        }
+        finally
+        {
+            Object.DestroyImmediate(buildingObject);
+            Object.DestroyImmediate(config);
+            Object.DestroyImmediate(database);
+        }
+    }
+
     private static MapLandFormDatabaseSO CreateLandFormDatabase(int emptyWeight)
     {
         var database = ScriptableObject.CreateInstance<MapLandFormDatabaseSO>();

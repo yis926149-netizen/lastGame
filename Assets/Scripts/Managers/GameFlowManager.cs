@@ -84,19 +84,26 @@ public class GameFlowManager : MonoBehaviour, IInitializable
         // 【探索重构-阶段7】初始化玩家金币
         _goldWallet.InitPlayer(0);
 
-        // 玩家初始化：随机一个非水、无城、位于 Player 区域的陆地格
+        // 玩家初始化：非水、无城、位于地图 x 列中间（第 xNumber/2 列）、底边缘前一行（z=1）的陆地格
         System.Random random = SeedService.GetRandom("Player");
 
+        int middleColumn = _config.xNumber / 2;
+        float targetRow = 1f; // 底边缘(z=0)的前一行
         var candidates = new List<HexCellData>();
+        float bestDist = float.MaxValue;
         foreach (HexCellData cell in _mapDataService.GetAllCells())
         {
             if (cell != null &&
                 cell.HexType != Enums.HexType.LakeOrSea &&
                 cell.Player_City_Index.Equals(new KeyValuePair<int, int>(-1, -1)) &&
-                _config.playerZone.Contains(cell.HexCoordinate.z) &&
                 // 【竞技场-阶段二】主城出生点排除预留区外 2 环（玩法文档 §7.3）
                 !_arenaEventManager.IsNearReservedZone(cell, 2))
             {
+                // 六边形行偏移：列号 i = HexCoordinate.x + floor(z / 2)；取最接近 (中间列, 目标行) 者
+                float column = cell.HexCoordinate.x + Mathf.Floor(cell.HexCoordinate.z / 2f);
+                float dist = Mathf.Abs(column - middleColumn) + Mathf.Abs(cell.HexCoordinate.z - targetRow);
+                if (dist > bestDist) continue;
+                if (dist < bestDist) { bestDist = dist; candidates.Clear(); }
                 candidates.Add(cell);
             }
         }

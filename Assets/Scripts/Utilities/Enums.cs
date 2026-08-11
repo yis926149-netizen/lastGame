@@ -102,9 +102,16 @@ public class Enums
     //建筑类型
     public enum BulidingType
     {
-        City, AttackStatue, DefenseStatue, Altar, TechnologyAndCultural, Barracks, ArrowTower,
+        City = 0,
+        AttackStatue = 1,
+        DefenseStatue = 2,
+        Altar = 3,
+        TechnologyAndCultural = 4,
+        Barracks = 5,
+        ArrowTower = 6,
         // 【公共建筑系统】公共建筑（多格、可争夺、伪AI阵营）
-        PublicBuilding,
-        NoBuilding
+        PublicBuilding = 7,
+        NoBuilding = 8,
+        GoldMine = 9
     }
 }

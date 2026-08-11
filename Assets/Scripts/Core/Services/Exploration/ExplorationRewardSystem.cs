@@ -13,6 +13,7 @@ public class ExplorationRewardSystem
     private readonly ExplorationRewardConfigSO _config;
     private readonly GoldWallet _goldWallet;
     private readonly IPlayerUnitSpawnService _unitSpawnService;
+    private readonly IPlayerBuildingSpawnService _buildingSpawnService;
     private readonly IMapDataService _mapDataService;
     private readonly TacticalCardPresenter _tacticalCardPresenter;
     private readonly ExplorationCoinPresenter _coinPresenter;
@@ -22,6 +23,7 @@ public class ExplorationRewardSystem
         ExplorationRewardConfigSO config,
         GoldWallet goldWallet,
         IPlayerUnitSpawnService unitSpawnService,
+        IPlayerBuildingSpawnService buildingSpawnService,
         IMapDataService mapDataService,
         TacticalCardPresenter tacticalCardPresenter,
         ExplorationCoinPresenter coinPresenter)
@@ -30,6 +32,7 @@ public class ExplorationRewardSystem
         _config = config;
         _goldWallet = goldWallet;
         _unitSpawnService = unitSpawnService;
+        _buildingSpawnService = buildingSpawnService;
         _mapDataService = mapDataService;
         _tacticalCardPresenter = tacticalCardPresenter;
         _coinPresenter = coinPresenter;
@@ -64,16 +67,7 @@ public class ExplorationRewardSystem
 
             case ExplorationRewardConfigSO.ExplorationRewardType.Gold:
                 // 第二次掷骰：金币档位
-                int goldAmount = _config.RollGold();
-                if (goldAmount > 0)
-                {
-                    _goldWallet.AddGold(0, goldAmount); // PlayerIndex = 0
-                    // 金币表现与探索特效的奖励触发点并行播放（纯表现层，失败不影响结算）
-                    if (_coinPresenter != null)
-                    {
-                        _coinPresenter.PlayCoinAt(cell, goldAmount);
-                    }
-                }
+                int goldAmount = AddGoldReward(cell);
                 Debug.Log($"[ExplorationReward] 地块 {cell.HexCoordinate} 金币奖励 +{goldAmount}");
                 break;
 
@@ -100,9 +94,55 @@ public class ExplorationRewardSystem
                 }
                 break;
 
+            case ExplorationRewardConfigSO.ExplorationRewardType.Building:
+                // 第二次掷骰：随机一种建筑，直接放置在被探索地块上
+                BuildingConfigSO buildingConfig = _config.RollBuildingConfig();
+                if (buildingConfig == null)
+                {
+                    Debug.LogWarning($"[ExplorationReward] 建筑奖励但 rewardBuildings 为空，地块 {cell.HexCoordinate}，降级为金币");
+                    AddGoldReward(cell);
+                    break;
+                }
+                if (RewardBuildingRule.CanPlace(cell))
+                {
+                    if (_buildingSpawnService.SpawnPlayerBuilding(buildingConfig.buildingId, cell.RealCenterWorldCoordinate))
+                    {
+                        Debug.Log($"[ExplorationReward] 地块 {cell.HexCoordinate} 建筑奖励：{buildingConfig.name}");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[ExplorationReward] 建筑生成失败（{buildingConfig.name}），地块 {cell.HexCoordinate}，降级为金币");
+                        AddGoldReward(cell);
+                    }
+                }
+                else
+                {
+                    // 格子不合格（公共建筑/山格/禁建地貌/已有单位或建筑）→ 降级为金币
+                    Debug.Log($"[ExplorationReward] 地块 {cell.HexCoordinate} 不可建造，建筑奖励降级为金币");
+                    AddGoldReward(cell);
+                }
+                break;
+
             default:
                 break;
         }
+    }
+
+    /// <summary>
+    /// 金币奖励结算：掷金币档位 → 入账 → 播金币表现（纯表现层，失败不影响结算）。返回金币数量。
+    /// </summary>
+    private int AddGoldReward(HexCellData cell)
+    {
+        int goldAmount = _config.RollGold();
+        if (goldAmount > 0)
+        {
+            _goldWallet.AddGold(0, goldAmount); // PlayerIndex = 0
+            if (_coinPresenter != null)
+            {
+                _coinPresenter.PlayCoinAt(cell, goldAmount);
+            }
+        }
+        return goldAmount;
     }
 
     /// <summary>
