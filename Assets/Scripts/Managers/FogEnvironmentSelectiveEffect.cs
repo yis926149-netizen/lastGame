@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.UI;
 
 [DisallowMultipleComponent]
 [RequireComponent(typeof(Camera))]
@@ -17,6 +18,7 @@ public sealed class FogEnvironmentSelectiveEffect : MonoBehaviour
     private readonly List<Renderer> _alwaysRenderers = new List<Renderer>();
     private readonly List<Renderer> _eraseRenderers = new List<Renderer>();
     private readonly List<Canvas> _eraseCanvases = new List<Canvas>();
+    private readonly List<Graphic> _eraseUIGraphics = new List<Graphic>();
     private readonly Vector4[] _uiRects = new Vector4[MaxUnitUIRects];
     private readonly Vector3[] _uiCorners = new Vector3[4];
     private Camera _camera;
@@ -209,23 +211,55 @@ public sealed class FogEnvironmentSelectiveEffect : MonoBehaviour
     {
         if (canvas == null || !canvas.gameObject.activeInHierarchy) return;
 
-        RectTransform rect = canvas.GetComponent<RectTransform>();
-        if (rect == null) return;
-
-        rect.GetWorldCorners(_uiCorners);
-
+        _eraseUIGraphics.Clear();
+        canvas.GetComponentsInChildren(false, _eraseUIGraphics);
         Vector2 min = new Vector2(float.MaxValue, float.MaxValue);
         Vector2 max = new Vector2(float.MinValue, float.MinValue);
-        for (int c = 0; c < 4; c++)
+        bool hasVisibleGraphic = false;
+
+        foreach (Graphic graphic in _eraseUIGraphics)
         {
-            Vector3 screen = _camera.WorldToScreenPoint(_uiCorners[c]);
-            float u = (screen.x - pixelRect.xMin) / Mathf.Max(1f, pixelRect.width);
-            float v = (screen.y - pixelRect.yMin) / Mathf.Max(1f, pixelRect.height);
-            if (u < min.x) min.x = u;
-            if (v < min.y) min.y = v;
-            if (u > max.x) max.x = u;
-            if (v > max.y) max.y = v;
+            if (graphic == null || !graphic.enabled || !graphic.gameObject.activeInHierarchy ||
+                graphic.color.a <= 0.001f || graphic.canvasRenderer.GetAlpha() <= 0.001f)
+            {
+                continue;
+            }
+
+            RectTransform rect = graphic.rectTransform;
+            if (rect == null) continue;
+            rect.GetWorldCorners(_uiCorners);
+
+            bool graphicBehindCamera = false;
+            Vector2 graphicMin = new Vector2(float.MaxValue, float.MaxValue);
+            Vector2 graphicMax = new Vector2(float.MinValue, float.MinValue);
+            for (int c = 0; c < 4; c++)
+            {
+                Vector3 screen = _camera.WorldToScreenPoint(_uiCorners[c]);
+                if (screen.z <= 0f)
+                {
+                    graphicBehindCamera = true;
+                    break;
+                }
+
+                float u = (screen.x - pixelRect.xMin) / Mathf.Max(1f, pixelRect.width);
+                float v = (screen.y - pixelRect.yMin) / Mathf.Max(1f, pixelRect.height);
+                if (u < graphicMin.x) graphicMin.x = u;
+                if (v < graphicMin.y) graphicMin.y = v;
+                if (u > graphicMax.x) graphicMax.x = u;
+                if (v > graphicMax.y) graphicMax.y = v;
+            }
+
+            // WorldToScreenPoint 会把相机后方的 UI 镜像到屏幕另一侧；该图形不参与擦除。
+            if (graphicBehindCamera) continue;
+
+            if (graphicMin.x < min.x) min.x = graphicMin.x;
+            if (graphicMin.y < min.y) min.y = graphicMin.y;
+            if (graphicMax.x > max.x) max.x = graphicMax.x;
+            if (graphicMax.y > max.y) max.y = graphicMax.y;
+            hasVisibleGraphic = true;
         }
+
+        if (!hasVisibleGraphic) return;
 
         // 完全离屏的 UI 无需擦除
         if (max.x <= 0f || max.y <= 0f || min.x >= 1f || min.y >= 1f) return;

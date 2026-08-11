@@ -45,8 +45,8 @@ Shader "Custom/MountainLowPoly_Fog_Transition"
         // 保证阴影几何与可见几何一致（addshadow 自动 pass 不执行 clip）。
         #pragma surface surf Standard fullforwardshadows vertex:vert finalcolor:fogFinal
         // 与稳定态一致，保证动画期间的 Transition 材质也能编译 Triplanar 纹理变体。
-        #pragma shader_feature _ROCK_TEXTURE
-        #pragma shader_feature _MOUNTAIN_TERRAIN_BLEND
+        #pragma multi_compile _ _ROCK_TEXTURE
+        #pragma multi_compile _ _MOUNTAIN_TERRAIN_BLEND
         #pragma target 3.0
 
         #include "FogBlend.cginc"

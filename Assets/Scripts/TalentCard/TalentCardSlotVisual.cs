@@ -35,6 +35,14 @@ public class TalentCardSlotVisual : MonoBehaviour
         _flashOverlay.raycastTarget = false;
     }
 
+    /// <summary>由外部（TalentCardSelectionUI）指定本卡槽使用的背景 sprite，保证三张卡互不重复。</summary>
+    public void SetBackground(Sprite sprite)
+    {
+        if (sprite == null) return;
+        var bgImage = GetComponent<Image>();
+        if (bgImage != null) bgImage.sprite = sprite;
+    }
+
     public void PlaySelectAnimation(Action onComplete)
     {
         _canvasGroup.interactable = false;

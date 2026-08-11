@@ -12,6 +12,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0346c868cbf049669109dbee08f01158, type: 3}
   m_Name: MapLandFormDatabase
   m_EditorClassIdentifier: 
-  landForms:
-  - {fileID: 11400000, guid: 27fa13095d06afc4fbb60d306d261aef, type: 2}
-  emptySpawnWeight: 10
+  landForms: []
+  emptySpawnWeight: 0

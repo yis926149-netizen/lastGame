@@ -13,6 +13,10 @@ public class TalentCardSelectionUI : MonoBehaviour
     [Tooltip("可选：拖入面板下一个全屏半透明黑 Image。留空则代码自动创建")]
     [SerializeField] private Image _darkOverlay;
 
+    [Header("卡牌背景图（不重复随机）")]
+    [Tooltip("填入多张背景 Sprite，每次弹出时 shuffle 后依次分配给各卡槽，保证三张卡背景互不重复。数量建议 ≥ 3。")]
+    [SerializeField] private Sprite[] _backgroundSprites;
+
     [Header("卡牌槽位设置")]
     [SerializeField] private GameObject _cardSlotPrefab;
     [SerializeField] private Transform _slotsParent;
@@ -212,6 +216,9 @@ public class TalentCardSelectionUI : MonoBehaviour
         _currentCards = args.Cards;
         _duringEntrance = true;
 
+        // 背景图 shuffle 后不重复分配给各活跃卡槽
+        AssignShuffledBackgrounds();
+
         for (int i = 0; i < _slots.Count; i++)
         {
             if (i < _currentCards.Count && _currentCards[i] != null)
@@ -316,6 +323,29 @@ public class TalentCardSelectionUI : MonoBehaviour
             if (_gameLoop != null) _gameLoop.SetPaused(_wasPausedBeforeOffer);
             _timer?.StartTimer(GlobalTimerService.DefaultDurationSeconds);
         });
+    }
+
+    // Fisher-Yates shuffle 后按顺序分配背景，保证三张卡互不重复
+    private void AssignShuffledBackgrounds()
+    {
+        if (_backgroundSprites == null || _backgroundSprites.Length == 0) return;
+
+        // 复制一份再 shuffle，不破坏原数组顺序
+        var pool = new Sprite[_backgroundSprites.Length];
+        System.Array.Copy(_backgroundSprites, pool, pool.Length);
+        for (int i = pool.Length - 1; i > 0; i--)
+        {
+            int j = UnityEngine.Random.Range(0, i + 1);
+            (pool[i], pool[j]) = (pool[j], pool[i]);
+        }
+
+        int poolIdx = 0;
+        for (int i = 0; i < _slots.Count; i++)
+        {
+            if (_slots[i].Visual == null) continue;
+            _slots[i].Visual.SetBackground(pool[poolIdx % pool.Length]);
+            poolIdx++;
+        }
     }
 
     private void OnDestroy()

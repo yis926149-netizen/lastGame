@@ -60,8 +60,8 @@ Shader "Custom/MountainLowPoly_Fog"
         #pragma surface surf Standard fullforwardshadows vertex:vert finalcolor:fogFinal
         // _ROCK_TEXTURE 由 ChunkMapRenderer 按 MountainConfig.rockTexture 开关；
         // 没有 shader_feature 时，surf 中的 #if defined(_ROCK_TEXTURE) 分支不会生成可用变体。
-        #pragma shader_feature _ROCK_TEXTURE
-        #pragma shader_feature _MOUNTAIN_TERRAIN_BLEND
+        #pragma multi_compile _ _ROCK_TEXTURE
+        #pragma multi_compile _ _MOUNTAIN_TERRAIN_BLEND
         #pragma target 3.0
 
         #include "FogBlend.cginc"
