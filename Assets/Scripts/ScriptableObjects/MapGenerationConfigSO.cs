@@ -52,6 +52,8 @@ public class MapGenerationConfigSO : ScriptableObject
     [Header("噪声纹理")]
     [Tooltip("竖直扰动噪声纹理贴图")]
     public Texture2D noiseSource;
+    [Tooltip("同一逻辑高度下视觉高程扰动的采样频率。值越大，相邻地块起伏变化越明显")]
+    [Range(0.001f, 0.1f)] public float visualPerturbFrequency = 0.003f;
 
     [Header("地图材质")]
     [Tooltip("地形材质数组，索引顺序：[0]=高地, [1]=平地, [2]=水域")]

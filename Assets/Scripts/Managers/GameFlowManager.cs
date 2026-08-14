@@ -71,6 +71,10 @@ public class GameFlowManager : MonoBehaviour, IInitializable
         // 4. 【公共建筑系统-决策#38/#28】公共建筑生成（地形固定后、势力范围初始化前）
         _nextPlayerIndex = _publicBuildingGenerator.GenerateAll(_nextPlayerIndex);
 
+        // 4.1 【探索奖励预生成】公共建筑/竞技场预留区标记完成后固化地块奖励快照
+        // （跳过 IsUnexplorable 格，保证每个快照都可通过探索消费）
+        mapGenerator.GenerateExplorationRewards();
+
         // 5. 玩家势力范围初始化
         PlayerInit();
 

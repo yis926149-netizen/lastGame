@@ -13,10 +13,11 @@ MonoBehaviour:
   m_Name: swordsman
   m_EditorClassIdentifier: 
   cardSprite: {fileID: 21300000, guid: a479ba87f68a687418410061514bfc31, type: 3}
+  cardCost: 40
   unitData:
     id: 13
-    unitName: "RPG\u82F1\u6770"
-    MovementPoints: 1
+    unitName: "\u5251\u5BA2"
+    MovementPoints: 0.5
     hp: 20
     BasicAttackRange: 1
     BasicAttackValue: 15

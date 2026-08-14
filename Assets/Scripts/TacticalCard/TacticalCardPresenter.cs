@@ -45,7 +45,7 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
             return;
         }
 
-        _cardPrefab = _uiConfig.GetCardPrefab();
+        _cardPrefab = _uiConfig.GetTacticalCardPrefab();
         if (_cardPrefab == null)
         {
             Debug.LogWarning("[TacticalCardPresenter] Card prefab is null.");

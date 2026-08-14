@@ -14,6 +14,7 @@ public class MapGenerator : MonoBehaviour
     [Inject] private MapResourceDatabaseSO _resourceDatabase;
     // 【地图地貌配置化】地貌数据库（生成权重表）
     [Inject] private MapLandFormDatabaseSO _landFormDatabase;
+    [Inject] private ExplorationRewardConfigSO _explorationRewardConfig;
 
     //�ο�
     public GameObject NextCardPlaceholder;
@@ -42,6 +43,7 @@ public class MapGenerator : MonoBehaviour
 
         // ��ʼ����̬����ͼ
         HexMetrics.noiseSource = _config.noiseSource;
+        HexMetrics.noiseScale = _config.visualPerturbFrequency;
         // 注入有界竖直扰动强度 = elevationStep * verticalPerturbRatio（保证水下不捅穿、陆地不沉水）
         HexMetrics.yPerturbStrength = _config.elevationStep * _config.verticalPerturbRatio;
 
@@ -189,10 +191,11 @@ public class MapGenerator : MonoBehaviour
 
         if (height.Count > 0)
         {
-            float max = height[0];
-            for (int i = 1; i < height.Count; i++)
-                if (height[i] > max) max = height[i];
-            WaterLevelConfig.MaxHeight = max;
+            // Palette generation derives its water/flat/high buckets from the configured
+            // height range. Keep rendering on the same range even when this particular
+            // palette does not sample a max-height cell, otherwise the render threshold
+            // shifts down and green cells rounded to height 3 can appear as highland.
+            WaterLevelConfig.MaxHeight = _config.maxHeight;
         }
 
         return height;
@@ -290,6 +293,28 @@ public class MapGenerator : MonoBehaviour
 
             // 【地图资源配置化】按数据库权重表掷点；掷中空白保持 null
             hexCellData.resource = ResourceSpawnRule.RollResource(_resourceDatabase, random);
+        }
+    }
+
+    /// <summary>
+    /// 【探索奖励预生成】地块奖励快照固化。必须在公共建筑占位格（含外一环）与竞技场预留区
+    /// 被标记 IsUnexplorable 之后调用（GameFlowManager.Initialize 在公共建筑生成后、势力范围
+    /// 初始化前调用），否则会为永不可探索的格生成无法被消费的快照。
+    /// 确定性：独立随机流（SeedService "ExplorationReward"），与调用时机无关。
+    /// </summary>
+    public void GenerateExplorationRewards()
+    {
+        System.Random explorationRewardRandom = SeedService.GetRandom("ExplorationReward");
+        foreach (HexCellData cell in _mapDataService.GetAllCells())
+        {
+            if (cell == null) continue;
+            if (WaterLevelConfig.IsWater(cell) || cell.IsUnexplorable)
+            {
+                cell.SetExplorationReward(null);
+                continue;
+            }
+
+            cell.SetExplorationReward(_explorationRewardConfig.GenerateReward(explorationRewardRandom));
         }
     }
 

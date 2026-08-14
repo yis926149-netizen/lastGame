@@ -59,6 +59,11 @@ public class UIController : MonoBehaviour
     private Image _nextTurnButtonImage = null;
     private bool _lastPausedState = false;
 
+    // 【探索奖励预生成】奖励类型图标精灵数组：索引与 ExplorationRewardConfigSO.ExplorationRewardType 枚举值一致
+    // （0=无奖励 / 1=金币 / 2=军事单位 / 3=战术卡牌 / 4=建筑）。显示在本物体第二个子物体（Type）的 Image 上。
+    [Tooltip("奖励类型图标精灵数组，索引与 ExplorationRewardType 枚举值一致（0=无/1=金币/2=军事/3=战术/4=建筑）")]
+    public Sprite[] rewardTypeIcons;
+
     // 远程攻击状态
     private bool _isRangedAttackMode = false;
     private GameObject _rangedAttacker = null;
@@ -220,6 +225,28 @@ public class UIController : MonoBehaviour
                 }
             }
         }
+    }
+
+    // ---------- 探索奖励图标（CostLabel 地块标签）----------
+    /// <summary>
+    /// 根据地块预生成的奖励类型，把第二个子物体（Type）的 Image 切换为对应图标。
+    /// 索引与 ExplorationRewardConfigSO.ExplorationRewardType 枚举值一致；无图标或类型无效时隐藏。
+    /// </summary>
+    public void SetRewardTypeIcon(ExplorationRewardConfigSO.ExplorationRewardType rewardType)
+    {
+        if (transform.childCount <= 1) return;
+        Image iconImage = transform.GetChild(1).GetComponent<Image>();
+        if (iconImage == null) return;
+
+        int index = (int)rewardType;
+        if (rewardTypeIcons == null || index < 0 || index >= rewardTypeIcons.Length || rewardTypeIcons[index] == null)
+        {
+            iconImage.gameObject.SetActive(false);
+            return;
+        }
+
+        iconImage.gameObject.SetActive(true);
+        iconImage.sprite = rewardTypeIcons[index];
     }
 
     // ---------- 暂停/继续（原“下一回合”按钮）----------

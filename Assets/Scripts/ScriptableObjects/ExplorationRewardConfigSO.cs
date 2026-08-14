@@ -54,13 +54,34 @@ public class ExplorationRewardConfigSO : ScriptableObject
     [Tooltip("奖励可放置的建筑配置（等概率随机选择；请勿放入 City/GoldMine/PublicBuilding）。")]
     public BuildingConfigSO[] rewardBuildings;
 
-    /// <summary>第一次掷骰：按权重返回奖励类型。</summary>
-    public ExplorationRewardType RollRewardType()
+    [Header("探索费用（按地块奖励类型）")]
+    [Tooltip("按奖励类型索引的探索费用数组（0=无/1=金币/2=军事/3=战术/4=建筑）；未配置或越界时回退默认 50。")]
+    public int[] explorationCostsByType = new int[] { 50, 50, 50, 50, 50 };
+
+    private const int DefaultExplorationCost = 50;
+
+    /// <summary>按地块自身的奖励类型返回探索费用；未配置或越界时回退默认值。</summary>
+    public int GetExplorationCost(ExplorationRewardType rewardType)
+    {
+        int index = (int)rewardType;
+        if (explorationCostsByType == null || index < 0 || index >= explorationCostsByType.Length)
+        {
+            return DefaultExplorationCost;
+        }
+        return explorationCostsByType[index];
+    }
+
+    /// <summary>地图生成专用：使用受 SeedService 管理的随机流抽取奖励类型。</summary>
+    public ExplorationRewardType RollRewardType(System.Random random)
     {
         int total = noneRewardWeight + goldRewardWeight + militaryRewardWeight + tacticalRewardWeight + buildingRewardWeight;
         if (total <= 0) return ExplorationRewardType.None;
 
-        int roll = Random.Range(0, total);
+        return ResolveRewardType(random.Next(0, total));
+    }
+
+    private ExplorationRewardType ResolveRewardType(int roll)
+    {
         if (roll < noneRewardWeight) return ExplorationRewardType.None;
         roll -= noneRewardWeight;
         if (roll < goldRewardWeight) return ExplorationRewardType.Gold;
@@ -71,41 +92,74 @@ public class ExplorationRewardConfigSO : ScriptableObject
         return ExplorationRewardType.Building;
     }
 
-    /// <summary>第二次掷骰（金币）：返回金币数量。</summary>
-    public int RollGold()
+    /// <summary>金币档位（地图生成时经 GenerateReward 按种子流掷出）。</summary>
+    public int RollGold(System.Random random)
     {
         if (goldTiers == null || goldTiers.Length == 0) return 0;
-        return goldTiers[Random.Range(0, goldTiers.Length)];
+        return goldTiers[random.Next(0, goldTiers.Length)];
     }
 
-    /// <summary>第二次掷骰（军事）：返回单位数量。</summary>
-    public int RollUnitCount()
+    /// <summary>单位数量档位（地图生成时经 GenerateReward 按种子流掷出）。</summary>
+    public int RollUnitCount(System.Random random)
     {
         if (unitCountTiers == null || unitCountTiers.Length == 0) return 0;
-        return unitCountTiers[Random.Range(0, unitCountTiers.Length)];
+        return unitCountTiers[random.Next(0, unitCountTiers.Length)];
     }
 
-    /// <summary>第二次掷骰（军事）：从奖励单位配置数组中随机返回一个配置；空数组返回 null（不再回退魔法 ID）。</summary>
-    public UnitConfigSO RollUnitConfig()
+    /// <summary>从奖励单位配置数组中随机返回一个配置；空数组返回 null（不再回退魔法 ID）。</summary>
+    public UnitConfigSO RollUnitConfig(System.Random random)
     {
         if (rewardUnits == null || rewardUnits.Length == 0) return null;
-        return rewardUnits[Random.Range(0, rewardUnits.Length)];
+        return rewardUnits[random.Next(0, rewardUnits.Length)];
     }
 
-    /// <summary>第二次掷骰（战术）：从奖励战术卡牌数组中随机抽取一张，返回 null 表示无可发牌。</summary>
-    public TacticalCardSO RollTacticalCard()
+    /// <summary>从奖励战术卡牌数组中随机抽取一张，返回 null 表示无可发牌。</summary>
+    public TacticalCardSO RollTacticalCard(System.Random random)
     {
-        if (rewardTacticalCards == null || rewardTacticalCards.Length == 0)
-        {
-            return null;
-        }
-        return rewardTacticalCards[Random.Range(0, rewardTacticalCards.Length)];
+        if (rewardTacticalCards == null || rewardTacticalCards.Length == 0) return null;
+        return rewardTacticalCards[random.Next(0, rewardTacticalCards.Length)];
     }
 
-    /// <summary>第二次掷骰（建筑）：从奖励建筑配置数组中等概率返回一个配置；空数组返回 null。</summary>
-    public BuildingConfigSO RollBuildingConfig()
+    /// <summary>从奖励建筑配置数组中等概率返回一个配置；空数组返回 null。</summary>
+    public BuildingConfigSO RollBuildingConfig(System.Random random)
     {
         if (rewardBuildings == null || rewardBuildings.Length == 0) return null;
-        return rewardBuildings[Random.Range(0, rewardBuildings.Length)];
+        return rewardBuildings[random.Next(0, rewardBuildings.Length)];
+    }
+
+    /// <summary>地图生成时一次性固化奖励类型及其全部随机结果。</summary>
+    public ExplorationRewardData GenerateReward(System.Random random)
+    {
+        var reward = new ExplorationRewardData
+        {
+            RewardType = RollRewardType(random)
+        };
+
+        switch (reward.RewardType)
+        {
+            case ExplorationRewardType.Gold:
+                reward.GoldAmount = RollGold(random);
+                break;
+
+            case ExplorationRewardType.MilitaryUnit:
+                int unitCount = Mathf.Max(0, RollUnitCount(random));
+                reward.UnitConfigs = new UnitConfigSO[unitCount];
+                for (int i = 0; i < unitCount; i++)
+                {
+                    reward.UnitConfigs[i] = RollUnitConfig(random);
+                }
+                break;
+
+            case ExplorationRewardType.TacticalCard:
+                reward.TacticalCard = RollTacticalCard(random);
+                break;
+
+            case ExplorationRewardType.Building:
+                reward.BuildingConfig = RollBuildingConfig(random);
+                reward.GoldAmount = RollGold(random);
+                break;
+        }
+
+        return reward;
     }
 }

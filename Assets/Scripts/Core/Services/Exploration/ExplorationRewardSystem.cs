@@ -2,15 +2,12 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 探索奖励系统：监听探索完成事件，按【两段式随机】结算奖励。
-/// 第一次掷骰决定奖励类型（无奖励/金币/军事单位/战术卡牌），
-/// 第二次掷骰决定该类型的具体数值（档位表见 ExplorationRewardConfigSO）。
+/// 探索奖励系统：监听探索完成事件，消费地图生成时固化的奖励快照。
 /// 每个地块每次探索只结算一种奖励。
 /// </summary>
 public class ExplorationRewardSystem
 {
     private readonly IExplorationService _explorationService;
-    private readonly ExplorationRewardConfigSO _config;
     private readonly GoldWallet _goldWallet;
     private readonly IPlayerUnitSpawnService _unitSpawnService;
     private readonly IPlayerBuildingSpawnService _buildingSpawnService;
@@ -20,7 +17,6 @@ public class ExplorationRewardSystem
 
     public ExplorationRewardSystem(
         IExplorationService explorationService,
-        ExplorationRewardConfigSO config,
         GoldWallet goldWallet,
         IPlayerUnitSpawnService unitSpawnService,
         IPlayerBuildingSpawnService buildingSpawnService,
@@ -29,7 +25,6 @@ public class ExplorationRewardSystem
         ExplorationCoinPresenter coinPresenter)
     {
         _explorationService = explorationService;
-        _config = config;
         _goldWallet = goldWallet;
         _unitSpawnService = unitSpawnService;
         _buildingSpawnService = buildingSpawnService;
@@ -56,34 +51,35 @@ public class ExplorationRewardSystem
         // AI 阵营的奖励由 AIAutoExplorer 订阅同一事件按阵营分发结算。
         if (factionId != 0) return;
 
-        // 第一次掷骰：奖励类型
-        ExplorationRewardConfigSO.ExplorationRewardType rewardType = _config.RollRewardType();
+        ExplorationRewardData reward = cell.TakeExplorationReward();
+        if (reward == null)
+        {
+            Debug.LogWarning($"[ExplorationReward] 地块 {cell.HexCoordinate} 没有预生成奖励，跳过结算");
+            return;
+        }
 
-        switch (rewardType)
+        switch (reward.RewardType)
         {
             case ExplorationRewardConfigSO.ExplorationRewardType.None:
                 Debug.Log($"[ExplorationReward] 地块 {cell.HexCoordinate} 无奖励");
                 break;
 
             case ExplorationRewardConfigSO.ExplorationRewardType.Gold:
-                // 第二次掷骰：金币档位
-                int goldAmount = AddGoldReward(cell);
-                Debug.Log($"[ExplorationReward] 地块 {cell.HexCoordinate} 金币奖励 +{goldAmount}");
+                AddGoldReward(cell, reward.GoldAmount);
+                Debug.Log($"[ExplorationReward] 地块 {cell.HexCoordinate} 金币奖励 +{reward.GoldAmount}");
                 break;
 
             case ExplorationRewardConfigSO.ExplorationRewardType.MilitaryUnit:
-                // 第二次掷骰：单位数量与单位 ID
-                int unitCount = _config.RollUnitCount();
+                int unitCount = reward.UnitConfigs?.Length ?? 0;
                 if (unitCount > 0)
                 {
-                    SpawnUnitsWithOverflow(cell, unitCount);
+                    SpawnUnitsWithOverflow(cell, reward.UnitConfigs);
                 }
                 Debug.Log($"[ExplorationReward] 地块 {cell.HexCoordinate} 军事单位奖励 x{unitCount}");
                 break;
 
             case ExplorationRewardConfigSO.ExplorationRewardType.TacticalCard:
-                // 第二次掷骰：随机一张战术牌
-                TacticalCardSO card = _config.RollTacticalCard();
+                TacticalCardSO card = reward.TacticalCard;
                 if (card != null && _tacticalCardPresenter != null)
                 {
                     _tacticalCardPresenter.AddCardWithFly(card, cell.RealCenterWorldCoordinate);
@@ -95,12 +91,11 @@ public class ExplorationRewardSystem
                 break;
 
             case ExplorationRewardConfigSO.ExplorationRewardType.Building:
-                // 第二次掷骰：随机一种建筑，直接放置在被探索地块上
-                BuildingConfigSO buildingConfig = _config.RollBuildingConfig();
+                BuildingConfigSO buildingConfig = reward.BuildingConfig;
                 if (buildingConfig == null)
                 {
                     Debug.LogWarning($"[ExplorationReward] 建筑奖励但 rewardBuildings 为空，地块 {cell.HexCoordinate}，降级为金币");
-                    AddGoldReward(cell);
+                    AddGoldReward(cell, reward.GoldAmount);
                     break;
                 }
                 if (RewardBuildingRule.CanPlace(cell))
@@ -112,14 +107,14 @@ public class ExplorationRewardSystem
                     else
                     {
                         Debug.LogWarning($"[ExplorationReward] 建筑生成失败（{buildingConfig.name}），地块 {cell.HexCoordinate}，降级为金币");
-                        AddGoldReward(cell);
+                        AddGoldReward(cell, reward.GoldAmount);
                     }
                 }
                 else
                 {
                     // 格子不合格（公共建筑/山格/禁建地貌/已有单位或建筑）→ 降级为金币
                     Debug.Log($"[ExplorationReward] 地块 {cell.HexCoordinate} 不可建造，建筑奖励降级为金币");
-                    AddGoldReward(cell);
+                    AddGoldReward(cell, reward.GoldAmount);
                 }
                 break;
 
@@ -129,11 +124,10 @@ public class ExplorationRewardSystem
     }
 
     /// <summary>
-    /// 金币奖励结算：掷金币档位 → 入账 → 播金币表现（纯表现层，失败不影响结算）。返回金币数量。
+    /// 金币奖励结算：使用预生成数量入账并播放表现。
     /// </summary>
-    private int AddGoldReward(HexCellData cell)
+    private void AddGoldReward(HexCellData cell, int goldAmount)
     {
-        int goldAmount = _config.RollGold();
         if (goldAmount > 0)
         {
             _goldWallet.AddGold(0, goldAmount); // PlayerIndex = 0
@@ -142,15 +136,14 @@ public class ExplorationRewardSystem
                 _coinPresenter.PlayCoinAt(cell, goldAmount);
             }
         }
-        return goldAmount;
     }
 
     /// <summary>
     /// 在目标地块生成单位，溢出时放入相邻地块。
     /// </summary>
-    private void SpawnUnitsWithOverflow(HexCellData targetCell, int count)
+    private void SpawnUnitsWithOverflow(HexCellData targetCell, UnitConfigSO[] unitConfigs)
     {
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < unitConfigs.Length; i++)
         {
             Vector3 spawnPosition = targetCell.RealCenterWorldCoordinate;
             HexCellData spawnCell = targetCell;
@@ -168,7 +161,7 @@ public class ExplorationRewardSystem
             }
 
             // 生成单位
-            UnitConfigSO unitConfig = _config.RollUnitConfig();
+            UnitConfigSO unitConfig = unitConfigs[i];
             if (unitConfig == null)
             {
                 Debug.LogWarning("[ExplorationReward] 探索奖励无可用单位配置（rewardUnits 为空），跳过生成");

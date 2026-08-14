@@ -74,6 +74,12 @@ public class CameraController : MonoBehaviour, ITickable
 
     private bool _boundsInitialized = false;
 
+    [Header("鼠标拖拽移动")]
+    [Tooltip("鼠标右键拖拽灵敏度（值越大拖动越快）")]
+    public float dragSensitivity = 0.012f;
+    private bool _isDragging = false;
+    private Vector3 _lastMousePosition;
+
     // ── 屏幕震动 ──────────────────────────────────────
     private float _shakeStrength;
     private float _shakeDuration;
@@ -155,6 +161,8 @@ public class CameraController : MonoBehaviour, ITickable
         defaultRotationDistance = 50f;
 
         returnDuration = 0.2f;
+
+        dragSensitivity = 0.012f;
     }
 
     public void Tick()
@@ -181,6 +189,7 @@ public class CameraController : MonoBehaviour, ITickable
         HandleKeyboardInput();
         HandleMouseScroll();
         HandleRotationInput();
+        HandleMouseDrag();
         ApplySmoothTransform();
     }
 
@@ -221,7 +230,7 @@ public class CameraController : MonoBehaviour, ITickable
 
     private void HandleKeyboardInput()
     {
-        if (_isRotating || _isReturningToStart) return;
+        if (_isRotating || _isReturningToStart || _isDragging) return;
 
         float horizontal = _input.GetAxis("Horizontal");
         float vertical = _input.GetAxis("Vertical");
@@ -261,7 +270,7 @@ public class CameraController : MonoBehaviour, ITickable
     // ====================== 旋转逻辑与详细日志 ======================
     private void HandleRotationInput()
     {
-        if (_mainCamera == null) return;
+        if (_mainCamera == null || _isDragging) return;
 
         //Debug.Log($"[Camera Rotation Debug] HandleRotationInput 被调用 | Ctrl: {_input.GetKey(KeyCode.LeftControl) || _input.GetKey(KeyCode.RightControl)} | _isRotating: {_isRotating}");
 
@@ -391,6 +400,51 @@ public class CameraController : MonoBehaviour, ITickable
         }
 
         ApplySmoothTransform();
+    }
+
+    private void HandleMouseDrag()
+    {
+        if (_input.GetMouseButtonDown(0))
+        {
+            // 鼠标在 UI 上时不开始拖拽
+            if (_input.IsPointerOverUI()) return;
+
+            _isDragging = true;
+            _lastMousePosition = _input.MousePosition;
+            return;
+        }
+
+        if (_input.GetMouseButtonUp(0))
+        {
+            _isDragging = false;
+            return;
+        }
+
+        if (!_isDragging || !_input.GetMouseButton(0)) return;
+
+        Vector3 mouseDelta = _input.MousePosition - _lastMousePosition;
+        _lastMousePosition = _input.MousePosition;
+
+        if (mouseDelta.sqrMagnitude < 0.01f) return;
+
+        Vector3 worldDelta = CalculateWorldDelta(mouseDelta);
+        _targetCameraPosition -= worldDelta;
+        ClampTargetToBounds(ref _targetCameraPosition);
+    }
+
+    private Vector3 CalculateWorldDelta(Vector3 screenDelta)
+    {
+        Vector3 cameraRight = _mainCamera.transform.right;
+        cameraRight.y = 0;
+        cameraRight.Normalize();
+
+        Vector3 cameraForward = _mainCamera.transform.forward;
+        cameraForward.y = 0;
+        cameraForward.Normalize();
+
+        // 用平方根缓和高度差异，避免高处拖动过快
+        float heightFactor = Mathf.Sqrt(_mainCamera.transform.position.y) * dragSensitivity;
+        return (cameraRight * screenDelta.x + cameraForward * screenDelta.y) * heightFactor;
     }
 
     private Vector3 GetScreenCenterWorldPosition()

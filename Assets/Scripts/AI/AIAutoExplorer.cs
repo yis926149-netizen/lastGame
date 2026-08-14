@@ -18,7 +18,7 @@ public class AIAutoExplorer : ITickable
     private readonly AIPlayerState _aiState;
     private readonly GameLoop _gameLoop;
     private readonly ILogisticsService _logisticsService;
-    private readonly ExplorationRewardConfigSO _rewardConfig;
+    private readonly IExplorationCostProvider _costProvider;
     private readonly AIEntityFactory _aiFactory;
     private readonly IExplorationService _explorationService;
 
@@ -33,7 +33,7 @@ public class AIAutoExplorer : ITickable
         AIPlayerState aiState,
         GameLoop gameLoop,
         ILogisticsService logisticsService,
-        ExplorationRewardConfigSO rewardConfig,
+        IExplorationCostProvider costProvider,
         AIEntityFactory aiFactory,
         IExplorationService explorationService)
     {
@@ -44,7 +44,7 @@ public class AIAutoExplorer : ITickable
         _aiState = aiState;
         _gameLoop = gameLoop;
         _logisticsService = logisticsService;
-        _rewardConfig = rewardConfig;
+        _costProvider = costProvider;
         _aiFactory = aiFactory;
         _explorationService = explorationService;
 
@@ -69,9 +69,6 @@ public class AIAutoExplorer : ITickable
 
     private bool TryAutoExplore()
     {
-        // 预算预筛（扣费由服务内部完成）
-        if (_goldWallet.GetGold(AIIndex) < _goldWallet.ExplorationCost) return false;
-
         var ownedCells = GetAIOwnedCells();
         if (ownedCells.Count == 0) return false;
 
@@ -98,6 +95,10 @@ public class AIAutoExplorer : ITickable
 
         var target = candidates[UnityEngine.Random.Range(0, candidates.Count)];
 
+        // 【探索费用按奖励类型】按目标地块自身奖励类型做预算预筛（扣费由服务内部完成）
+        if (_costProvider != null && _goldWallet.GetGold(AIIndex) < _costProvider.GetCost(target).Amount)
+            return false;
+
         // 【统一开发入口】玩家/AI 共用同一服务：
         // 校验（含中立校验）→ 扣费 → 归属 → 连通重算 → 收割 → 奖励事件，同步完成互斥。
         return _explorationService.TryExplore(target, AIIndex) == ExploreResult.Success;
@@ -105,28 +106,31 @@ public class AIAutoExplorer : ITickable
 
     // ── 探索奖励结算（订阅统一事件，按阵营分发）────────────
     /// <summary>
-    /// 【两段式随机】第一次掷骰决定奖励类型，第二次掷骰决定具体数值。
+    /// 消费地图生成时固化的奖励快照。
     /// 金币 → 进入 AI 钱包；军事 → 生成单位（溢出邻格）；战术 → AI 战术牌系统未实现，暂不发放；无奖励 → 无结算。
     /// </summary>
     private void OnExplorationRewardTriggered(HexCellData cell, int factionId)
     {
         if (factionId != AIIndex || cell == null) return;
-        if (_rewardConfig == null) return;
+        ExplorationRewardData reward = cell.TakeExplorationReward();
+        if (reward == null)
+        {
+            Debug.LogWarning($"[AIAutoExplorer] 地块 {cell.HexCoordinate} 没有预生成奖励，跳过结算");
+            return;
+        }
 
-        switch (_rewardConfig.RollRewardType())
+        switch (reward.RewardType)
         {
             case ExplorationRewardConfigSO.ExplorationRewardType.None:
                 break;
 
             case ExplorationRewardConfigSO.ExplorationRewardType.Gold:
-                int goldAmount = _rewardConfig.RollGold();
-                if (goldAmount > 0)
-                    _goldWallet.AddGold(AIIndex, goldAmount);
-                Debug.Log($"[AIAutoExplorer] 探索奖励：金币 +{goldAmount}");
+                AddGoldReward(reward.GoldAmount);
+                Debug.Log($"[AIAutoExplorer] 探索奖励：金币 +{reward.GoldAmount}");
                 break;
 
             case ExplorationRewardConfigSO.ExplorationRewardType.MilitaryUnit:
-                SpawnRewardUnits(cell, _rewardConfig.RollUnitCount());
+                SpawnRewardUnits(cell, reward.UnitConfigs);
                 break;
 
             case ExplorationRewardConfigSO.ExplorationRewardType.TacticalCard:
@@ -135,16 +139,16 @@ public class AIAutoExplorer : ITickable
                 break;
 
             case ExplorationRewardConfigSO.ExplorationRewardType.Building:
-                SpawnRewardBuilding(cell, _rewardConfig.RollBuildingConfig());
+                SpawnRewardBuilding(cell, reward.BuildingConfig, reward.GoldAmount);
                 break;
         }
     }
 
-    private void SpawnRewardUnits(HexCellData targetCell, int unitCount)
+    private void SpawnRewardUnits(HexCellData targetCell, UnitConfigSO[] unitConfigs)
     {
-        if (_aiFactory == null) return;
+        if (_aiFactory == null || unitConfigs == null) return;
 
-        for (int i = 0; i < unitCount; i++)
+        for (int i = 0; i < unitConfigs.Length; i++)
         {
             HexCellData spawnCell = targetCell;
             Vector3 spawnPos = targetCell.RealCenterWorldCoordinate;
@@ -157,7 +161,7 @@ public class AIAutoExplorer : ITickable
                 spawnPos = spawnCell.RealCenterWorldCoordinate;
             }
 
-            UnitConfigSO unitConfig = _rewardConfig.RollUnitConfig();
+            UnitConfigSO unitConfig = unitConfigs[i];
             if (unitConfig == null)
             {
                 Debug.LogWarning("[AIAutoExplorer] 探索奖励无可用单位配置（rewardUnits 为空），跳过生成");
@@ -170,14 +174,14 @@ public class AIAutoExplorer : ITickable
     /// <summary>
     /// AI 建筑奖励：直接放置在被探索地块上；格子不合格或生成失败时降级为金币（与玩家侧同规则）。
     /// </summary>
-    private void SpawnRewardBuilding(HexCellData cell, BuildingConfigSO config)
+    private void SpawnRewardBuilding(HexCellData cell, BuildingConfigSO config, int fallbackGoldAmount)
     {
         if (_aiFactory == null) return;
 
         if (config == null)
         {
             Debug.LogWarning("[AIAutoExplorer] 探索奖励：建筑奖励但 rewardBuildings 为空，降级为金币");
-            DegradeToGold(cell);
+            DegradeToGold(fallbackGoldAmount);
             return;
         }
 
@@ -185,7 +189,7 @@ public class AIAutoExplorer : ITickable
         if (!RewardBuildingRule.CanPlace(cell))
         {
             Debug.Log("[AIAutoExplorer] 探索奖励：地块不可建造，建筑奖励降级为金币");
-            DegradeToGold(cell);
+            DegradeToGold(fallbackGoldAmount);
             return;
         }
 
@@ -193,13 +197,17 @@ public class AIAutoExplorer : ITickable
         Debug.Log($"[AIAutoExplorer] 探索奖励：建筑 {config.name}");
     }
 
-    /// <summary>降级结算：掷金币档位列入 AI 钱包。</summary>
-    private void DegradeToGold(HexCellData cell)
+    /// <summary>使用预生成的备用金币完成建筑奖励降级。</summary>
+    private void DegradeToGold(int goldAmount)
     {
-        int goldAmount = _rewardConfig.RollGold();
+        AddGoldReward(goldAmount);
+        Debug.Log($"[AIAutoExplorer] 探索奖励降级：金币 +{goldAmount}");
+    }
+
+    private void AddGoldReward(int goldAmount)
+    {
         if (goldAmount > 0)
             _goldWallet.AddGold(AIIndex, goldAmount);
-        Debug.Log($"[AIAutoExplorer] 探索奖励降级：金币 +{goldAmount}");
     }
 
     private HexCellData FindOverflowCell(HexCellData origin)

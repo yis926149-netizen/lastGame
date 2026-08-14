@@ -1,4 +1,5 @@
 using DG.Tweening;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -76,6 +77,17 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         PlacementID = placementID;
         _originPosition = originPosition;
         _image.sprite = data.CardSprite;
+
+        // 使用价格显示：预制体第二个子物体（cost）的第一个子物体（Text (TMP)）
+        if (transform.childCount > 1)
+        {
+            Transform costRoot = transform.GetChild(1);
+            if (costRoot != null && costRoot.childCount > 0)
+            {
+                TextMeshProUGUI costText = costRoot.GetChild(0).GetComponent<TextMeshProUGUI>();
+                if (costText != null) costText.text = data.CardCost.ToString();
+            }
+        }
 
         //_image.SetNativeSize();
 

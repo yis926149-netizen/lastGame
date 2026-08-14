@@ -12,6 +12,9 @@ public class CardData
     public Sprite CardSprite { get; set; }
     public bool IsUnit { get; set; }      // true=单位卡，false=建筑卡
 
+    /// <summary>使用价格（默认 10），普通卡由配置派生，战术卡可显式设置。</summary>
+    public int CardCost { get; set; } = 10;
+
     /// <summary>普通卡配置引用（单位/建筑）。战术卡为 null。</summary>
     public NormalCardConfigSO NormalCardConfig { get; set; }
 

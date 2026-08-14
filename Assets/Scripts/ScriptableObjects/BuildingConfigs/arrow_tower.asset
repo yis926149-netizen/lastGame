@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: arrow_tower
   m_EditorClassIdentifier: 
   cardSprite: {fileID: 21300000, guid: a918f51fbe556dc4f8432d5481b86d53, type: 3}
+  cardCost: 100
   buildingId: 5
   buildingType: 6
   buildingModel: {fileID: 2557242060110657361, guid: 28b80beb5df67444f8c411a71de16bea, type: 3}
@@ -20,3 +21,4 @@ MonoBehaviour:
   baseHP: 100
   blocksMovement: 0
   producedUnit: {fileID: 0}
+  goldIncomePerSecond: 0

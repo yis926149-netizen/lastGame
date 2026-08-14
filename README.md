@@ -5,12 +5,15 @@
 ## 项目概览
 
 - **程序化地图**：生成六边形地块、地形、河流与资源。
-- **动态地图系统**：地图地块支持运行时事务级变化——`MapMutationService`（BeginTransaction→Apply→Commit/Rollback）+ 唯一渲染后端 `ChunkMapRenderer`（8×8 分块双缓冲），变化带 CPU 顶点动画（错峰、顶出、并行动画、水面淡出）与交互锁。已落地竞技场（37 格状态机）与能力测试（V 键全图波浪、R/F 键指格微调，后者 2026-08-05 起屏蔽保留）。详见 [动态地图/动态地图变化系统-使用报告.md](动态地图/动态地图变化系统-使用报告.md)。
+- **动态地图系统**：地图地块支持运行时事务级变化——`MapMutationService`（BeginTransaction→Apply→Commit/Rollback）+ 唯一渲染后端 `ChunkMapRenderer`（8×8 分块双缓冲），变化带 CPU 顶点动画（错峰、顶出、并行动画、水面淡出）与交互锁。已落地竞技场（37 格状态机 + 边界山脉封闭墙一体化升起动画，宝箱摧毁后山脉与平台永久保留）与能力测试（V 键全图波浪、R/F 键指格微调，后者 2026-08-05 起屏蔽保留）。详见 [动态地图/动态地图变化系统-使用报告.md](动态地图/动态地图变化系统-使用报告.md)。
+- **程序化山脉系统**：山脉不是"高地块"，而是叠加在地块之上的跨格连续隆起高度场。`RidgeGenerator` 在地图生成时确定性生成脊线 + 宽度化坡面格（SeedService "Mountain" 独立随机流，参数快照固化到格级数据）；`MountainGeometryBuilder` 构造 Low-poly 几何（顶面/过渡面/封口、Triplanar 三档色阶），材质契约见 `MountainMaterialContract`（`Custom/MountainLowPoly_Fog` + Transition 变体）；山格不可通行、不可部署、不可建造（`MountainCellRule` 统一资格），山脉格永久视觉可见（`MountainVisibilityRule`，免雾但不算已探索）；Chunk 重建按快照确定性复现，动态地图事务支持山体清除（永久）、水淹移除与动画顶出。
 - **探索与后勤系统**：玩家主动支付金币点击探索格，同时占领并收割资源。后勤系统（`LogisticsService`）以主城为根对双方领地做 BFS 连通判断：断供地块对双方重新覆盖迷雾（地面与建筑一起），恢复供应后自动揭雾；迷雾遮罩由 FogMask 全量可逆重建驱动。详见 [后勤系统设计方案.md](游戏系统/后勤系统设计方案.md)。
+- **探索奖励预生成**：地图生成时按 `ExplorationRewardConfigSO` 权重为每个可探索的陆地地块固化奖励快照（`ExplorationRewardData`：无 / 金币 / 军事单位 / 战术卡牌 / 建筑；公共建筑占位区与竞技场预留区等不可探索格不生成），探索结算只消费快照、不再即时掷骰（同一快照只结算一次）。探索费用按地块自身奖励类型决定（`explorationCostsByType`，默认 50），探索费用标签直接显示该格奖励类型图标（金币/军事/战术/建筑）。
+- **金矿与收入规则**：新增金矿建筑类型（`BulidingType.GoldMine`，产出由 `BuildingConfigSO.goldIncomePerSecond` 配置化）；`IncomeEligibilityRule` 统一"归属 + 后勤畅通"收入资格（断供暂停产金），`BuildingIncomeRule` 汇总金矿建筑产出，`GoldIncomeService` 每秒收入 =（基础 + 金矿地貌 + 金矿建筑）× 天赋乘数。
 - **实时游戏循环**：`GameLoop` 每帧驱动所有单位自动决策，玩家随时可通过卡牌部署单位，并可暂停/继续游戏。
 - **单位自动化**：每种单位有独立的兵种策略——近战、远程——由 `UnitBrainBase` 统一调度，逐格移动、探测敌人、自动攻击。
-- **卡牌系统**：拖拽卡牌向地图放置单位或建筑，是玩家唯一的交互方式。普通卡池由 `NormalCardPoolSO` 配置化驱动（单位/建筑卡均为 ScriptableObject 引用，开局纯随机抽卡 + 首张移民卡保底），增删卡只需编辑资产，无需改代码，详见 [普通卡池对象化改造方案.md](普通卡池对象化改造方案.md)。
-- **城市与建筑**：玩家开局拥有一个主城及周围一环势力范围。通过探索地块或占领公共建筑扩张势力范围。可部署祭坛、攻防雕像等建筑。不再支持建新城。
+- **卡牌系统**：拖拽卡牌向地图放置单位或建筑，是玩家唯一的交互方式。普通卡池由 `NormalCardPoolSO` 配置化驱动（单位/建筑卡均为 ScriptableObject 引用，开局纯随机抽卡 + 首张保底卡 `guaranteedFirstCard` 可配置），增删卡只需编辑资产，无需改代码，详见 [普通卡池对象化改造方案.md](普通卡池对象化改造方案.md)。
+- **城市与建筑**：玩家开局拥有一个主城及周围一环势力范围。通过探索地块或占领公共建筑扩张势力范围。可部署祭坛、攻防雕像等建筑。不再支持建新城。势力范围边界渲染为实体城墙/城墩（玩家与 AI 各一套预制体，由 `SphereOfInfluenceRenderer` 按边界折线摆放）。
 - **断供与吞并**：断供地块上的建筑全部失能（箭塔停火、兵营暂停生产），不再被自动索敌；敌方单位踩上失能建筑格可随格占领（建筑易主、不摧毁）；断供区域与敌方后勤网络共边相邻时整区域吞并（含建筑与公共建筑外一环）。详见 [断供迷雾与建筑失能吞并设计方案.md](游戏系统/断供迷雾与建筑失能吞并设计方案.md)。
 - **公共建筑**：地图中立区域随机生成多格公共建筑，双方争夺——首次击破归属攻击方，之后易主不回中立。占领后势力范围自动扩张并收割资源。开局隐藏，通过浮标示意位置；任意单位进入建筑占位格外一环后全局发现，触发石柱/飞盘特效揭示建筑模型和相关地块。
 - **战斗**：`CombatResolver` 瞬间结算伤害，`PlayAttackAnim` 负责外观表现；攻速由 `UnitData.AttackInterval` 控制，移动速度由 `UnitData.MovementPoints` 控制；攻击音效由 `UnitConfigSO.attackSfx` 配置驱动。
@@ -52,6 +55,7 @@
 | 点击暂停/继续按钮 | 切换游戏暂停/继续 |
 | 点击探索费用标签 | 支付金币探索未探索地块（获得占领权 + 收割资源） |
 | `W` / `A` / `S` / `D` 或方向键 | 平移镜头 |
+| 鼠标左键拖拽 | 平移镜头（指针不在 UI 上时） |
 | 鼠标滚轮 | 缩放镜头 |
 | `Ctrl + A` / `Ctrl + D` | 围绕屏幕中心对应的地图位置旋转镜头 |
 | `G` | 显示或隐藏六边形网格 |
@@ -98,9 +102,10 @@ Assets/
 │   ├── Managers/                   # 地图生成/渲染、阵营管理、公共建筑生成、迷雾、势力范围渲染、探索特效
 │   ├── Scenes/StartScene/          # 开始场景 UI 控制器与场景管理
 │   ├── ScriptableObjects/          # 单位/建筑配置、普通卡池、公共建筑、地图、UI、地貌回血、天赋卡池配置
-│   │   ├── UnitConfigs/            # 单位卡配置资产（UnitConfig-0~11）
-│   │   ├── BuildingConfigs/        # 建筑卡配置资产（BuildingConfig-0~5）
-│   │   ├── NormalCardPool.asset    # 普通卡池（随机池 18 张 + 移民卡保底）
+│   │   ├── UnitConfigs/            # 单位卡配置资产（UnitConfig-0~11、archer、swordsman）
+│   │   ├── BuildingConfigs/        # 建筑卡配置资产（BuildingConfig-0~3、barracks、arrow_tower、gold_mine）
+│   │   ├── MapLandForm/            # 地貌数据库与配置（含 Mountain/MountainConfig 程序化山脉配置）
+│   │   ├── NormalCardPool.asset    # 普通卡池（cards 配置列表 + 首张保底卡）
 │   │   └── TalentCard/             # 天赋卡 SO 实例
 │   ├── TalentCard/                 # 天赋卡牌系统：Buff、数据、触发、UI、AI 自动选卡
 │   │   ├── Buffs/                  # Buff 基类与实现
@@ -167,7 +172,7 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `BuildingSupplyGate` | 建筑失能门控：`IsFunctional`（所在格归属 == 建筑阵营 && 后勤畅通），断供即失能，`LogisticsChanged` 驱动刷新 |
 | `BuildingTransferService` | 建筑易主迁移：归属真相源/tag/视觉/HP/索引字典同步，公共建筑走 `OnCaptured` 全量（含外一环） |
 | `GoldWallet` | 玩家/AI 金币钱包，支持被动收入 |
-| `GoldIncomeService` | 每秒被动金币收入（ITickable） |
+| `GoldIncomeService` | 每秒被动金币收入（基础 + 金矿地貌 + 金矿建筑）× 天赋乘数（ITickable） |
 | `BuildingBase` | 建筑基类：血量、受击、血条、伤害公式、失能门控挂载、血条可见性同步（断供隐藏） |
 | `BuildingController` | 普通建筑控制器（城市、雕像、祭坛等），继承 BuildingBase |
 | `PublicBuildingBase` | 公共建筑基类：两阶段 HP、多格管理、易主、势力范围扩展，继承 BuildingBase |
@@ -175,9 +180,9 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `PublicBuildingMarkerManager` | 公共建筑浮标管理器：运行时创建/销毁世界空间浮标，提供近似方向查询供单位趋向 |
 | `PublicBuildingMarkerView` | 公共建筑浮标视觉组件：呼吸动画、图标设置、始终面向相机 |
 | `ExplorationPillarPool` | 探索特效对象池：石柱升起/飞盘砸落表现；`PlayRevealEffect()` 无业务副作用的公共建筑发现特效 |
-| `CostLabelRenderer` | 探索费用标签：Screen Space 渲染、Button 点击探索、金币不足压暗 |
+| `CostLabelRenderer` | 探索费用标签：Screen Space 渲染、Button 点击探索、按地块奖励类型显示费用与图标、金币不足压暗 |
 | `FogManager` | 迷雾封皮/连接面片网格生成（迷雾遮罩 `_FogMaskTex` 与 Shader 参数见 `ChunkMapRenderer`） |
-| `SphereOfInfluenceRenderer` | 势力范围可视化渲染 |
+| `SphereOfInfluenceRenderer` | 势力范围实体城墙渲染：玩家/AI 各一套城墙/城墩预制体，按边界折线摆放（高度差过渡墙），预制体未指定则跳过该部件 |
 | `IInputService` | 鼠标、键盘、射线和 UI 遮挡判断 |
 | `IMeshGenerator` | 地形、河流、迷雾等网格数据生成 |
 | `IUIManagerView` | 单位信息等 UI 更新 |
@@ -189,18 +194,27 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `TalentCardEffectApplier` | 天赋卡效果应用器 |
 | `TalentCardPoolResolver` | 天赋卡池随机抽卡 |
 | `TalentCardSlotVisual` | 天赋卡槽视觉显示 |
-| `AIAutoExplorer` | AI 自动探索器：定时搜索邻接己方领地的未探索地块并自动探索（免费） |
+| `AIAutoExplorer` | AI 自动探索器：定时搜索邻接己方领地的未探索地块并自动探索（免费），按地块奖励类型做预算预筛、消费预生成奖励快照（`ITickable`） |
 | `AICardTicker` | AI 卡牌定时器：每 5 秒驱动一次 AI 抽卡管线 |
 | `CameraController` | 镜头控制：平移/缩放/旋转/边界限制，内置屏幕震动 `Shake()` |
-| `MapMutationService` | 地块变化事务管线：`BeginTransaction`→`Apply(HexCellPatch)`→`Commit`/`Rollback`，水陆跨界双向重置、单位联动（途经取消/不可通行弹射/站立吸附/路径失效）、`MapChanged` 事件广播 |
-| `ChunkMapRenderer` | 唯一渲染后端（8×8 offset-grid Chunk 双缓冲）：地形/河流/湖海/海岸/网格线/迷雾 `_FogMaskTex` 重建，动画 staging（UV2/UV3 + CPU 顶点插值） |
+| `MapMutationService` | 地块变化事务管线：`BeginTransaction`→`Apply(HexCellPatch)`→`Commit`/`Rollback`，水陆跨界双向重置、单位联动（途经取消/不可通行弹射/站立吸附/路径失效）、`MapChanged` 事件广播；山体事务（清除永久移除、水淹移除山体贡献、移除方向降级同步提交、新增方向动画顶出） |
+| `ChunkMapRenderer` | 唯一渲染后端（8×8 offset-grid Chunk 双缓冲）：地形/河流/湖海/海岸/网格线/迷雾 `_FogMaskTex` 重建，动画 staging（UV2/UV3 + CPU 顶点插值）；程序化山脉山体槽（替换式拓扑、碰撞网格分离、稳定材质 + Transition 变体、拓扑签名防动画残留） |
 | `MapVisualTransitionService` | 地图变化动画：错峰延迟（Simultaneous/CenterToOuter/Wave）、CPU 顶点动画、水面/河流淡出、单位与地貌模型跟随（`RegisterVisualFollower`）、并行动画冲突强制完成 |
 | `MapSlicedCommitExecutor` | 分帧提交执行器：大范围变化每帧最多重建 N 个 Chunk，防卡顿（与动画互斥） |
 | `MapInteractionGate` | 交互锁：动画/提交期间锁定受影响格（`IMapInteractionGate`） |
 | `MapRaycastService` | 统一地图射线：屏幕坐标 → Chunk 地块（卡牌放置/高亮入口，`IMapRaycastService`） |
 | `TemporaryVisibilityService` | 来源式临时点亮迷雾（`VisibilityLease`，如竞技场突起瞬间），多来源互不影响 |
-| `ArenaEventManager` | 竞技场：37 格状态机（Inactive→Reserved→Activated→Destroyed），突起动画、宝箱摧毁恢复、对局结束动画兜底 |
+| `ArenaEventManager` | 竞技场：37 格状态机（Inactive→Reserved→Activated→Destroyed），平台与边界山脉封闭墙一体化顶出动画（墙鞍部防镂空）、宝箱摧毁恢复并永久保留山脉、对局结束动画兜底 |
 | `MapMutationDiagnostics` | 提交日志 + 脏格品红高亮诊断开关 |
+| `MountainCellRule` | 山脉地块玩法规则（纯函数）：有效山体判定、派生移动力（山格/水域不可通行）、统一部署/建造资格（`CanSpawnUnitOnCell`/`CanBuildOnCell`） |
+| `RidgeGenerator` | 山脉脊线生成器：脊线评分行走 + 宽度化坡面格，确定性随机流（SeedService "Mountain"），脊线/地貌/河流互斥 |
+| `MountainGeometryBuilder` | 山体几何纯函数：确定性高度场（脊线噪声 + 格级噪声）+ Low-poly 顶面/过渡面/封口构造，山体槽 UV0 契约（ridgeKey01 / faceTier 编码） |
+| `MountainMaterialContract` | 山体材质契约：`Custom/MountainLowPoly_Fog`（+ `_Transition` 变体）、3 档色阶编解码、表现参数校验 |
+| `MountainVisibilityRule` | 山脉格永久视觉可见判定（免雾但不算已探索，纯函数无副作用，与几何贡献同口径） |
+| `IncomeEligibilityRule` | 阵营收入资格（纯函数）：归属 + 后勤畅通，地貌金矿与建筑金矿共用同一口径 |
+| `BuildingIncomeRule` | 金矿建筑收入汇总：按 `BuildingConfigSO.goldIncomePerSecond` 对合格金矿格求和 |
+| `SimpleStartButton` | 开局按钮简化系统：场景启动延迟激活 + 呼吸缩放动效，点击直接加载 GameScene |
+| `GlobalTimerService` / `GlobalTimerUI` | 全局倒计时服务与 HUD（默认 300 秒，≤60 秒红色脉冲紧急样式） |
 
 ## 探索与后勤系统
 
@@ -212,8 +226,8 @@ ProjectSettings/                    # 编辑器、场景与项目设置
   - 占领公共建筑后，其势力范围自动标记为已探索并收割资源。
   - 公共建筑被发现时（单位接近触发），占位格及外一环自动探索但不改变归属，资源模型从隐藏变为可见。
 - **不可探索区域**：公共建筑占位格及其周围一环地块标记为不可探索——不显示费用标签，无法通过探索系统获得，只能通过占领公共建筑获取势力范围。
-- **费用与收入**：基础探索费用来自 `ExplorationCost`，金币不足时标签压暗且不可点击。被动金币收入由 `GoldIncomeService` 每秒提供。地块收割奖励为 5 基础 + 资源加成。
-- **探索奖励**：探索完成时触发 `ExplorationRewardSystem`，独立掷骰发放随机金币和单位奖励（配置见 `ExplorationRewardConfigSO`），详见 [游戏系统/探索奖励随机机制设计讨论.md](游戏系统/探索奖励随机机制设计讨论.md)。
+- **费用与收入**：探索费用按地块自身预生成的奖励类型决定（`ExplorationRewardConfigSO.explorationCostsByType`，未配置或越界回退默认 50），费用标签同时显示该格奖励类型图标；金币不足时标签压暗且不可点击。被动金币收入由 `GoldIncomeService` 每秒提供（基础 + 金矿地貌加成 + 金矿建筑产出，断供时暂停产金，恢复供应自动恢复）。地块收割奖励为 5 基础 + 资源加成。
+- **探索奖励**：奖励在地图生成流程中固化到每个可探索陆地地块（`ExplorationRewardData` 快照，类型权重与数值档位配置见 `ExplorationRewardConfigSO`；公共建筑占位区与竞技场预留区等不可探索格不生成），探索完成时玩家/AI 各自消费快照结算——金币入账、军事单位生成（溢出放相邻格）、战术卡牌发牌（玩家侧）、建筑放置（格子不合格或生成失败降级为金币），详见 [游戏系统/探索奖励随机机制设计讨论.md](游戏系统/探索奖励随机机制设计讨论.md)。
 
 ## 断供迷雾与建筑失能吞并
 
@@ -272,7 +286,9 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 - 输入摄像机配置（`InputCameraConfigurationTests`）
 - 地图控制器网格（`MapControllerMeshTests`）
 - 三角形过渡网格（`TriangleTransitionMeshTests`）
-- 地图变化服务（`MapMutationServiceTests`：事务协议/水陆双向重置/脏位/事件广播；`MapMutationStage5Tests`：归属接入/诊断/并行动画/分帧提交）
+- 地图变化服务（`MapMutationServiceTests`：事务协议/水陆双向重置/脏位/事件广播；`MapMutationStage5Tests`：归属接入/诊断/并行动画/分帧提交；`MapMutationMountainTests`：山脉变化事务）
+- 程序化山脉（`RidgeGeneratorTests`：脊线行走/宽度化/确定性；`MountainGeometryTests`：Low-poly 几何构造；`MountainTopologyTests`/`MountainTopologyRouteTests`：拓扑签名与动画路由；`MountainCellRuleTests`：山格玩法规则；`MountainVisibilityRuleTests`/`MountainVisibilityResolverTests`：永久可见与迷雾合成；`MountainHighlightGateTests`：山格高亮门禁；`MountainMaterialContractTests`：材质契约；`MountainStage6/7*Tests`：源码契约、性能与视觉验收）
+- 探索奖励预生成（`ExplorationRewardGenerationTests`：同种子确定性序列、快照一次性消费）
 - 视觉过渡服务（`MapVisualTransitionServiceTests`：错峰/生命周期/Wave 行窗口脉冲回归）
 - Console 日志工具（`ConsoleLogFormatterTests`、`ConsoleLogEntriesReflectorTests`、`ConsoleToolbarInjectorTests`）
 
@@ -379,12 +395,29 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 - 迷雾修复：`_FogMaskTex` 重建迁入 Chunk 后端 + 订阅 `LogisticsChanged`（2026-08-04）
 - 竞技场：`ArenaEventManager` 37 格状态机（Inactive→Reserved→Activated→Destroyed），预留区初始化、突起动画、宝箱摧毁恢复、对局结束动画兜底
 - 能力测试：V 键全图波浪（纯视觉脉冲、自动回落）；R/F 键指格永久 ±1 微调（2026-08-05 已屏蔽保留，方案见 [鼠标指格地形高度微调测试-RF键实现方案.md](鼠标指格地形高度微调测试-RF键实现方案.md)）
-- 规划文档：[程序化山脉实现方式讨论.md](程序化山脉实现方式讨论.md)（地貌型程序化山脉构思，未实现）
+- 规划文档：[程序化山脉实现方式讨论.md](程序化山脉实现方式讨论.md)（地貌型程序化山脉构思，2026-08-06 起已实现，见下文）
+
+2026-08-06 ~ 2026-08-12 程序化山脉系统与多项玩法/表现更新：
+
+- **程序化山脉系统全落地**（阶段 1~7.8，决策记录见 [程序化山脉实现方式讨论.md](程序化山脉实现方式讨论.md)）：
+  - 生成：`RidgeGenerator` 评分行走脊线 + 宽度化坡面格（不参与地貌散落/簇权重池），参数快照固化到格级数据（`MountainRidgeData`），SeedService 新增 "Mountain" 随机流；地图生成顺序调整为 地形 → 山 → 其他地貌 → 河 → 资源
+  - 几何：`MountainGeometryBuilder` 确定性高度场（脊线噪声 + 格级噪声）+ Low-poly 顶面/过渡面/封口构造，脊线连续修订（均值→脊线相邻对）、山-普通 rect 格界劈半；`MountainHash` 确定性哈希
+  - 材质：`MountainMaterialContract` 定义山体槽 UV0 契约（ridgeKey01 / faceTier 3 档色阶），新增 `Custom/MountainLowPoly_Fog` 与 `_Transition` 稳定 shader 资产
+  - 玩法：`MountainCellRule` 山格不可通行/不可部署/不可建造（寻路、卡牌放置、兵营生产、AI 出牌统一收口）；`MountainVisibilityRule` 山脉格永久视觉可见（免雾但不算已探索，与迷雾合成同口径）
+  - 渲染：`ChunkMapRenderer` 山体槽（替换式拓扑、collision 碰撞网格分离、山脚融合槽、稳定材质实例化、Transition keep-below clip、提交前拓扑签名比对防动画残留）
+  - 动态地图：`MapMutationService` 山体事务——清除 = 永久移除（`mountainCleared`）、水淹移除山体贡献保留海床、移除方向整笔降级同步提交、新增方向动画顶出；`HexCellPatch` 新增山脉字段组
+  - 竞技场：`ArenaEventManager` 37 格平台 + 边界山脉封闭墙（`closedWallCols` 墙鞍部规则防镂空），平台与山脉一笔动画中心向外顶出，宝箱摧毁后解除限制、山脉永久保留
+  - 测试：新增 `RidgeGeneratorTests` / `MountainGeometryTests` / `MountainTopologyTests` / `MountainTopologyRouteTests` / `MountainCellRuleTests` / `MountainVisibilityRuleTests` / `MountainVisibilityResolverTests` / `MountainHighlightGateTests` / `MountainMaterialContractTests` / `MountainStage6/7*Tests` / `MapMutationMountainTests`
+- **探索奖励预生成**（当前工作区未提交）：奖励改为地图生成流程中固化到地块（`ExplorationRewardData`，SeedService "ExplorationReward" 流，GeneratorVersion 2；在公共建筑/竞技场预留区标记不可探索后生成，跳过不可探索格），玩家与 AI 结算只消费快照；探索费用按地块奖励类型决定（`explorationCostsByType`，默认 50）；费用标签第二个子物体显示奖励类型图标（`UIController.SetRewardTypeIcon`，新增 gold/unit/card/goldmine 图标资源）；`ExplorationRewardConfigSO.asset` 权重调整为 20/20/20/20/20；新增 `ExplorationRewardGenerationTests`
+- **金矿建筑**：`BuildingConfigSO` 新增 `enemyBuildingModel` 与 `goldIncomePerSecond`，新增 `gold_mine.asset`（`BulidingType.GoldMine`）；`IncomeEligibilityRule`（归属 + 后勤畅通）与 `BuildingIncomeRule`（金矿产出汇总）落地，`GoldIncomeService` 每秒收入 =（基础 + 金矿地貌 + 金矿建筑）× 天赋乘数
+- **势力范围实体城墙**：`SphereOfInfluenceRenderer` 改为纯实体模型渲染（玩家/AI 各一套城墙/城墩预制体 `wall-player`/`wall-AI`，部件独立判定），删除旧描边面片回退渲染
+- **其他**：镜头新增鼠标左键拖拽平移（`CameraController.HandleMouseDrag`，UI 上不触发）；开局界面新增 `SimpleStartButton`（延迟激活 + 呼吸动效直接进游戏）；`GlobalTimerService`/`GlobalTimerUI` 全局倒计时 HUD（默认 300 秒、≤60 秒紧急脉冲，选卡面板触发启动）；天赋卡选卡面板背景图 shuffle 不重复；`EndGame` 平局（Draw）按胜利结算；`UnitMovementController` 死亡流程防护与 Animator 诊断、`CombatResolver` 死亡单位不再结算伤害；`MountainConfigSO` 新增 `debugSingleCellAndStraightRidge` 对照模式；地图生成配置更新（20×24、种子 20260811、`visualPerturbFrequency` 噪声采样频率配置化、主城按地图中列 + 边缘前一行定位）；建筑配置资产重命名（`BuildingConfig-4`→`barracks`、`BuildingConfig-5`→`arrow_tower`）
 
 ## 当前说明
 
-- 性能已针对 20×30（600 格）地图完成全项目优化（P0 + P1 全部落地），详见 [视觉与渲染/性能优化方案讨论.md](视觉与渲染/性能优化方案讨论.md)。
+- 性能已针对六边形地图完成全项目优化（P0 + P1 全部落地，当前地图配置 20×24 = 480 格），详见 [视觉与渲染/性能优化方案讨论.md](视觉与渲染/性能优化方案讨论.md)。
 - 项目当前仍使用默认工程名称，尚未在仓库中确定正式游戏名称。
 - 仓库中包含部分历史资源和第三方资源目录，其是否仍被场景或脚本引用需要单独确认后再清理。
 - 仓库暂未提供明确的发布平台说明、CI 配置或自动化构建脚本。
-- 项目配套的设计文档分散在多个专题目录中：`游戏系统/`、`探索系统重构/`、`视觉与渲染/`、`地图与地形/`、`动态地图/`、`AI设计/`、`审计与规划/`、`历史归档/`；根目录另有近期方案/讨论文档（`鼠标指格地形高度微调测试-RF键实现方案.md`、`程序化山脉实现方式讨论.md` 等）。
+- 当前工作区包含未提交的探索奖励预生成改动（地块奖励快照、按奖励类型费用与标签图标，见改造历史）。
+- 项目配套的设计文档分散在多个专题目录中：`游戏系统/`、`探索系统重构/`、`视觉与渲染/`、`地图与地形/`、`动态地图/`、`AI设计/`、`审计与规划/`、`历史归档/`；根目录另有近期方案/讨论文档（`鼠标指格地形高度微调测试-RF键实现方案.md`、`程序化山脉实现方式讨论.md`（含山脉决策 ①~㉛ 记录）等）。

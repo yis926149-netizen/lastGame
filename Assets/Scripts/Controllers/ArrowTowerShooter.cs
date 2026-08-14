@@ -6,19 +6,31 @@ using DG.Tweening;
 
 public class ArrowTowerShooter : MonoBehaviour
 {
-    private const int AttackRange = 2;
-
     [Inject] private IMapDataService _mapDataService;
     [Inject] private GameLoop _gameLoop;
     [Inject] private IUnitRepository _unitRepository;
     [Inject] private UnitRemovalService _unitRemovalService;
 
-    [SerializeField] private float _attackInterval = 1f;
-    [SerializeField] private float _damage = 15f;
-    [SerializeField] private float _arcHeight = 2f;
-    [SerializeField] private float _arrowFlightDuration = 0.3f;
-    [SerializeField] private GameObject _arrowPrefab;
-    [SerializeField] private Transform _shootPoint;
+    [SerializeField, Tooltip("箭塔攻击范围（格）")]
+    private int _attackRange = 2;
+
+    [SerializeField, Tooltip("两次射击之间的间隔时间（秒）")]
+    private float _attackInterval = 1f;
+
+    [SerializeField, Tooltip("每次射击对目标造成的伤害值")]
+    private float _damage = 15f;
+
+    [SerializeField, Tooltip("箭矢飞行路径的抛物线高度")]
+    private float _arcHeight = 2f;
+
+    [SerializeField, Tooltip("箭矢从发射到命中所用的飞行时间（秒）")]
+    private float _arrowFlightDuration = 0.3f;
+
+    [SerializeField, Tooltip("箭矢预制体，射击时实例化并飞向目标")]
+    private GameObject _arrowPrefab;
+
+    [SerializeField, Tooltip("箭矢的发射点（箭塔上的出箭位置）")]
+    private Transform _shootPoint;
 
     private float _timer;
     private GameObject _lockedTarget;
@@ -145,7 +157,7 @@ public class ArrowTowerShooter : MonoBehaviour
     {
         if (!_rangeCalculated)
         {
-            _effectiveRange = IsHighGround(towerCell) ? AttackRange + 1 : AttackRange;
+            _effectiveRange = IsHighGround(towerCell) ? _attackRange + 1 : _attackRange;
             _rangeCalculated = true;
         }
         return _effectiveRange;

@@ -1713,9 +1713,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _wallPrefab: {fileID: 2842812053138206593, guid: ab471868e89c33649be957553119ab0a, type: 3}
-  _towerPrefab: {fileID: 2627136214319293818, guid: 7f0d47ce07e22a442aff58c5730505c5, type: 3}
+  _towerPrefab: {fileID: 0}
   _enemyWallPrefab: {fileID: 2842812053138206593, guid: b8722941eeb195b4db56ce85a1046b33, type: 3}
-  _enemyTowerPrefab: {fileID: 2627136214319293818, guid: 7f0d47ce07e22a442aff58c5730505c5, type: 3}
+  _enemyTowerPrefab: {fileID: 0}
   _heightTolerance: 0.15
 --- !u!1 &286199655
 GameObject:
@@ -2110,6 +2110,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!114 &346735724
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2409,6 +2410,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!1 &407090769
 GameObject:
   m_ObjectHideFlags: 0
@@ -2547,6 +2549,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!1 &409350893
 GameObject:
   m_ObjectHideFlags: 0
@@ -3062,6 +3065,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!114 &464289701
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3496,6 +3500,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!1 &565985813
 GameObject:
   m_ObjectHideFlags: 0
@@ -3629,6 +3634,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!114 &571479013
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4915,6 +4921,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!114 &794295125
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5278,6 +5285,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!114 &840977699
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6103,6 +6111,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!114 &953506560
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6461,6 +6470,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 64
   returnDuration: 0.2
+  dragSensitivity: 0.005
 --- !u!1 &971529378
 GameObject:
   m_ObjectHideFlags: 0
@@ -6868,6 +6878,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!114 &1019339244
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7752,6 +7763,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!114 &1315236174
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -8254,6 +8266,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!1001 &1434393335
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -9045,6 +9058,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!114 &1609805831
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9304,6 +9318,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 21300000, guid: 225ff0e6c6311c642be043773895eba6, type: 3}
   _stopSprite: {fileID: 21300000, guid: c9e8e89c5a9c2f940b7b516ab5eae33c, type: 3}
+  rewardTypeIcons: []
 --- !u!1001 &1685260826
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -9844,6 +9859,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!1 &1785216237
 GameObject:
   m_ObjectHideFlags: 0
@@ -10992,6 +11008,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!1 &1994341173
 GameObject:
   m_ObjectHideFlags: 0

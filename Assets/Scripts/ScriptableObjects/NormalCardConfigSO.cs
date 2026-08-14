@@ -9,4 +9,7 @@ public abstract class NormalCardConfigSO : ScriptableObject
 {
     [Tooltip("卡面图")]
     public Sprite cardSprite;
+
+    [Tooltip("使用价格")]
+    public int cardCost = 10;
 }

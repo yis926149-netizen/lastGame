@@ -15,6 +15,7 @@ MonoBehaviour:
   movementIndicatorPrefab: {fileID: 3534467561464214730, guid: ee3d9ea3bb75a5841ae17dcf5ad29dd8, type: 3}
   enemyUnitIndicatorPrefab: {fileID: 2189564248013898015, guid: 36c99cabb6efd274eb76d19f7ca308df, type: 3}
   cardPrefab: {fileID: 7411342767411356299, guid: e660341d4eb314e42b97077181c7b33b, type: 3}
+  tacticalCardPrefab: {fileID: 7411342767411356299, guid: 6bf5f9aa844bb86458fc3ea39ff09460, type: 3}
   cardSlotSpacing: 119
   nextCardSlotGap: 15
   movementPointsIcon: {fileID: 21300000, guid: fa950a1b01910f748b11781e55856d6f, type: 3}

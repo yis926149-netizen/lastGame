@@ -134,15 +134,15 @@ public class AICardBrain
 
     private bool TryPlaySingleCard(NormalCardConfigSO card)
     {
-        // 【探索重构-阶段7】出牌消耗金币
-        if (_goldWallet.GetGold(AIIndex) < _goldWallet.CardCost) return false;
+        // 【探索重构-阶段7】出牌消耗金币（按卡单价收费）
+        if (_goldWallet.GetGold(AIIndex) < card.cardCost) return false;
 
         bool success = card is BuildingConfigSO
             ? TrySpawnBuildingFromCard((BuildingConfigSO)card)
             : TrySpawnUnitFromCard((UnitConfigSO)card);
 
         if (success)
-            _goldWallet.TrySpendGold(AIIndex, _goldWallet.CardCost);
+            _goldWallet.TrySpendGold(AIIndex, card.cardCost);
         return success;
     }
 

@@ -10,6 +10,8 @@ public class UIConfigSO : ScriptableObject
     public GameObject enemyUnitIndicatorPrefab;
     //卡牌预制体
     public GameObject cardPrefab;
+    //战术卡牌预制体
+    public GameObject tacticalCardPrefab;
     //普通卡牌卡槽间隔（像素）
     [Tooltip("普通卡牌卡槽间隔（像素）")]
     public float cardSlotSpacing = 150f;

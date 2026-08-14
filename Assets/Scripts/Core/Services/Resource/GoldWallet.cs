@@ -79,19 +79,27 @@ public class GoldWallet : IPlayerResourceWallet
 }
 
 /// <summary>
-/// 探索成本固定 50 金币（当前版本）。
+/// 探索成本按地块自身的预生成奖励类型决定（见 ExplorationRewardConfigSO.explorationCostsByType）；
+/// 地块没有预生成奖励或配置缺失时回退 GoldWallet.ExplorationCost。
 /// </summary>
 public class FixedExplorationCostProvider : IExplorationCostProvider
 {
     private readonly GoldWallet _wallet;
+    private readonly ExplorationRewardConfigSO _rewardConfig;
 
-    public FixedExplorationCostProvider(GoldWallet wallet)
+    public FixedExplorationCostProvider(GoldWallet wallet, ExplorationRewardConfigSO rewardConfig)
     {
         _wallet = wallet;
+        _rewardConfig = rewardConfig;
     }
 
     public ExplorationCost GetCost(HexCellData targetCell)
     {
-        return new ExplorationCost("Gold", _wallet.ExplorationCost);
+        int amount = _wallet.ExplorationCost;
+        if (_rewardConfig != null && targetCell != null && targetCell.ExplorationReward != null)
+        {
+            amount = _rewardConfig.GetExplorationCost(targetCell.ExplorationReward.RewardType);
+        }
+        return new ExplorationCost("Gold", amount);
     }
 }

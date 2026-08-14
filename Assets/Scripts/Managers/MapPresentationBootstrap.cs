@@ -15,6 +15,7 @@ public sealed class MapPresentationBootstrap : MonoBehaviour, IMapPresentationBo
     [Inject] private GoldWallet _goldWallet;
     [Inject(Id = "TargetUICanvas")] private Canvas _targetUICanvas;
     [Inject] private IExplorationService _explorationService;
+    [Inject] private IExplorationCostProvider _costProvider;
     [Inject(Optional = true)] private ILogisticsService _logisticsService;
 
     private Texture2D _fogMaskTex;
@@ -141,6 +142,7 @@ public sealed class MapPresentationBootstrap : MonoBehaviour, IMapPresentationBo
         _costLabelRenderer = labelGo.AddComponent<CostLabelRenderer>();
         _costLabelRenderer.Initialize(
             _mapDataService,
+            _costProvider,
             _goldWallet,
             CostLabelPrefab,
             _targetUICanvas,

@@ -16,7 +16,7 @@ MonoBehaviour:
   unitData:
     id: 5
     unitName: "\u8FDC\u7A0BIII"
-    MovementPoints: 1
+    MovementPoints: 0.5
     hp: 20
     BasicAttackRange: 2
     BasicAttackValue: 15
@@ -24,6 +24,7 @@ MonoBehaviour:
     ViewPoints: 1
     AttackInterval: 0
   unitModel: {fileID: 6806853077911367679, guid: 7a6bd5ae784f7bf4c90e2d5e069117d1, type: 3}
+  enemyUnitModel: {fileID: 0}
   unitIcon: {fileID: 21300000, guid: 585d036dac6d56944961d3d5e812a583, type: 3}
   skillIcon: {fileID: 21300000, guid: 94c11d4a0954d744aab85735db3b7302, type: 3}
   strategyType: 2

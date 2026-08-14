@@ -28,10 +28,12 @@ public class CostLabelRenderer : MonoBehaviour
     private readonly Stack<GameObject> _pool = new Stack<GameObject>();
 
     private ILogisticsService _logisticsService;
+    private IExplorationCostProvider _costProvider;
 
-    public void Initialize(IMapDataService mapData, GoldWallet goldWallet, GameObject labelPrefab, Canvas parentCanvas, IExplorationService explorationService, MapVisualEventSO mapVisualEvent, ILogisticsService logisticsService = null)
+    public void Initialize(IMapDataService mapData, IExplorationCostProvider costProvider, GoldWallet goldWallet, GameObject labelPrefab, Canvas parentCanvas, IExplorationService explorationService, MapVisualEventSO mapVisualEvent, ILogisticsService logisticsService = null)
     {
         _mapData = mapData;
+        _costProvider = costProvider;
         _goldWallet = goldWallet;
         _labelPrefab = labelPrefab;
         _parentCanvas = parentCanvas;
@@ -89,11 +91,17 @@ public class CostLabelRenderer : MonoBehaviour
 
     private void OnGoldChanged(int newGold)
     {
-        bool canAfford = newGold >= _goldWallet.ExplorationCost;
         foreach (var kv in _activeLabels)
         {
             var label = kv.Value;
             if (label == null) continue;
+
+            bool canAfford = false;
+            if (_mapData != null && _costProvider != null)
+            {
+                HexCellData cell = _mapData.GetCell(kv.Key);
+                canAfford = cell != null && newGold >= _costProvider.GetCost(cell).Amount;
+            }
             var cg = label.GetComponent<CanvasGroup>();
             if (cg == null) cg = label.AddComponent<CanvasGroup>();
             cg.alpha = canAfford ? 1f : 0.35f;
@@ -149,11 +157,10 @@ public class CostLabelRenderer : MonoBehaviour
 
     private void RefreshLabels()
     {
-        if (_mapData == null || _goldWallet == null || _labelPrefab == null) return;
+        if (_mapData == null || _goldWallet == null || _costProvider == null || _labelPrefab == null) return;
         var allCells = _mapData.GetAllCells();
         if (allCells == null) return;
 
-        bool canAfford = _goldWallet.Gold >= _goldWallet.ExplorationCost;
         var toRemove = new List<Vector3>(_activeLabels.Keys);
         int createdCount = 0;
 
@@ -183,10 +190,25 @@ public class CostLabelRenderer : MonoBehaviour
                 _labelWorldPositions[cell.HexCoordinate] = cell.RealCenterWorldCoordinate;
             }
 
+            // 【探索费用按奖励类型】每个标签按地块自身奖励类型显示并判断可负担性
+            int cost = _costProvider.GetCost(cell).Amount;
+            bool canAfford = _goldWallet.Gold >= cost;
+
             var text = label.GetComponentInChildren<Text>();
             if (text != null)
             {
-                text.text = $"{_goldWallet.ExplorationCost}";
+                text.text = cost.ToString();
+            }
+
+            // 【探索奖励预生成】按地块预生成的奖励类型切换第二个子物体（Type）的图标
+            var uiController = label.GetComponent<UIController>();
+            if (uiController != null)
+            {
+                ExplorationRewardConfigSO.ExplorationRewardType rewardType =
+                    cell.ExplorationReward != null
+                        ? cell.ExplorationReward.RewardType
+                        : ExplorationRewardConfigSO.ExplorationRewardType.None;
+                uiController.SetRewardTypeIcon(rewardType);
             }
 
             var cg = label.GetComponent<CanvasGroup>();

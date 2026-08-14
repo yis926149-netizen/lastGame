@@ -14,6 +14,7 @@ public static class SeedService
     private const int TransitionTest = 801;
     private const int PublicBuilding = 901;
     private const int PublicBuildingMarker = 902;
+    private const int ExplorationReward = 1001;
 
     private static bool _initialized = false;
     private static int _rootSeed;
@@ -43,6 +44,7 @@ public static class SeedService
             "TransitionTest" => TransitionTest,
             "PublicBuilding" => PublicBuilding,
             "PublicBuildingMarker" => PublicBuildingMarker,
+            "ExplorationReward" => ExplorationReward,
             _          => throw new ArgumentException($"未知模块 ID: {moduleId}")
         };
 
@@ -52,5 +54,5 @@ public static class SeedService
 
     public static int CurrentSeed => _rootSeed;
 
-    public const int GeneratorVersion = 1;
+    public const int GeneratorVersion = 2;
 }

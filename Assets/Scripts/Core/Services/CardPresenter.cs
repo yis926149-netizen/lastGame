@@ -119,6 +119,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
                 NormalCardConfig = config,
                 ID = unitConfig.Id,
                 CardSprite = config.cardSprite,
+                CardCost = config.cardCost,
                 IsUnit = true,
             };
         }
@@ -129,10 +130,11 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
                 NormalCardConfig = config,
                 ID = buildingConfig.buildingId,
                 CardSprite = config.cardSprite,
+                CardCost = config.cardCost,
                 IsUnit = false,
             };
         }
-        return new CardData { NormalCardConfig = config, CardSprite = config.cardSprite };
+        return new CardData { NormalCardConfig = config, CardSprite = config.cardSprite, CardCost = config.cardCost };
     }
 
     /// <summary>
@@ -262,8 +264,8 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         }
         if (!spawned) return false;
 
-        // 【探索重构-阶段7】出牌扣费
-        _goldWallet.TrySpendGold(0, _goldWallet.CardCost);
+        // 【探索重构-阶段7】出牌扣费（按卡单价收费）
+        _goldWallet.TrySpendGold(0, view.Data?.CardCost ?? _goldWallet.CardCost);
 
         _cardService.RemoveCard(view.PlacementID);
 
@@ -291,7 +293,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         // 【探索重构-阶段7】部署需在势力范围内 + 有足够金币
         if (!_territoryService.IsInPlayerTerritory(cell)) return false;
         if (_logisticsService != null && !_logisticsService.IsLogisticsConnected(cell, 0)) return false;
-        if (_goldWallet.Gold < _goldWallet.CardCost) return false;
+        if (_goldWallet.Gold < (config != null ? config.cardCost : _goldWallet.CardCost)) return false;
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
         if (cell.IsHaveUnit()) return false;

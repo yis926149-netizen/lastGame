@@ -97,6 +97,17 @@ public class HexCellData
     public bool IsExploredBy(int factionId) => (_exploredMask & (1 << factionId)) != 0;
     public void ExploreBy(int factionId) => _exploredMask |= (1 << factionId);
 
+    // 【探索奖励预生成】地图生成时固化；null 表示该格没有待结算奖励。
+    private ExplorationRewardData _explorationReward;
+    public ExplorationRewardData ExplorationReward => _explorationReward;
+    public void SetExplorationReward(ExplorationRewardData reward) => _explorationReward = reward;
+    public ExplorationRewardData TakeExplorationReward()
+    {
+        ExplorationRewardData reward = _explorationReward;
+        _explorationReward = null;
+        return reward;
+    }
+
     // 【探索重构-阶段6】IsVisible 已移除。地图全可见，只保留 IsExplored（是否已探索/占领）。
 
     // 【迷雾过渡】迷雾透明度：0=完全迷雾遮挡，1=完全清晰显示。逐帧过渡到目标值。

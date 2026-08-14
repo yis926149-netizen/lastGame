@@ -12,8 +12,8 @@ public class HexMetrics
 {
     // 噪声图
     public static Texture2D noiseSource;
-    // 噪声缩放系数，控制噪声“细腻度”
-    public const float noiseScale = 0.003f;
+    // 噪声采样频率，值越大相邻地块的视觉高程差异越明显。
+    public static float noiseScale = 0.003f;
     // 平面扰动强度（教程中从5调整为4）
     public const float cellPerturbStrength = 5f;
     // 竖直（高程）扰动强度，有界。由 MapGenerator 从 elevationStep * verticalPerturbRatio 注入，
@@ -88,10 +88,10 @@ public class HexMetrics
         // 1. 采样噪声：获取当前顶点位置对应的四通道噪声数据（Vector4）
         Vector4 noiseSample = HexMetrics.SampleNoise(position);
 
-        // 2. 通道映射：noiseSample.y*2-1 ∈ [-1,1]，乘有界强度后天然夹在 ±yPerturbStrength，无需 modulo
-        position.y += (noiseSample.y * 2f - 1f) * HexMetrics.yPerturbStrength; // G通道→Y轴（有界高程扰动）
+        // 调用方会把该值加到已包含基础高度的顶点上，因此这里只返回偏移量。
+        // 若返回 position.y + offset，会把 Height * elevationStep 重复叠加一次。
+        float yOffset = (noiseSample.y * 2f - 1f) * HexMetrics.yPerturbStrength;
 
-        // 3. 返回扰动后的顶点位置（包含噪声信息的Vector3）
-        return new Vector3(0, position.y, 0);
+        return new Vector3(0f, yOffset, 0f);
     }
 }

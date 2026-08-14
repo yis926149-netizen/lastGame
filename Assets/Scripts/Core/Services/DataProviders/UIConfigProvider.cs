@@ -6,6 +6,7 @@ public interface IUIConfigProvider
     GameObject GetMovementIndicatorPrefab();
     GameObject GetEnemyUnitIndicatorPrefab();
     GameObject GetCardPrefab();
+    GameObject GetTacticalCardPrefab();
     Sprite GetMovementPointsIcon();
     Sprite GetMeleeAttackPointsIcon();
 
@@ -36,6 +37,7 @@ public class UIConfigProvider : IUIConfigProvider
     public GameObject GetMovementIndicatorPrefab() => _uiConfig.movementIndicatorPrefab;
     public GameObject GetEnemyUnitIndicatorPrefab() => _uiConfig.enemyUnitIndicatorPrefab;
     public GameObject GetCardPrefab() => _uiConfig.cardPrefab;
+    public GameObject GetTacticalCardPrefab() => _uiConfig.tacticalCardPrefab;
     public Sprite GetMovementPointsIcon() => _uiConfig.movementPointsIcon;
     public Sprite GetMeleeAttackPointsIcon() => _uiConfig.meleeAttackPointsIcon;
 

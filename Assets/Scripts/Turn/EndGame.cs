@@ -26,11 +26,14 @@ public class EndGame : MonoBehaviour
     public Transform DefeatUI;
     public EndGameResult Result { get; private set; }
 
+    public bool IsVictory =>
+        Result == EndGameResult.Victory || Result == EndGameResult.Draw;
+
     public Transform CurrentEndAnimation =>
-        Result == EndGameResult.Defeat ? DefeatAnimation : VictoryAnimation;
+        IsVictory ? VictoryAnimation : DefeatAnimation;
 
     public Transform CurrentEndUI =>
-        Result == EndGameResult.Defeat ? DefeatUI : VictoryUI;
+        IsVictory ? VictoryUI : DefeatUI;
 
     private bool _initializationComplete;
     private bool _playerHasOwnedCity;
