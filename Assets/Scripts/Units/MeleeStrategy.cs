@@ -16,7 +16,8 @@ using UnityEngine;
 
 public class MeleeStrategy : IUnitStrategy
 {
-    private const int AlertRange = 3; // 步兵警戒范围（格）
+    // 步兵警戒范围（格）。Excel 优先（BattleFormulaRule），缺失回退 3。
+    private int AlertRange => BattleFormulaRule.MeleeAlertRange;
 
     public List<Vector3> ChooseNextPath(UnitBrainBase brain)
     {

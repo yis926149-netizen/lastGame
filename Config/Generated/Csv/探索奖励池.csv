@@ -1,0 +1,6 @@
+poolId,rewardType,configId,weight,enabled
+reward_pool.building_gold_mine,Building,building.gold_mine,1,true
+reward_pool.tactical_battle_order,TacticalCard,tactical.battle_order,1,true
+reward_pool.tactical_repair,TacticalCard,tactical.repair,1,true
+reward_pool.unit_cactus,MilitaryUnit,unit.cactus,1,true
+reward_pool.unit_ranged_iii,MilitaryUnit,unit.ranged_iii,1,true

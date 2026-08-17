@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 455d85384e2dcc1448c29e18938d3aaa, type: 3}
+  m_Name: TacticalCardBalanceDatabase
+  m_EditorClassIdentifier: 
+  cards:
+  - cardId: tactical.battle_order
+    legacyId: 0
+    displayName: "\u6218\u6597\u53F7\u4EE4"
+    description: "\u4E34\u65F6\u63D0\u5347\u5355\u4F4D\u653B\u51FB\u4E0E\u79FB\u901F"
+    enabled: 0
+    effectType: BattleOrder
+    healRatio: 0
+    attackMultiplier: 1.3
+    speedMultiplier: 1.3
+    duration: 5
+    initialQuantity: 1
+  - cardId: tactical.repair
+    legacyId: 1
+    displayName: "\u7EF4\u4FEE"
+    description: "\u7FA4\u4F53\u56DE\u8840"
+    enabled: 1
+    effectType: Repair
+    healRatio: 0.3
+    attackMultiplier: 0
+    speedMultiplier: 0
+    duration: 0
+    initialQuantity: 1

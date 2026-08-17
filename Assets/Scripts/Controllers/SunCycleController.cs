@@ -3,8 +3,6 @@ using Zenject;
 
 public class SunCycleController : ITickable
 {
-    private const float CycleDuration = 300f;
-    private const float HalfCycle = 150f;
     private const float NoonAngle = 90f;
     private const float SunsetAngle = 170f;
     private const float DirectionYAngle = 30f;
@@ -13,12 +11,20 @@ public class SunCycleController : ITickable
     private static readonly Color NoonColor = new Color(1f, 0.95f, 0.82f);
 
     private readonly GameLoop _gameLoop;
+    private readonly GameFlowConfigProvider _gameFlow;
     private Light _sunLight;
 
-    public SunCycleController(GameLoop gameLoop)
+    public SunCycleController(GameLoop gameLoop, GameFlowConfigProvider gameFlow = null)
     {
         _gameLoop = gameLoop;
+        _gameFlow = gameFlow;
     }
+
+    // 昼夜周期与光照强度优先读 Excel，缺失回退 Legacy（双轨迁移期）
+    private float CycleDuration => _gameFlow?.DayNightCycleSeconds ?? 300f;
+    private float HalfCycle => CycleDuration * 0.5f;
+    private float NoonIntensity => _gameFlow?.NoonLightIntensity ?? 1.2f;
+    private float SunsetIntensity => _gameFlow?.SunsetLightIntensity ?? 0.4f;
 
     public void Tick()
     {
@@ -48,6 +54,6 @@ public class SunCycleController : ITickable
 
         float d = Mathf.Abs(xAngle - NoonAngle) / (SunsetAngle - NoonAngle);
         _sunLight.color = Color.Lerp(NoonColor, SunLowColor, d);
-        _sunLight.intensity = Mathf.Lerp(1.2f, 0.4f, d);
+        _sunLight.intensity = Mathf.Lerp(NoonIntensity, SunsetIntensity, d);
     }
 }

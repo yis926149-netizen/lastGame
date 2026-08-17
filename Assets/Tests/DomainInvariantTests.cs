@@ -3,6 +3,7 @@ using NSubstitute;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
+using GameConfig;
 
 public class DomainInvariantTests
 {
@@ -35,7 +36,7 @@ public class DomainInvariantTests
         // 【地图资源配置化】基础奖励来自数据库配置（此处 5）
         var database = ScriptableObject.CreateInstance<MapResourceDatabaseSO>();
         database.baseExplorationGold = 5;
-        var collection = new MapResourceCollectionService(wallet, null, database);
+        var collection = new MapResourceCollectionService(wallet, null, new MapResourceProvider(database));
 
         var service = new ExplorationService(
             costProvider,
@@ -131,7 +132,7 @@ public class DomainInvariantTests
         database.baseExplorationGold = 5;
         var chest = AddResource(database, "Chest", 1);
         chest.explorationGoldBonus = 30;
-        var collection = new MapResourceCollectionService(wallet, null, database);
+        var collection = new MapResourceCollectionService(wallet, null, new MapResourceProvider(database));
 
         var cell = new HexCellData(Enums.HexType.NoRiver, 0, Vector3.zero, Vector3.zero, 1f);
         cell.resource = chest;
@@ -157,7 +158,7 @@ public class DomainInvariantTests
         var wallet = new GoldWallet();
         wallet.InitPlayer(0);
         var database = CreateResourceDatabase(emptyWeight: 14);
-        var collection = new MapResourceCollectionService(wallet, null, database);
+        var collection = new MapResourceCollectionService(wallet, null, new MapResourceProvider(database));
 
         var animals = AddResource(database, "Animals", 1);
         animals.pickupEffectType = ResourcePickupEffectType.AttackBoost;
@@ -417,7 +418,7 @@ public class DomainInvariantTests
             var buffs = Substitute.For<IFactionBuffService>();
             buffs.GetStatMultiplier(Arg.Any<int>(), "gold").Returns(1f);
 
-            var wallet = new GoldWallet { PassiveIncomePerTick = 2 };
+            var wallet = new GoldWallet(); // PassiveIncomePerTick 默认回退 2（无 Excel 配置）
             // 【断供方案-阶段6.5】金矿加成需"归属 + 后勤畅通"：把金矿格注册为玩家主城 → 连通 → 计加成
             var logistics = new LogisticsService(map);
             logistics.RegisterMainCity(0, playerMine);
@@ -455,7 +456,7 @@ public class DomainInvariantTests
             var buffs = Substitute.For<IFactionBuffService>();
             buffs.GetStatMultiplier(Arg.Any<int>(), "gold").Returns(1f);
 
-            var wallet = new GoldWallet { PassiveIncomePerTick = 2 };
+            var wallet = new GoldWallet(); // PassiveIncomePerTick 默认回退 2（无 Excel 配置）
             var logistics = new LogisticsService(map);
             logistics.RegisterMainCity(0, mainCity);
             var income = new GoldIncomeService(wallet, buffs, null, map, logistics);
@@ -472,16 +473,16 @@ public class DomainInvariantTests
     [Test]
     public void BuildingIncomeRule_SumGoldMineIncome_CountsOwnedLivingMinesOnly()
     {
-        var database = ScriptableObject.CreateInstance<BuildingDatabaseSO>();
-        var config = ScriptableObject.CreateInstance<BuildingConfigSO>();
+        var database = ScriptableObject.CreateInstance<BuildingBalanceDatabaseSO>();
         var playerMineObject = new GameObject("Player Gold Mine");
         var aiMineObject = new GameObject("AI Gold Mine");
 
         try
         {
-            config.buildingType = Enums.BulidingType.GoldMine;
-            config.goldIncomePerSecond = 1f;
-            database.buildings.Add(config);
+            database.ReplaceAll(new[]
+            {
+                new BuildingBalanceData { buildingType = "GoldMine", goldIncomePerSecond = 1f }
+            });
 
             var playerMine = CreateCell(Vector3.zero);
             playerMine.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
@@ -513,7 +514,6 @@ public class DomainInvariantTests
         {
             Object.DestroyImmediate(playerMineObject);
             Object.DestroyImmediate(aiMineObject);
-            Object.DestroyImmediate(config);
             Object.DestroyImmediate(database);
         }
     }
@@ -522,17 +522,17 @@ public class DomainInvariantTests
     public void GoldIncomeService_GetIncomePerTick_CombinesLandformAndBuildingMines()
     {
         var landform = ScriptableObject.CreateInstance<MapLandFormSO>();
-        var database = ScriptableObject.CreateInstance<BuildingDatabaseSO>();
-        var config = ScriptableObject.CreateInstance<BuildingConfigSO>();
+        var database = ScriptableObject.CreateInstance<BuildingBalanceDatabaseSO>();
         var buildingObject = new GameObject("Gold Mine");
 
         try
         {
             landform.effectType = LandFormEffectType.GoldIncomeBoost;
             landform.effect.goldIncomePerSecond = 2f;
-            config.buildingType = Enums.BulidingType.GoldMine;
-            config.goldIncomePerSecond = 1f;
-            database.buildings.Add(config);
+            database.ReplaceAll(new[]
+            {
+                new BuildingBalanceData { buildingType = "GoldMine", goldIncomePerSecond = 1f }
+            });
 
             var mine = CreateCell(Vector3.zero);
             mine.landForm = landform;
@@ -547,17 +547,16 @@ public class DomainInvariantTests
             var buffs = Substitute.For<IFactionBuffService>();
             buffs.GetStatMultiplier(0, "gold").Returns(2f);
 
-            var wallet = new GoldWallet { PassiveIncomePerTick = 2 };
+            var wallet = new GoldWallet(); // PassiveIncomePerTick 默认回退 2（无 Excel 配置）
             var logistics = new LogisticsService(map);
             logistics.RegisterMainCity(0, mine);
-            var income = new GoldIncomeService(wallet, buffs, null, map, logistics, database);
+            var income = new GoldIncomeService(wallet, buffs, null, map, logistics, null, database);
 
             Assert.AreEqual(10, income.GetIncomePerTick(0));
         }
         finally
         {
             Object.DestroyImmediate(buildingObject);
-            Object.DestroyImmediate(config);
             Object.DestroyImmediate(database);
             Object.DestroyImmediate(landform);
         }
@@ -566,15 +565,15 @@ public class DomainInvariantTests
     [Test]
     public void BuildingIncomeRule_SumGoldMineIncome_CutOffMinePauses()
     {
-        var database = ScriptableObject.CreateInstance<BuildingDatabaseSO>();
-        var config = ScriptableObject.CreateInstance<BuildingConfigSO>();
+        var database = ScriptableObject.CreateInstance<BuildingBalanceDatabaseSO>();
         var buildingObject = new GameObject("Cut Off Gold Mine");
 
         try
         {
-            config.buildingType = Enums.BulidingType.GoldMine;
-            config.goldIncomePerSecond = 1f;
-            database.buildings.Add(config);
+            database.ReplaceAll(new[]
+            {
+                new BuildingBalanceData { buildingType = "GoldMine", goldIncomePerSecond = 1f }
+            });
 
             var mine = CreateCell(Vector3.zero);
             mine.Player_City_Index = new System.Collections.Generic.KeyValuePair<int, int>(0, 0);
@@ -597,7 +596,6 @@ public class DomainInvariantTests
         finally
         {
             Object.DestroyImmediate(buildingObject);
-            Object.DestroyImmediate(config);
             Object.DestroyImmediate(database);
         }
     }

@@ -1,0 +1,2 @@
+configId,riverDefensePenalty,attackStatueBonus,highGroundAttackBonus,highGroundRangeBonus,meleeAlertRange
+battle_formula.main,-0.5,0.7,0.5,1,3

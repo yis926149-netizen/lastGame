@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 295bc0a5ed8d4182b640a7de381a111d, type: 3}
   m_Name: GoldMine
   m_EditorClassIdentifier: 
-  landFormId: GoldMine
+  landFormId: landform.gold_mine
   landFormName: "\u91D1\u77FF"
   description: "\u5360\u9886\u5176\u6240\u5728\u7684\u5730\u5757\u65F6\uFF0C\u91D1\u5E01\u7D2F\u79EF\u901F\u5EA6+2"
   modelPrefab: {fileID: 5251738919040108789, guid: d5426be871bab5d4c9fe284c53ab0de8, type: 3}

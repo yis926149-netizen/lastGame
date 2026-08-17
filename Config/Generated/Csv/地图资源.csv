@@ -1,0 +1,6 @@
+resourceId,resourceName,description,enabled,pickupEffectType,attackBonus,healRatio,defenseBonus,goldAmount,explorationGoldBonus,spawnWeight
+resource.animals,动物,拾取后提升下一次攻击力。,true,AttackBoost,0.7,0,0,0,20,1
+resource.chest,宝箱,玩家拾取后获得金币。,true,Gold,0,0,0,50,30,1
+resource.health_pack,回血包,历史保留配置（击杀掉落设计未实现），不参与地图随机生成。,false,None,0,0,0,0,10,0
+resource.minerals,矿物,拾取后提升下一次防御力。,true,DefenseBoost,0,0,0.25,0,25,1
+resource.plants,植物,拾取后立即恢复最大生命值的 25%。,true,Heal,0,0.25,0,0,15,1

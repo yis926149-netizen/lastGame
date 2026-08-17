@@ -1,4 +1,5 @@
 using Zenject;
+using GameConfig;
 
 public class GoldIncomeService : ITickable
 {
@@ -8,12 +9,14 @@ public class GoldIncomeService : ITickable
     private readonly IMapDataService _mapDataService;
     private readonly ILogisticsService _logisticsService;
     private readonly BuildingDatabaseSO _buildingDatabase;
+    private readonly BuildingBalanceDatabaseSO _buildingBalance;
+    private readonly EconomyConfigProvider _economy;
     private float _accumulator;
 
-    public float IncomeInterval { get; set; } = 1f;
+    public float IncomeInterval => _economy?.IncomeTickInterval ?? 1f;
 
-    /// <summary>AI 专属额外金币收入（每结算周期）。固定值、不参与天赋倍率放大，用于平滑增强 AI 竞争力。</summary>
-    public int AIIncomeBonusPerTick { get; set; } = 6;
+    /// <summary>AI 专属额外金币收入（每结算周期）。固定值、不参与天赋倍率放大，用于平滑增强 AI 竞争力。Excel 优先。</summary>
+    public int AIIncomeBonusPerTick => _economy?.AIIncomeBonusPerTick ?? 6;
 
     public GoldIncomeService(
         GoldWallet wallet,
@@ -21,7 +24,9 @@ public class GoldIncomeService : ITickable
         GameLoop gameLoop,
         IMapDataService mapDataService,
         ILogisticsService logisticsService,
-        BuildingDatabaseSO buildingDatabase = null)
+        BuildingDatabaseSO buildingDatabase = null,
+        BuildingBalanceDatabaseSO buildingBalance = null,
+        EconomyConfigProvider economy = null)
     {
         _wallet = wallet;
         _factionBuff = factionBuff;
@@ -29,6 +34,8 @@ public class GoldIncomeService : ITickable
         _mapDataService = mapDataService;
         _logisticsService = logisticsService;
         _buildingDatabase = buildingDatabase;
+        _buildingBalance = buildingBalance;
+        _economy = economy;
     }
 
     public void Tick()
@@ -55,7 +62,7 @@ public class GoldIncomeService : ITickable
         float mineBonus = LandFormEffectRule.SumGoldIncomeBonus(
             _mapDataService?.GetAllCells(), factionId, _logisticsService);
         float buildingMineIncome = BuildingIncomeRule.SumGoldMineIncome(
-            _mapDataService?.GetAllCells(), factionId, _buildingDatabase, _logisticsService);
+            _mapDataService?.GetAllCells(), factionId, _buildingBalance, _logisticsService);
         float multiplier = _factionBuff != null
             ? _factionBuff.GetStatMultiplier(factionId, "gold")
             : 1f;

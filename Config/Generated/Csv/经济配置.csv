@@ -1,0 +1,2 @@
+configId,startingGold,baseIncomePerTick,aiIncomeBonusPerTick,incomeTickInterval,explorationCostFallback,cardCostFallback
+economy.main,100,2,6,1,50,10

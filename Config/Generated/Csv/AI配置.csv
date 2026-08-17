@@ -1,0 +1,2 @@
+configId,cardPlayInterval,exploreInterval,globalActionMinInterval,settlerCardPriority,technologyCardPriority,unitCardPriority,buildingCardPriority,militaryRewardOverflowRings
+ai.main,1.5,1.5,1,100,90,70,60,5

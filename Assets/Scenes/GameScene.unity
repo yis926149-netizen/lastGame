@@ -3948,6 +3948,24 @@ MonoBehaviour:
   _targetUICanvas: {fileID: 1882833281}
   _talentCardPoolSO: {fileID: 11400000, guid: 0fbceb72dd74f114e91ae3bddc87afbb, type: 2}
   _normalCardPoolSO: {fileID: 11400000, guid: 29cf21858dbe05c48860a0f62dc46634, type: 2}
+  _unitBalanceSO: {fileID: 11400000, guid: 733248e3fdae05c41819009860251f95, type: 2}
+  _buildingBalanceSO: {fileID: 11400000, guid: f1240a3946221964ab9f4dc2e9da2b07, type: 2}
+  _cardPoolDatabaseSO: {fileID: 11400000, guid: d66258efebb8c044f98e454bee693fa3, type: 2}
+  _tacticalCardBalanceSO: {fileID: 11400000, guid: e78bfdd07a7a19941b0d8d4aae572482, type: 2}
+  _talentCardBalanceSO: {fileID: 11400000, guid: b3dc448be2480f94a982411155f34470, type: 2}
+  _talentDrawRuleSO: {fileID: 11400000, guid: c5eeb543251ccc24db1f418aaae60c93, type: 2}
+  _explorationRewardConfigDbSO: {fileID: 11400000, guid: ad82e8cc3ca754640bccfb0078d94670, type: 2}
+  _explorationRewardPoolDbSO: {fileID: 11400000, guid: 3e2ce84164e93a749810daa6a5ff456c, type: 2}
+  _mapResourceBalanceSO: {fileID: 11400000, guid: 7d838c23018b3564595db273f35f0f7d, type: 2}
+  _resourceGlobalConfigSO: {fileID: 11400000, guid: 5ab21139edd3bf94d995fb500d7ca393, type: 2}
+  _mapLandFormBalanceSO: {fileID: 11400000, guid: 6349416cf0828b74ead548b153898b8d, type: 2}
+  _landFormGlobalConfigSO: {fileID: 11400000, guid: d097275f91c1ed447bf92e66de9d7920, type: 2}
+  _publicBuildingBalanceSO: {fileID: 11400000, guid: 09aee0c608c764847882e84c8e099708, type: 2}
+  _economyConfigSO: {fileID: 11400000, guid: 1cefef995471f1948bd583187d322491, type: 2}
+  _gameFlowConfigSO: {fileID: 11400000, guid: 538916845428df94786da5c8c88dd710, type: 2}
+  _aiConfigSO: {fileID: 11400000, guid: 652294a50a0ced7468ef7414e452a93a, type: 2}
+  _battleFormulaConfigSO: {fileID: 11400000, guid: ad238038e8e65124ba5463d96044d099, type: 2}
+  _mapGenConfigSO: {fileID: 11400000, guid: ca01e1451faa7914bba8f09f11e2a269, type: 2}
   _talentCardSelectionUI: {fileID: 818467537}
   _explorationRewardConfigSO: {fileID: 11400000, guid: a8eda5217d697e64696d242d03841dfd, type: 2}
   _tacticalCardDatabaseSO: {fileID: 11400000, guid: 71a67a3257b36b047bc6280d46aa59f0, type: 2}

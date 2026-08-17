@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1b2d8edb4de14df897f3b66776054121, type: 3}
   m_Name: Plants
   m_EditorClassIdentifier: 
-  resourceId: Plants
+  resourceId: resource.plants
   resourceName: 植物
   description: 拾取后立即恢复最大生命值的 25%。
   modelPrefab: {fileID: 3887432802075801147, guid: 66a9f120e3472df43abbc386e636d9a9, type: 3}

@@ -9,18 +9,24 @@ using UnityEngine;
 public class GoldWallet : IPlayerResourceWallet
 {
     private readonly Dictionary<int, int> _gold = new Dictionary<int, int>();
+    private readonly EconomyConfigProvider _economy;
 
-    /// <summary>起始金币（双方一致）</summary>
-    public int StartingGold { get; set; } = 100;
+    public GoldWallet(EconomyConfigProvider economy = null)
+    {
+        _economy = economy;
+    }
 
-    /// <summary>每秒被动收入（双方一致）</summary>
-    public int PassiveIncomePerTick { get; set; } = 2;
+    /// <summary>起始金币（双方一致）。Excel 优先，缺失回退 100。</summary>
+    public int StartingGold => _economy?.StartingGold ?? 100;
 
-    /// <summary>探索固定费用</summary>
-    public int ExplorationCost { get; set; } = 50;
+    /// <summary>每秒被动收入（双方一致）。Excel 优先，缺失回退 2。</summary>
+    public int PassiveIncomePerTick => _economy?.BaseIncomePerTick ?? 2;
 
-    /// <summary>出牌费用</summary>
-    public int CardCost { get; set; } = 10;
+    /// <summary>探索固定费用（奖励配置缺失/越界时的兜底）。Excel 优先，缺失回退 50。</summary>
+    public int ExplorationCost => _economy?.ExplorationCostFallback ?? 50;
+
+    /// <summary>出牌费用兜底（CardData 缺失时）。Excel 优先，缺失回退 10。</summary>
+    public int CardCost => _economy?.CardCostFallback ?? 10;
 
     /// <summary>玩家（Index 0）金币变动事件</summary>
     public event System.Action<int> OnGoldChanged;
@@ -85,20 +91,20 @@ public class GoldWallet : IPlayerResourceWallet
 public class FixedExplorationCostProvider : IExplorationCostProvider
 {
     private readonly GoldWallet _wallet;
-    private readonly ExplorationRewardConfigSO _rewardConfig;
+    private readonly ExplorationRewardProvider _rewardProvider;
 
-    public FixedExplorationCostProvider(GoldWallet wallet, ExplorationRewardConfigSO rewardConfig)
+    public FixedExplorationCostProvider(GoldWallet wallet, ExplorationRewardProvider rewardProvider)
     {
         _wallet = wallet;
-        _rewardConfig = rewardConfig;
+        _rewardProvider = rewardProvider;
     }
 
     public ExplorationCost GetCost(HexCellData targetCell)
     {
         int amount = _wallet.ExplorationCost;
-        if (_rewardConfig != null && targetCell != null && targetCell.ExplorationReward != null)
+        if (_rewardProvider != null && targetCell != null && targetCell.ExplorationReward != null)
         {
-            amount = _rewardConfig.GetExplorationCost(targetCell.ExplorationReward.RewardType);
+            amount = _rewardProvider.GetExplorationCost(targetCell.ExplorationReward.RewardType);
         }
         return new ExplorationCost("Gold", amount);
     }

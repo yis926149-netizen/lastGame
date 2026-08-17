@@ -157,7 +157,7 @@ public class ArrowTowerShooter : MonoBehaviour
     {
         if (!_rangeCalculated)
         {
-            _effectiveRange = IsHighGround(towerCell) ? _attackRange + 1 : _attackRange;
+            _effectiveRange = IsHighGround(towerCell) ? _attackRange + BattleFormulaRule.HighGroundRangeBonus : _attackRange;
             _rangeCalculated = true;
         }
         return _effectiveRange;

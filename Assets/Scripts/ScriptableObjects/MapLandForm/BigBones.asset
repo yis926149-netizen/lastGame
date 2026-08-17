@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 295bc0a5ed8d4182b640a7de381a111d, type: 3}
   m_Name: BigBones
   m_EditorClassIdentifier: 
-  landFormId: BigBones
+  landFormId: landform.big_bones
   landFormName: 大骨阵
   description: 被攻击者站在其上时防御系数 +0.3。
   modelPrefab: {fileID: 1502498099872423753, guid: cb07d4819e05d704a9c1727693195573, type: 3}

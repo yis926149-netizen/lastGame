@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ad3c5a06d0860d34c9df40acb3279950, type: 3}
   m_Name: TacticalCard--BattleOrder
   m_EditorClassIdentifier: 
-  cardId: 0
+  cardId: tactical.battle_order
   cardName: BattleOrder
   description: "\u6218\u6597\u53F7\u4EE4"
   cardSprite: {fileID: 21300000, guid: d4d648592fe4f9f46882e1b563c0fca1, type: 3}

@@ -204,7 +204,7 @@ public class RangedStrategy : IUnitStrategy
         HexCellData cell = brain.MapData.GetCell(selfHex);
         if (cell == null) return baseRange;
 
-        return WaterLevelConfig.ClassifyHeight(cell.Height) == 2 ? baseRange + 1 : baseRange;
+        return WaterLevelConfig.ClassifyHeight(cell.Height) == 2 ? baseRange + BattleFormulaRule.HighGroundRangeBonus : baseRange;
     }
 
     private static float HexDistance(Vector3 a, Vector3 b)

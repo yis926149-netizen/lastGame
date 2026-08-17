@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 295bc0a5ed8d4182b640a7de381a111d, type: 3}
   m_Name: Mountain
   m_EditorClassIdentifier: 
-  landFormId: mountain
+  landFormId: landform.mountain
   landFormName: "\u5C71\u8109"
   description: "\u7A0B\u5E8F\u5316\u5C71\u8109\u5730\u8C8C\u5360\u7528\u6807\u8BB0\uFF1A\u65E0\u6A21\u578B/\u65E0\u6D6E\u6807/\u65E0\u6548\u679C\uFF1B\u7531
     RidgeGenerator \u4E13\u5C5E pass \u751F\u6210\uFF08\u51B3\u7B56 \u246C\uFF09"

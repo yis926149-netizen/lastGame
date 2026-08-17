@@ -14,6 +14,7 @@ public class ExplorationRewardSystem
     private readonly IMapDataService _mapDataService;
     private readonly TacticalCardPresenter _tacticalCardPresenter;
     private readonly ExplorationCoinPresenter _coinPresenter;
+    private readonly AIConfigProvider _aiConfig;
 
     public ExplorationRewardSystem(
         IExplorationService explorationService,
@@ -22,7 +23,8 @@ public class ExplorationRewardSystem
         IPlayerBuildingSpawnService buildingSpawnService,
         IMapDataService mapDataService,
         TacticalCardPresenter tacticalCardPresenter,
-        ExplorationCoinPresenter coinPresenter)
+        ExplorationCoinPresenter coinPresenter,
+        AIConfigProvider aiConfig = null)
     {
         _explorationService = explorationService;
         _goldWallet = goldWallet;
@@ -31,6 +33,7 @@ public class ExplorationRewardSystem
         _mapDataService = mapDataService;
         _tacticalCardPresenter = tacticalCardPresenter;
         _coinPresenter = coinPresenter;
+        _aiConfig = aiConfig;
 
         _explorationService.ExplorationRewardTriggered += OnExplorationRewardTriggered;
     }
@@ -182,7 +185,7 @@ public class ExplorationRewardSystem
     /// </summary>
     private HexCellData FindOverflowCell(HexCellData originCell)
     {
-        const int maxRings = 5;
+        int maxRings = _aiConfig?.MilitaryRewardOverflowRings ?? 5;
 
         var visited = new HashSet<Vector3> { originCell.HexCoordinate };
         var frontier = new List<HexCellData> { originCell };

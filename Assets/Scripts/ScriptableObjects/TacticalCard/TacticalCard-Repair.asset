@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ad3c5a06d0860d34c9df40acb3279950, type: 3}
   m_Name: TacticalCard-Repair
   m_EditorClassIdentifier: 
-  cardId: 1
+  cardId: tactical.repair
   cardName: Repair
   description: "\u7FA4\u4F53\u56DE\u8840"
   cardSprite: {fileID: 21300000, guid: 9527d4b7abeda8f41b6ef035c1e0bf3b, type: 3}

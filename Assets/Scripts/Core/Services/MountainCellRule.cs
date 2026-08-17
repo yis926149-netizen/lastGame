@@ -58,6 +58,6 @@ public static class MountainCellRule
         if (cell == null) return false;
         if (WaterLevelConfig.IsWater(cell)) return false;
         if (IsEffectiveMountainCell(cell)) return false;
-        return cell.landForm == null || !cell.landForm.blockBuildingSpawn;
+        return cell.landForm == null || !LandFormEffectRule.GetBlockBuildingSpawn(cell.landForm);
     }
 }

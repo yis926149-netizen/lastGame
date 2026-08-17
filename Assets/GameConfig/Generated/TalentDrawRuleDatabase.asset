@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 50ea0f498282b734282a9f62b010fe10, type: 3}
+  m_Name: TalentDrawRuleDatabase
+  m_EditorClassIdentifier: 
+  rules:
+  - ruleId: draw_rule.buildinghp_favor_building
+    triggerTalentId: talent.building_hp
+    targetCardType: Building
+    weightMultiplier: 10
+    enabled: 1
+  - ruleId: draw_rule.damage_favor_unit
+    triggerTalentId: talent.damage
+    targetCardType: Unit
+    weightMultiplier: 10
+    enabled: 1

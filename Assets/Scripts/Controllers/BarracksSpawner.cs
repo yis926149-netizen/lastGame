@@ -144,7 +144,7 @@ public class BarracksSpawner : MonoBehaviour
             unitID,
             g,
             g.GetComponent<UnitMovementController>(),
-            unitConfig != null ? unitConfig.unitData : _unitData.GetUnitData(_spawnUnitID));
+            _unitData.GetUnitData(unitID));
 
         g.GetComponent<UnitMovementController>().characterData = characterData;
         g.GetComponent<UnitMovementController>().PlayerIndex = 0;
@@ -159,7 +159,7 @@ public class BarracksSpawner : MonoBehaviour
         KeyValuePair<Sprite, string> MeleeAttack = new KeyValuePair<Sprite, string>(_uiConfig.GetMeleeAttackPointsIcon(), "攻击力");
 
         bool isSettler = unitConfig != null
-            ? unitConfig.strategyType == UnitStrategyType.Settler
+            ? _unitData.GetUnitStrategyType(unitID) == UnitStrategyType.Settler
             : characterData.UnitID == 0;
         if (isSettler)
         {
@@ -182,7 +182,7 @@ public class BarracksSpawner : MonoBehaviour
         var brain = g.AddComponent<PlayerUnitBrain>();
         brain.Initialize(
             characterData,
-            UnitStrategyFactory.Create(unitConfig),
+            UnitStrategyFactory.Create(_unitData.GetUnitStrategyType(unitID)),
             _mapDataService,
             _unitRepository,
             _movementSystem,

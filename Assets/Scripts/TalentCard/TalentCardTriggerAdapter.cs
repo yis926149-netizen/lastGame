@@ -9,31 +9,26 @@ public class TalentCardOfferEventArgs : System.EventArgs
 
 public class TalentCardTriggerAdapter
 {
-    private readonly TalentCardPoolSO _pool;
+    private readonly TalentCardProvider _provider;
     private readonly IFactionBuffService _factionBuff;
 
     public event System.EventHandler<TalentCardOfferEventArgs> OnOfferRequested;
 
-    public TalentCardTriggerAdapter(TalentCardPoolSO pool, IFactionBuffService factionBuff)
+    public TalentCardTriggerAdapter(TalentCardProvider provider, IFactionBuffService factionBuff)
     {
-        _pool = pool;
+        _provider = provider;
         _factionBuff = factionBuff;
     }
 
     public void RequestOffer(int faction)
     {
-        if (_pool == null)
+        if (_provider == null)
         {
-            Debug.LogWarning("[TalentCardTrigger] Pool is null, cannot offer.");
-            return;
-        }
-        if (_pool.cards == null || _pool.cards.Count < 3)
-        {
-            Debug.LogWarning($"[TalentCardTrigger] Pool has {_pool.cards?.Count ?? 0} cards (<3), cannot offer.");
+            Debug.LogWarning("[TalentCardTrigger] Provider is null, cannot offer.");
             return;
         }
 
-        var cards = TalentCardPoolResolver.DrawRandom(_pool, 3);
+        var cards = _provider.DrawRandom(3);
         if (cards.Count == 0)
         {
             Debug.LogWarning("[TalentCardTrigger] Drew 0 cards.");
@@ -51,6 +46,6 @@ public class TalentCardTriggerAdapter
     public void ApplyCard(int faction, TalentCardConfigSO card)
     {
         Debug.Log($"[TalentCardTrigger] ApplyCard: faction={faction}, card={card?.talentName}");
-        TalentCardEffectApplier.ApplyToFaction(_factionBuff, faction, card);
+        TalentCardEffectApplier.ApplyToFaction(_factionBuff, faction, card, _provider.GetBalance(card));
     }
 }

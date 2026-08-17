@@ -3,32 +3,32 @@ using System.Collections.Generic;
 
 /// <summary>
 /// 地图地貌簇生成规则（纯函数）。
-/// 【金矿扎堆】仅 clusterSpawn=true 的地貌（金矿）使用：固定 n 堆、
+/// 【金矿扎堆 + Excel 数值化】仅 clusterSpawn=true 的地貌（金矿）使用：固定 n 堆、
 /// 目标格数预算 + 概率生长的不规则扎堆；其余地貌保持原有散落生成。
+/// 簇参数优先由 Excel（MapLandFormProvider）读取，缺失回退 Legacy MapLandFormSO 字段。
 /// 设计要点：
-///  - 散落池（LandFormSpawnRule）保持不变以锁定随机流，同种子下其他地貌位置逐格不变；
+///  - 散落池保持不变以锁定随机流，同种子下其他地貌位置逐格不变；
 ///  - 簇生成使用独立随机流（SeedService "LandFormCluster"），不消耗散落流的随机数；
-///  - 掷中簇地貌但不在堆内的格由 RemoveScatteredForm 拦截改写为空白，
-///    使该地貌只以堆的形式出现（总权重不变，其他地貌不受影响）。
+///  - 掷中簇地貌但不在堆内的格由 RemoveScatteredForm 拦截改写为空白。
 /// 【程序化山脉-决策 ⑮】多簇遍历：按数据库顺序处理全部 clusterSpawn 地貌，共享占用集合互斥；
-/// 山脉地貌（mountainForm=true）不入本规则（RidgeGenerator 专属 pass），山格不参与簇生长（决策 ⑫）。
+/// 山脉地貌（mountainForm=true）不入本规则（RidgeGenerator 专属 pass），山格不参与簇生长。
 /// </summary>
 public static class LandFormClusterSpawnRule
 {
-    /// <summary>格是否可作为簇成员：非水域、非河流、非山脉地块（决策 ⑫ 与散落生成一致的排除规则 + 山格排除）。</summary>
+    /// <summary>格是否可作为簇成员：非水域、非河流、非山脉地块。</summary>
     public static bool IsEligible(HexCellData cell)
     {
         return cell != null && !cell.hasRiver && !WaterLevelConfig.IsWater(cell) && !MountainCellRule.IsMountainCell(cell);
     }
 
     /// <summary>从数据库中找到开启簇生成的地貌；没有则返回 null。</summary>
-    public static MapLandFormSO FindClusterForm(MapLandFormDatabaseSO database)
+    public static MapLandFormSO FindClusterForm(MapLandFormProvider provider)
     {
-        if (database == null || database.landForms == null) return null;
+        if (provider == null) return null;
 
-        foreach (MapLandFormSO form in database.landForms)
+        foreach (MapLandFormSO form in provider.GetEnabledForms())
         {
-            if (form != null && form.clusterSpawn && !form.mountainForm)
+            if (form != null && provider.IsClusterSpawn(form) && !form.mountainForm)
                 return form;
         }
         return null;
@@ -36,14 +36,13 @@ public static class LandFormClusterSpawnRule
 
     /// <summary>
     /// 多簇遍历（决策 ⑮）：按数据库顺序生成所有 clusterSpawn 地貌。
-    /// 共享占用集合（reserved = 已有山格 + 已生成的其他簇格）保证互斥；
-    /// 每个地貌独立执行 PlaceClusters + RemoveScatteredForm（簇外散落命中改写为空白）。
+    /// 共享占用集合（reserved = 已有山格 + 已生成的其他簇格）保证互斥。
     /// </summary>
     public static void PlaceAllClusters(
-        MapLandFormDatabaseSO database, List<HexCellData> cells,
+        MapLandFormProvider provider, List<HexCellData> cells,
         Func<HexCellData, List<HexCellData>> neighborsOf, Random random)
     {
-        if (database == null || database.landForms == null || cells == null || cells.Count == 0
+        if (provider == null || cells == null || cells.Count == 0
             || neighborsOf == null || random == null)
             return;
 
@@ -55,11 +54,11 @@ public static class LandFormClusterSpawnRule
                 reserved.Add(cell);
         }
 
-        foreach (MapLandFormSO form in database.landForms)
+        foreach (MapLandFormSO form in provider.GetEnabledForms())
         {
-            if (form == null || !form.clusterSpawn || form.mountainForm) continue;
+            if (form == null || !provider.IsClusterSpawn(form) || form.mountainForm) continue;
 
-            HashSet<HexCellData> claimed = PlaceClusters(form, cells, neighborsOf, random, reserved);
+            HashSet<HexCellData> claimed = PlaceClusters(provider, form, cells, neighborsOf, random, reserved);
             RemoveScatteredForm(form, cells, claimed);
             foreach (HexCellData cell in claimed)
                 reserved.Add(cell);
@@ -71,28 +70,27 @@ public static class LandFormClusterSpawnRule
     /// 掷点失败自动重试（上限 clusterCount * 100 + 500 次，防止死循环）；
     /// 地图过小无法满足时降级返回已选中的堆心。
     /// </summary>
-    /// <param name="reserved">共享占用集合（已有山格/其他簇格）；堆心不得落在其中。</param>
     public static List<HexCellData> SelectCenters(
-        MapLandFormSO form, List<HexCellData> cells,
+        MapLandFormProvider provider, MapLandFormSO form, List<HexCellData> cells,
         Func<HexCellData, List<HexCellData>> neighborsOf, Random random,
         HashSet<HexCellData> reserved = null)
     {
         var centers = new List<HexCellData>();
-        if (form == null || !form.clusterSpawn || form.clusterCount <= 0 || random == null
-            || cells == null || cells.Count == 0 || neighborsOf == null)
+        if (form == null || provider == null || !provider.IsClusterSpawn(form) || provider.GetClusterCount(form) <= 0
+            || random == null || cells == null || cells.Count == 0 || neighborsOf == null)
             return centers;
 
         // 已占用区域：已选堆心及其 clusterMinSpacing-1 圈内，避免两堆粘连
         var blocked = new HashSet<HexCellData>();
-        int maxAttempts = form.clusterCount * 100 + 500;
-        for (int attempt = 0; attempt < maxAttempts && centers.Count < form.clusterCount; attempt++)
+        int maxAttempts = provider.GetClusterCount(form) * 100 + 500;
+        for (int attempt = 0; attempt < maxAttempts && centers.Count < provider.GetClusterCount(form); attempt++)
         {
             HexCellData candidate = cells[random.Next(cells.Count)];
             if (!IsEligible(candidate) || blocked.Contains(candidate)) continue;
             if (reserved != null && reserved.Contains(candidate)) continue;
 
             centers.Add(candidate);
-            MarkBlocked(blocked, candidate, Math.Max(0, form.clusterMinSpacing - 1), neighborsOf);
+            MarkBlocked(blocked, candidate, Math.Max(0, provider.GetClusterMinSpacing(form) - 1), neighborsOf);
         }
         return centers;
     }
@@ -103,17 +101,18 @@ public static class LandFormClusterSpawnRule
     /// 最大半径即停止。返回簇内格集合（含堆心）。
     /// </summary>
     public static HashSet<HexCellData> GrowCluster(
-        MapLandFormSO form, HexCellData center,
+        MapLandFormProvider provider, MapLandFormSO form, HexCellData center,
         Func<HexCellData, List<HexCellData>> neighborsOf, Random random,
         HashSet<HexCellData> reserved = null)
     {
         var cluster = new HashSet<HexCellData>();
-        if (form == null || !form.clusterSpawn || center == null || neighborsOf == null || random == null)
+        if (form == null || provider == null || !provider.IsClusterSpawn(form) || center == null
+            || neighborsOf == null || random == null)
             return cluster;
 
         cluster.Add(center);
-        int budget = Math.Max(1, form.clusterTargetSize);
-        int maxRadius = Math.Max(1, form.clusterMaxRadius);
+        int budget = Math.Max(1, provider.GetClusterTargetSize(form));
+        int maxRadius = Math.Max(1, provider.GetClusterMaxRadius(form));
         var frontier = new Queue<HexCellData>();
         var distances = new Dictionary<HexCellData, int> { [center] = 0 };
         frontier.Enqueue(center);
@@ -131,7 +130,7 @@ public static class LandFormClusterSpawnRule
                 if (cluster.Contains(neighbor)) continue;
                 if (!IsEligible(neighbor)) continue;                              // 水域/河流/山格：死路
                 if (reserved != null && reserved.Contains(neighbor)) continue;   // 共享占用：其他簇格
-                if (random.NextDouble() >= form.clusterFillProbability) continue; // 概率未命中：死路
+                if (random.NextDouble() >= provider.GetClusterFillProbability(form)) continue; // 概率未命中：死路
 
                 cluster.Add(neighbor);
                 distances[neighbor] = dist + 1;
@@ -146,20 +145,19 @@ public static class LandFormClusterSpawnRule
     /// 执行簇生成并写回地块：选堆心 → 逐堆生长 → 将簇内格覆盖为 form。
     /// 返回被占用的格集合，供调用方做散落拦截（RemoveScatteredForm）。
     /// </summary>
-    /// <param name="reserved">共享占用集合（已有山格/其他簇格）；堆心与生长格均不得落入。</param>
     public static HashSet<HexCellData> PlaceClusters(
-        MapLandFormSO form, List<HexCellData> cells,
+        MapLandFormProvider provider, MapLandFormSO form, List<HexCellData> cells,
         Func<HexCellData, List<HexCellData>> neighborsOf, Random random,
         HashSet<HexCellData> reserved = null)
     {
         var claimed = new HashSet<HexCellData>();
-        if (form == null || !form.clusterSpawn || form.clusterCount <= 0 || random == null
-            || cells == null || cells.Count == 0 || neighborsOf == null)
+        if (form == null || provider == null || !provider.IsClusterSpawn(form) || provider.GetClusterCount(form) <= 0
+            || random == null || cells == null || cells.Count == 0 || neighborsOf == null)
             return claimed;
 
-        foreach (HexCellData center in SelectCenters(form, cells, neighborsOf, random, reserved))
+        foreach (HexCellData center in SelectCenters(provider, form, cells, neighborsOf, random, reserved))
         {
-            foreach (HexCellData cell in GrowCluster(form, center, neighborsOf, random, reserved))
+            foreach (HexCellData cell in GrowCluster(provider, form, center, neighborsOf, random, reserved))
                 claimed.Add(cell);
         }
 
@@ -171,8 +169,6 @@ public static class LandFormClusterSpawnRule
 
     /// <summary>
     /// 拦截散落结果：把散落掷中 form 但不在任何堆内的格改写为空白。
-    /// 必须与 PlaceClusters 返回的 claimed 集合配套使用；
-    /// 散落池权重保持不变，以锁定随机流、保证其他地貌位置不变。
     /// </summary>
     public static void RemoveScatteredForm(MapLandFormSO form, List<HexCellData> cells, HashSet<HexCellData> claimed)
     {

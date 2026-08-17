@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1b2d8edb4de14df897f3b66776054121, type: 3}
   m_Name: Chest
   m_EditorClassIdentifier: 
-  resourceId: Chest
+  resourceId: resource.chest
   resourceName: 宝箱
   description: 玩家拾取后获得金币。
   modelPrefab: {fileID: 8526569099747661489, guid: 685fc0a37029f7449809a785ca062099, type: 3}

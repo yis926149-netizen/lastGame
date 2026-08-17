@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using DG.Tweening;
 using Zenject;
+using GameConfig;
 
 public class TalentCardSelectionUI : MonoBehaviour
 {
@@ -46,6 +47,7 @@ public class TalentCardSelectionUI : MonoBehaviour
     private GameLoop _gameLoop;
     private CameraController _cameraController;
     private GlobalTimerService _timer;
+    private TalentCardBalanceDatabaseSO _balance;
 
     private List<TalentCardConfigSO> _currentCards;
     private bool _wasPausedBeforeOffer;
@@ -74,12 +76,13 @@ public class TalentCardSelectionUI : MonoBehaviour
     private readonly List<SlotRef> _slots = new();
 
     [Inject]
-    private void InjectDependencies(TalentCardTriggerAdapter trigger, GameLoop gameLoop, CameraController cameraController, GlobalTimerService timer)
+    private void InjectDependencies(TalentCardTriggerAdapter trigger, GameLoop gameLoop, CameraController cameraController, GlobalTimerService timer, TalentCardBalanceDatabaseSO balance = null)
     {
         _trigger = trigger;
         _gameLoop = gameLoop;
         _cameraController = cameraController;
         _timer = timer;
+        _balance = balance;
 
         if (!_subscribed && _trigger != null)
         {
@@ -228,7 +231,14 @@ public class TalentCardSelectionUI : MonoBehaviour
                 if (_slots[i].TypeIcon != null) _slots[i].TypeIcon.sprite = card.typeIcon;
                 if (_slots[i].MainIcon != null) _slots[i].MainIcon.sprite = card.mainIcon;
                 if (_slots[i].NameText != null) _slots[i].NameText.text  = card.talentName;
-                if (_slots[i].DescText != null) _slots[i].DescText.text  = card.description;
+                if (_slots[i].DescText != null)
+                {
+                    // 描述：优先由 Excel 数值生成精确文案，缺失回退 Legacy 人工文案。
+                    var balance = _balance != null && _balance.TryGetTalent(card.talentId, out var b) ? b : null;
+                    _slots[i].DescText.text = balance != null
+                        ? TalentDescriptionFormatter.Format(balance)
+                        : card.description;
+                }
             }
             else
             {
@@ -321,7 +331,7 @@ public class TalentCardSelectionUI : MonoBehaviour
             SetPanelOnTop(false); // 恢复原层级
             _panelRoot?.SetActive(false);
             if (_gameLoop != null) _gameLoop.SetPaused(_wasPausedBeforeOffer);
-            _timer?.StartTimer(GlobalTimerService.DefaultDurationSeconds);
+            if (_timer != null) _timer.StartTimer(_timer.DefaultDuration);
         });
     }
 

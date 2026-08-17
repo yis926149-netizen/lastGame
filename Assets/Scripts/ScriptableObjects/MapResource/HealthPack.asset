@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1b2d8edb4de14df897f3b66776054121, type: 3}
   m_Name: HealthPack
   m_EditorClassIdentifier: 
-  resourceId: HealthPack
+  resourceId: resource.health_pack
   resourceName: 回血包
   description: 历史保留配置（击杀掉落设计未实现），不参与地图随机生成。
   modelPrefab: {fileID: 0}

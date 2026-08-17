@@ -22,7 +22,8 @@ public class ArenaEventManager : ITickable
     }
 
     public const string VisibilitySource = "Arena";
-    public const int ArenaRadius = 3;
+    /// <summary>竞技场半径（格）。Excel 优先，缺失回退 3。</summary>
+    public int ArenaRadius => _mapGenConfig?.ArenaRadius ?? 3;
 
     private readonly IMapDataService _mapDataService;
     private readonly MapGenerationConfigSO _config;
@@ -34,6 +35,7 @@ public class ArenaEventManager : ITickable
     private readonly DiContainer _container;
     private readonly IUIConfigProvider _uiConfigProvider;
     private readonly MapVisualTransitionService _visualTransition;
+    private readonly MapGenConfigProvider _mapGenConfig;
 
     private HexCellData _centerCell;
     private readonly List<HexCellData> _arenaCells = new List<HexCellData>();   // 37 格（中心 + 半径3）
@@ -60,7 +62,8 @@ public class ArenaEventManager : ITickable
         UnitMovementSystem movementSystem,
         DiContainer container,
         IUIConfigProvider uiConfigProvider,
-        MapVisualTransitionService visualTransition)
+        MapVisualTransitionService visualTransition,
+        MapGenConfigProvider mapGenConfig = null)
     {
         _mapDataService = mapDataService;
         _config = config;
@@ -72,6 +75,7 @@ public class ArenaEventManager : ITickable
         _container = container;
         _uiConfigProvider = uiConfigProvider;
         _visualTransition = visualTransition;
+        _mapGenConfig = mapGenConfig;
     }
 
     // ── 初始化（GameFlowManager 在 MapRender 后、公共建筑/玩家出生前调用）──────────
@@ -418,8 +422,8 @@ public class ArenaEventManager : ITickable
         public Enums.HexDirection DirectionB;
     }
 
-    /// <summary>阶段四：竞技场突起动画时长（§13.10 第一版锁定 1.2s）。</summary>
-    public const float ArenaRiseDurationSeconds = 1.2f;
+    /// <summary>阶段四：竞技场突起动画时长。Excel 优先，缺失回退 1.2s。</summary>
+    public float ArenaRiseDurationSeconds => _mapGenConfig?.ArenaRiseDurationSeconds ?? 1.2f;
 
     // ── 宝箱 ─────────────────────────────────────────────────
 

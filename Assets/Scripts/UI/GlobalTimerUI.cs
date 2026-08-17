@@ -9,6 +9,7 @@ using DG.Tweening;
 public class GlobalTimerUI : MonoBehaviour
 {
     [Inject] private GlobalTimerService _timer;
+    [Inject] private GameFlowConfigProvider _gameFlow;
 
     [Header("显示")]
     [Tooltip("用于显示剩余秒数的文本组件（TextMeshProUGUI）。")]
@@ -41,12 +42,13 @@ public class GlobalTimerUI : MonoBehaviour
 
         _label.text = total.ToString();
 
-        if (_timer.IsRunning && _timer.Remaining <= 60f && !_urgentActive)
+        float urgent = _gameFlow?.CountdownUrgentThreshold ?? 60f;
+        if (_timer.IsRunning && _timer.Remaining <= urgent && !_urgentActive)
         {
             _urgentActive = true;
             StartUrgentPulse();
         }
-        else if ((!_timer.IsRunning || _timer.Remaining > 60f) && _urgentActive)
+        else if ((!_timer.IsRunning || _timer.Remaining > urgent) && _urgentActive)
         {
             _urgentActive = false;
             StopUrgentPulse();

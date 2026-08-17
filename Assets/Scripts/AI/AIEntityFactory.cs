@@ -202,7 +202,7 @@ public class AIEntityFactory
         var brain = g.AddComponent<AIUnitBrain>();
         brain.Initialize(
             characterData,
-            UnitStrategyFactory.Create(_unitDataProvider.TryGetUnitConfig(UnitIndex, out var unitConfig) ? unitConfig : null),
+            UnitStrategyFactory.Create(_unitDataProvider.GetUnitStrategyType(UnitIndex)),
             _mapDataService,
             _unitRepository,
             _movementSystem,
@@ -237,7 +237,9 @@ public class AIEntityFactory
         BuildingController buildingController = g.AddComponent<BuildingController>();
         _container.Inject(buildingController);
 
-        Enums.BulidingType buildingType = config != null ? config.buildingType : (Enums.BulidingType)(bulidingTypeInt + 1);
+        Enums.BulidingType buildingType = config != null
+            ? _buildingDataProvider.GetBuildingType(bulidingTypeInt)
+            : (Enums.BulidingType)(bulidingTypeInt + 1);
         BuildingData buildingData = new BuildingData(
             buildingType,
             _buildingDataProvider,
@@ -248,7 +250,7 @@ public class AIEntityFactory
         buildingController.bulidingType = buildingType;
         h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(buildingType, g);
 
-        if (config != null ? config.blocksMovement : (bulidingTypeInt == 0 || bulidingTypeInt == 1))
+        if (config != null ? _buildingDataProvider.GetBuildingBlocksMovement(bulidingTypeInt) : (bulidingTypeInt == 0 || bulidingTypeInt == 1))
         {
             h.movementCost = float.MaxValue;
         }

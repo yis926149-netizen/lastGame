@@ -1,0 +1,78 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d61c4c8fb251dc7498e03283f5e5680c, type: 3}
+  m_Name: BuildingBalanceDatabase
+  m_EditorClassIdentifier: 
+  buildings:
+  - buildingId: building.altar
+    legacyId: 2
+    displayName: "\u796D\u575B"
+    buildingType: Altar
+    hp: 100
+    blocksMovement: 0
+    cardCost: 10
+    producedUnitId: 
+    goldIncomePerSecond: 0
+  - buildingId: building.arrow_tower
+    legacyId: 5
+    displayName: "\u7BAD\u5854"
+    buildingType: ArrowTower
+    hp: 100
+    blocksMovement: 0
+    cardCost: 100
+    producedUnitId: 
+    goldIncomePerSecond: 0
+  - buildingId: building.attack_statue
+    legacyId: 0
+    displayName: "\u653B\u51FB\u96D5\u50CF"
+    buildingType: AttackStatue
+    hp: 100
+    blocksMovement: 1
+    cardCost: 10
+    producedUnitId: 
+    goldIncomePerSecond: 0
+  - buildingId: building.barracks
+    legacyId: 4
+    displayName: "\u5175\u8425"
+    buildingType: Barracks
+    hp: 100
+    blocksMovement: 0
+    cardCost: 120
+    producedUnitId: unit.angry_mushroom
+    goldIncomePerSecond: 0
+  - buildingId: building.defense_statue
+    legacyId: 1
+    displayName: "\u9632\u5FA1\u96D5\u50CF"
+    buildingType: DefenseStatue
+    hp: 100
+    blocksMovement: 1
+    cardCost: 10
+    producedUnitId: 
+    goldIncomePerSecond: 0
+  - buildingId: building.gold_mine
+    legacyId: 6
+    displayName: "\u91D1\u77FF"
+    buildingType: GoldMine
+    hp: 100
+    blocksMovement: 0
+    cardCost: 10
+    producedUnitId: 
+    goldIncomePerSecond: 1.5
+  - buildingId: building.technology_culture
+    legacyId: 3
+    displayName: "\u79D1\u6280\u6587\u5316"
+    buildingType: TechnologyAndCultural
+    hp: 100
+    blocksMovement: 0
+    cardCost: 10
+    producedUnitId: 
+    goldIncomePerSecond: 0

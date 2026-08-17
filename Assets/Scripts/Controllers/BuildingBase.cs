@@ -193,7 +193,7 @@ public abstract class BuildingBase : MonoBehaviour
                 HexCellData neighbor = _mapDataService.GetNeighbor(attackerHex, (Enums.HexDirection)i);
                 if (neighbor != null && neighbor.BulidingTypeOnHex_Building.Key == Enums.BulidingType.AttackStatue)
                 {
-                    attackStatueGain += 0.7f;
+                    attackStatueGain += BattleFormulaRule.AttackStatueBonus;
                 }
             }
         }

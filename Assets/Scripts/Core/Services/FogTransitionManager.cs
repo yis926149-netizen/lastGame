@@ -7,8 +7,16 @@ using UnityEngine;
 /// </summary>
 public class FogTransitionManager
 {
-    /// <summary>过渡速度（每秒改变量，0.5 = 2秒完成 0→1）</summary>
-    public float TransitionSpeed = 0.5f;
+    private static float _configuredSpeed = 0.5f;
+
+    /// <summary>由 GameInstaller 在绑定阶段配置过渡速度（Excel 优先，未生成保持默认 0.5）。</summary>
+    public static void Configure(float speed)
+    {
+        if (speed > 0f) _configuredSpeed = speed;
+    }
+
+    /// <summary>过渡速度（每秒改变量，0.5 = 2秒完成 0→1）。</summary>
+    public float TransitionSpeed => _configuredSpeed;
 
     // 当本帧有 alpha 值实际变化时设为 true，由 ChunkMapRenderer 在刷新视觉后清除。
     // 注意：Tick 内部只"置位"，从不"清位"——清位由 ClearDirty 在外部完成。

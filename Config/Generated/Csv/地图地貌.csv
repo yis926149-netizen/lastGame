@@ -1,0 +1,6 @@
+landFormId,landFormName,description,enabled,effectType,defenseBonus,healRatio,healInterval,goldIncomePerSecond,blockBuildingSpawn,spawnWeight,clusterSpawn,clusterCount,clusterTargetSize,clusterFillProbability,clusterMinSpacing,clusterMaxRadius
+landform.big_bones,大骨阵,被攻击者站在其上时防御系数 +0.3。,true,DefenseBonus,0.3,0,0,0,false,1,false,1,8,0.8,4,4
+landform.farmland,农田,单位站在其上每 5 秒回复 10% 最大生命。,true,PeriodicHeal,0,0.1,5,0,false,1,false,1,8,0.8,4,4
+landform.forest,森林,纯视觉地貌，无任何效果。,true,None,0,0,0,0,false,1,false,1,8,0.8,4,4
+landform.gold_mine,金矿,占领其所在地块时，金币累积速度+2。,true,GoldIncomeBoost,0,0,0,2,true,3,true,3,5,0.413,5,4
+landform.stone,石头,纯视觉地貌，无任何效果。,true,None,0,0,0,0,false,1,false,1,8,0.8,4,4

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Zenject;
+using GameConfig;
 
 public interface ICardService
 {
@@ -30,6 +31,7 @@ public class CardService : ICardService
     [Inject] private IUIConfigProvider _uiConfig;
     [Inject] private ICardUnlockRuleProvider _cardUnlockRuleProvider;
     [Inject] private IFactionBuffService _factionBuff;
+    [Inject(Optional = true)] private TalentDrawRuleDatabaseSO _drawRules;
 
     private bool _hasGivenFirstTurnSettler = false;
 
@@ -50,7 +52,8 @@ public class CardService : ICardService
             _cardUnlockRuleProvider,
             Random,
             _factionBuff,
-            faction: 0);
+            faction: 0,
+            drawRules: _drawRules);
     }
 
     public void Reset()

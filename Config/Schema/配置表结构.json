@@ -1,0 +1,516 @@
+{
+  "schemaVersion": "1.0.0",
+  "workbook": "游戏数值配置.xlsx",
+  "tables": [
+    {
+      "sheetName": "单位",
+      "key": "unitId",
+      "description": "单位战斗数值、策略类型与卡费。已录入当前 14 个单位真实迁移值；攻击间隔按代码默认 1.5s 补齐（原资产全为 0，属已确认的零攻速 bug）。",
+      "columns": [
+        { "name": "unitId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID，如 unit.archer" },
+        { "name": "legacyId", "type": "int", "required": true, "min": 0,
+          "note": "迁移期旧整数ID，完成迁移后移除" },
+        { "name": "displayName", "type": "string", "required": true, "note": "显示名称，不作为关联键" },
+        { "name": "enabled", "type": "bool", "required": true, "note": "启用状态" },
+        { "name": "strategyType", "type": "enum", "required": true,
+          "enum": ["Melee", "Ranged", "Settler"], "note": "兵种策略类型" },
+        { "name": "hp", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "生命值" },
+        { "name": "attack", "type": "float", "required": true, "min": 0, "note": "攻击力" },
+        { "name": "defense", "type": "float", "required": true, "min": 0, "note": "防御力" },
+        { "name": "attackRange", "type": "int", "required": true, "min": 0, "note": "攻击射程（格）" },
+        { "name": "movementPoints", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "移动力" },
+        { "name": "viewPoints", "type": "int", "required": true, "min": 0, "note": "视野" },
+        { "name": "attackIntervalSeconds", "type": "float", "required": true, "min": 0,
+          "note": "攻击间隔（秒），非移民必须大于0" },
+        { "name": "cardCost", "type": "int", "required": true, "min": 0, "note": "卡费" }
+      ],
+      "rules": [
+        {
+          "id": "attackInterval-positive",
+          "type": "conditionalMinExclusive",
+          "field": "attackIntervalSeconds",
+          "whenField": "strategyType",
+          "whenNotIn": ["Settler"],
+          "min": 0,
+          "description": "非移民单位攻击间隔必须大于0"
+        }
+      ],
+      "seed": [
+        { "unitId": "unit.settler", "legacyId": 0, "displayName": "开拓者", "enabled": true, "strategyType": "Settler",
+          "hp": 20, "attack": 0, "defense": 2, "attackRange": 1, "movementPoints": 1, "viewPoints": 1,
+          "attackIntervalSeconds": 0, "cardCost": 10 },
+        { "unitId": "unit.angry_mushroom", "legacyId": 1, "displayName": "愤怒蘑菇", "enabled": true, "strategyType": "Melee",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 1, "movementPoints": 0.5, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 10 },
+        { "unitId": "unit.cactus", "legacyId": 2, "displayName": "仙人掌", "enabled": true, "strategyType": "Melee",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 1, "movementPoints": 0.5, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 10 },
+        { "unitId": "unit.free_lich", "legacyId": 3, "displayName": "免费巫妖", "enabled": true, "strategyType": "Ranged",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 2, "movementPoints": 1, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 10 },
+        { "unitId": "unit.green_skin", "legacyId": 4, "displayName": "绿皮", "enabled": true, "strategyType": "Melee",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 1, "movementPoints": 1, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 10 },
+        { "unitId": "unit.ranged_iii", "legacyId": 5, "displayName": "远程III", "enabled": true, "strategyType": "Ranged",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 2, "movementPoints": 0.5, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 10 },
+        { "unitId": "unit.melee_iii", "legacyId": 6, "displayName": "近战III", "enabled": true, "strategyType": "Melee",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 1, "movementPoints": 1, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 10 },
+        { "unitId": "unit.soul_dragon", "legacyId": 7, "displayName": "噬魂龙", "enabled": true, "strategyType": "Melee",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 1, "movementPoints": 1, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 10 },
+        { "unitId": "unit.terror_dragon", "legacyId": 8, "displayName": "恐怖龙", "enabled": true, "strategyType": "Melee",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 1, "movementPoints": 1, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 10 },
+        { "unitId": "unit.big_eye", "legacyId": 9, "displayName": "大眼", "enabled": true, "strategyType": "Ranged",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 2, "movementPoints": 1, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 10 },
+        { "unitId": "unit.chest_monster", "legacyId": 10, "displayName": "宝箱怪", "enabled": true, "strategyType": "Melee",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 1, "movementPoints": 1, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 10 },
+        { "unitId": "unit.rpg_hero", "legacyId": 11, "displayName": "RPG英杰", "enabled": true, "strategyType": "Melee",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 1, "movementPoints": 1, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 10 },
+        { "unitId": "unit.archer", "legacyId": 12, "displayName": "弓兵", "enabled": true, "strategyType": "Ranged",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 2, "movementPoints": 0.5, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 50 },
+        { "unitId": "unit.swordsman", "legacyId": 13, "displayName": "剑客", "enabled": true, "strategyType": "Melee",
+          "hp": 20, "attack": 15, "defense": 2, "attackRange": 1, "movementPoints": 0.5, "viewPoints": 1,
+          "attackIntervalSeconds": 1.5, "cardCost": 40 }
+      ]
+    },
+    {
+      "sheetName": "建筑",
+      "key": "buildingId",
+      "description": "建筑 HP、类型、阻挡、卡费、产出单位与金矿收入。已录入当前 7 个建筑真实迁移值。出兵间隔与箭塔攻击参数当前硬编码于组件，属缺口，待阶段2 补齐。",
+      "columns": [
+        { "name": "buildingId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID，如 building.gold_mine" },
+        { "name": "legacyId", "type": "int", "required": true, "min": 0, "note": "迁移期旧整数ID（buildingId）" },
+        { "name": "displayName", "type": "string", "required": true, "note": "显示名称" },
+        { "name": "buildingType", "type": "enum", "required": true,
+          "enum": ["AttackStatue", "DefenseStatue", "Altar", "TechnologyAndCultural", "Barracks", "ArrowTower", "GoldMine"],
+          "note": "建筑类型（对应 Enums.BulidingType）" },
+        { "name": "hp", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "基础血量" },
+        { "name": "blocksMovement", "type": "bool", "required": true, "note": "是否阻挡移动" },
+        { "name": "cardCost", "type": "int", "required": true, "min": 0, "note": "卡费" },
+        { "name": "producedUnitId", "type": "string", "required": false,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+          "note": "兵营产出单位ID（跨表引用单位.unitId，非兵营留空）" },
+        { "name": "goldIncomePerSecond", "type": "float", "required": true, "min": 0, "note": "金矿每秒收入（非金矿为0）" }
+      ],
+      "rules": [],
+      "seed": [
+        { "buildingId": "building.attack_statue", "legacyId": 0, "displayName": "攻击雕像", "buildingType": "AttackStatue",
+          "hp": 100, "blocksMovement": true, "cardCost": 10, "goldIncomePerSecond": 0 },
+        { "buildingId": "building.defense_statue", "legacyId": 1, "displayName": "防御雕像", "buildingType": "DefenseStatue",
+          "hp": 100, "blocksMovement": true, "cardCost": 10, "goldIncomePerSecond": 0 },
+        { "buildingId": "building.altar", "legacyId": 2, "displayName": "祭坛", "buildingType": "Altar",
+          "hp": 100, "blocksMovement": false, "cardCost": 10, "goldIncomePerSecond": 0 },
+        { "buildingId": "building.technology_culture", "legacyId": 3, "displayName": "科技文化", "buildingType": "TechnologyAndCultural",
+          "hp": 100, "blocksMovement": false, "cardCost": 10, "goldIncomePerSecond": 0 },
+        { "buildingId": "building.barracks", "legacyId": 4, "displayName": "兵营", "buildingType": "Barracks",
+          "hp": 100, "blocksMovement": false, "cardCost": 120, "producedUnitId": "unit.angry_mushroom", "goldIncomePerSecond": 0 },
+        { "buildingId": "building.arrow_tower", "legacyId": 5, "displayName": "箭塔", "buildingType": "ArrowTower",
+          "hp": 100, "blocksMovement": false, "cardCost": 100, "goldIncomePerSecond": 0 },
+        { "buildingId": "building.gold_mine", "legacyId": 6, "displayName": "金矿", "buildingType": "GoldMine",
+          "hp": 100, "blocksMovement": false, "cardCost": 10, "goldIncomePerSecond": 1.5 }
+      ]
+    },
+    {
+      "sheetName": "普通卡池",
+      "key": "cardId",
+      "description": "普通卡池（玩家与AI共享）。当前 4 张运行卡；权重/启用为新增字段（当前纯随机、全启用）。保底卡 = building.arrow_tower。",
+      "columns": [
+        { "name": "cardId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "卡对应实体稳定ID（unit.* 或 building.*）" },
+        { "name": "cardType", "type": "enum", "required": true,
+          "enum": ["Unit", "Building"], "note": "卡类型，决定 cardId 引用单位表还是建筑表" },
+        { "name": "weight", "type": "int", "required": true, "min": 1, "note": "抽取权重（当前纯随机，均为1）" },
+        { "name": "enabled", "type": "bool", "required": true, "note": "是否可抽取" },
+        { "name": "guaranteedFirst", "type": "bool", "required": true, "note": "是否为首张保底卡" }
+      ],
+      "rules": [],
+      "seed": [
+        { "cardId": "unit.archer", "cardType": "Unit", "weight": 1, "enabled": true, "guaranteedFirst": false },
+        { "cardId": "building.barracks", "cardType": "Building", "weight": 1, "enabled": true, "guaranteedFirst": false },
+        { "cardId": "building.arrow_tower", "cardType": "Building", "weight": 1, "enabled": true, "guaranteedFirst": true },
+        { "cardId": "unit.swordsman", "cardType": "Unit", "weight": 1, "enabled": true, "guaranteedFirst": false }
+      ]
+    },
+    {
+      "sheetName": "战术卡",
+      "key": "cardId",
+      "description": "战术卡效果参数与初始数量。当前 2 张卡；战斗号令效果尚未实现（TryExecuteBattleOrder 为占位），按计划工作项6 置 enabled=false，实现后再启用。",
+      "columns": [
+        { "name": "cardId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID，如 tactical.repair" },
+        { "name": "legacyId", "type": "int", "required": true, "min": 0, "note": "迁移期旧整数ID（原 cardId 数值）" },
+        { "name": "displayName", "type": "string", "required": true, "note": "卡名（显示用，不作为关联键）" },
+        { "name": "description", "type": "string", "required": true, "note": "描述文案（人工维护）" },
+        { "name": "enabled", "type": "bool", "required": true, "note": "是否启用（未实现效果的卡应置 false）" },
+        { "name": "effectType", "type": "enum", "required": true,
+          "enum": ["Repair", "BattleOrder"], "note": "效果类型" },
+        { "name": "healRatio", "type": "float", "required": true, "min": 0, "note": "回复比例（Repair：0.3=30%最大HP）" },
+        { "name": "attackMultiplier", "type": "float", "required": true, "min": 0, "note": "攻击乘数（BattleOrder：1.3=+30%）" },
+        { "name": "speedMultiplier", "type": "float", "required": true, "min": 0, "note": "移速乘数（BattleOrder：1.3=+30%）" },
+        { "name": "duration", "type": "float", "required": true, "min": 0, "note": "持续时间（秒，BattleOrder 用）" },
+        { "name": "initialQuantity", "type": "int", "required": true, "min": 0, "note": "初始发放数量" }
+      ],
+      "rules": [],
+      "seed": [
+        { "cardId": "tactical.battle_order", "legacyId": 0, "displayName": "战斗号令", "description": "临时提升单位攻击与移速",
+          "enabled": false, "effectType": "BattleOrder", "healRatio": 0, "attackMultiplier": 1.3, "speedMultiplier": 1.3,
+          "duration": 5, "initialQuantity": 1 },
+        { "cardId": "tactical.repair", "legacyId": 1, "displayName": "维修", "description": "群体回血",
+          "enabled": true, "effectType": "Repair", "healRatio": 0.3, "attackMultiplier": 0, "speedMultiplier": 0,
+          "duration": 0, "initialQuantity": 1 }
+      ]
+    },
+    {
+      "sheetName": "天赋卡",
+      "key": "talentId",
+      "description": "天赋效果参数、抽取权重与可重复规则。当前 3 张卡；value 为乘数（2=×2、4=×4），描述文案由描述格式化器按数值生成以消除“+25% 与 ×4”类不一致。",
+      "columns": [
+        { "name": "talentId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID，如 talent.damage" },
+        { "name": "legacyId", "type": "int", "required": true, "min": 0, "note": "迁移期旧整数ID（原 talentId 数值）" },
+        { "name": "talentName", "type": "string", "required": true, "note": "卡名（显示用）" },
+        { "name": "description", "type": "string", "required": true, "note": "描述文案（人工维护，格式化器校验用）" },
+        { "name": "enabled", "type": "bool", "required": true, "note": "是否启用" },
+        { "name": "effectType", "type": "enum", "required": true,
+          "enum": ["StatMultiplier", "StatAddition"], "note": "效果类型" },
+        { "name": "statId", "type": "enum", "required": true,
+          "enum": ["damage", "defense", "gold", "buildingHp"], "note": "目标属性（对应 TalentStatId）" },
+        { "name": "value", "type": "float", "required": true, "note": "效果数值（乘数或加数）" },
+        { "name": "weight", "type": "int", "required": true, "min": 1, "note": "抽取权重" },
+        { "name": "repeatable", "type": "bool", "required": true, "note": "是否可重复获得/叠加" }
+      ],
+      "rules": [],
+      "seed": [
+        { "talentId": "talent.damage", "legacyId": 0, "talentName": "damage", "description": "提升整体攻击力",
+          "enabled": true, "effectType": "StatMultiplier", "statId": "damage", "value": 2, "weight": 1, "repeatable": false },
+        { "talentId": "talent.building_hp", "legacyId": 1, "talentName": "buildingHp", "description": "建筑生命值提升",
+          "enabled": true, "effectType": "StatMultiplier", "statId": "buildingHp", "value": 4, "weight": 1, "repeatable": false },
+        { "talentId": "talent.gold", "legacyId": 2, "talentName": "gold", "description": "提升金币获取速度",
+          "enabled": true, "effectType": "StatMultiplier", "statId": "gold", "value": 2, "weight": 1, "repeatable": false }
+      ]
+    },
+    {
+      "sheetName": "天赋抽卡规则",
+      "key": "ruleId",
+      "description": "天赋触发的普通卡抽卡偏好。消除 CardGenerationRule 硬编码 talentId \"0\"/\"1\" 的串线：偏好由本表显式声明 triggerTalentId → targetCardType。",
+      "columns": [
+        { "name": "ruleId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "规则稳定ID" },
+        { "name": "triggerTalentId", "type": "string", "required": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "触发该偏好的天赋稳定ID（跨表引用天赋.talentId）" },
+        { "name": "targetCardType", "type": "enum", "required": true,
+          "enum": ["Unit", "Building"], "note": "偏好卡类型" },
+        { "name": "weightMultiplier", "type": "int", "required": true, "min": 1, "note": "权重倍率" },
+        { "name": "enabled", "type": "bool", "required": true, "note": "是否启用" }
+      ],
+      "rules": [],
+      "seed": [
+        { "ruleId": "draw_rule.damage_favor_unit", "triggerTalentId": "talent.damage", "targetCardType": "Unit", "weightMultiplier": 10, "enabled": true },
+        { "ruleId": "draw_rule.buildinghp_favor_building", "triggerTalentId": "talent.building_hp", "targetCardType": "Building", "weightMultiplier": 10, "enabled": true }
+      ]
+    },
+    {
+      "sheetName": "探索奖励配置",
+      "key": "configId",
+      "description": "探索奖励类型权重、金币/单位数量档位与探索费用。单行配置。单位数量档位允许 0（已确认，表示空奖励）；金矿允许作为建筑奖励（已确认）。",
+      "columns": [
+        { "name": "configId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID，如 exploration_reward" },
+        { "name": "noneWeight", "type": "int", "required": true, "min": 0, "note": "无奖励权重" },
+        { "name": "goldWeight", "type": "int", "required": true, "min": 0, "note": "金币奖励权重" },
+        { "name": "militaryWeight", "type": "int", "required": true, "min": 0, "note": "军事单位奖励权重" },
+        { "name": "tacticalWeight", "type": "int", "required": true, "min": 0, "note": "战术卡牌奖励权重" },
+        { "name": "buildingWeight", "type": "int", "required": true, "min": 0, "note": "建筑奖励权重" },
+        { "name": "goldTiers", "type": "string", "required": true, "note": "金币档位，逗号分隔，等概率随机一档（如 5,5,10,15,20,25）" },
+        { "name": "unitCountTiers", "type": "string", "required": true, "note": "单位数量档位，逗号分隔；允许0表示空奖励（已确认）" },
+        { "name": "costNone", "type": "int", "required": true, "min": 0, "note": "无奖励类型探索费用" },
+        { "name": "costGold", "type": "int", "required": true, "min": 0, "note": "金币奖励探索费用" },
+        { "name": "costMilitary", "type": "int", "required": true, "min": 0, "note": "军事奖励探索费用" },
+        { "name": "costTactical", "type": "int", "required": true, "min": 0, "note": "战术奖励探索费用" },
+        { "name": "costBuilding", "type": "int", "required": true, "min": 0, "note": "建筑奖励探索费用" }
+      ],
+      "rules": [],
+      "seed": [
+        { "configId": "exploration_reward", "noneWeight": 20, "goldWeight": 20, "militaryWeight": 20,
+          "tacticalWeight": 20, "buildingWeight": 20, "goldTiers": "5,5,10,15,20,25",
+          "unitCountTiers": "0,0,0,1,1,2", "costNone": 0, "costGold": 50, "costMilitary": 50,
+          "costTactical": 50, "costBuilding": 50 }
+      ]
+    },
+    {
+      "sheetName": "探索奖励池",
+      "key": "poolId",
+      "description": "探索奖励池关系：奖励类型 → 目标稳定ID。军事/战术/建筑三类奖励从各自池中等概率抽取。configId 跨表引用 单位.unitId / 战术卡.cardId / 建筑.buildingId。",
+      "columns": [
+        { "name": "poolId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "奖励池条目稳定ID" },
+        { "name": "rewardType", "type": "enum", "required": true,
+          "enum": ["MilitaryUnit", "TacticalCard", "Building"], "note": "奖励类型" },
+        { "name": "configId", "type": "string", "required": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "目标稳定ID（跨表引用）" },
+        { "name": "weight", "type": "int", "required": true, "min": 1, "note": "抽取权重（当前等概率均1）" },
+        { "name": "enabled", "type": "bool", "required": true, "note": "是否启用" }
+      ],
+      "rules": [],
+      "seed": [
+        { "poolId": "reward_pool.unit_cactus", "rewardType": "MilitaryUnit", "configId": "unit.cactus", "weight": 1, "enabled": true },
+        { "poolId": "reward_pool.unit_ranged_iii", "rewardType": "MilitaryUnit", "configId": "unit.ranged_iii", "weight": 1, "enabled": true },
+        { "poolId": "reward_pool.tactical_battle_order", "rewardType": "TacticalCard", "configId": "tactical.battle_order", "weight": 1, "enabled": true },
+        { "poolId": "reward_pool.tactical_repair", "rewardType": "TacticalCard", "configId": "tactical.repair", "weight": 1, "enabled": true },
+        { "poolId": "reward_pool.building_gold_mine", "rewardType": "Building", "configId": "building.gold_mine", "weight": 1, "enabled": true }
+      ]
+    },
+    {
+      "sheetName": "地图资源",
+      "key": "resourceId",
+      "description": "地图资源（道具）拾取效果与生成参数。图标/模型/特效/音效等资源引用保留在手工资源 SO，数值进本表。health_pack 为历史保留配置（击杀掉落未实现），enabled=false。",
+      "columns": [
+        { "name": "resourceId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID，如 resource.animals" },
+        { "name": "resourceName", "type": "string", "required": true, "note": "显示名称" },
+        { "name": "description", "type": "string", "required": true, "note": "描述文案" },
+        { "name": "enabled", "type": "bool", "required": true, "note": "是否启用（历史保留配置置 false）" },
+        { "name": "pickupEffectType", "type": "enum", "required": true,
+          "enum": ["None", "AttackBoost", "Heal", "DefenseBoost", "Gold"], "note": "拾取效果类型" },
+        { "name": "attackBonus", "type": "float", "required": true, "min": 0, "note": "攻击固定加成（AttackBoost）" },
+        { "name": "healRatio", "type": "float", "required": true, "min": 0, "note": "回复比例（Heal）" },
+        { "name": "defenseBonus", "type": "float", "required": true, "min": 0, "note": "防御固定加成（DefenseBoost）" },
+        { "name": "goldAmount", "type": "int", "required": true, "min": 0, "note": "金币数量（Gold）" },
+        { "name": "explorationGoldBonus", "type": "int", "required": true, "min": 0, "note": "探索收割金币加成" },
+        { "name": "spawnWeight", "type": "int", "required": true, "min": 0, "note": "生成权重（0=不生成）" }
+      ],
+      "rules": [],
+      "seed": [
+        { "resourceId": "resource.animals", "resourceName": "动物", "description": "拾取后提升下一次攻击力。",
+          "enabled": true, "pickupEffectType": "AttackBoost", "attackBonus": 0.7, "healRatio": 0,
+          "defenseBonus": 0, "goldAmount": 0, "explorationGoldBonus": 20, "spawnWeight": 1 },
+        { "resourceId": "resource.plants", "resourceName": "植物", "description": "拾取后立即恢复最大生命值的 25%。",
+          "enabled": true, "pickupEffectType": "Heal", "attackBonus": 0, "healRatio": 0.25,
+          "defenseBonus": 0, "goldAmount": 0, "explorationGoldBonus": 15, "spawnWeight": 1 },
+        { "resourceId": "resource.minerals", "resourceName": "矿物", "description": "拾取后提升下一次防御力。",
+          "enabled": true, "pickupEffectType": "DefenseBoost", "attackBonus": 0, "healRatio": 0,
+          "defenseBonus": 0.25, "goldAmount": 0, "explorationGoldBonus": 25, "spawnWeight": 1 },
+        { "resourceId": "resource.chest", "resourceName": "宝箱", "description": "玩家拾取后获得金币。",
+          "enabled": true, "pickupEffectType": "Gold", "attackBonus": 0, "healRatio": 0,
+          "defenseBonus": 0, "goldAmount": 50, "explorationGoldBonus": 30, "spawnWeight": 1 },
+        { "resourceId": "resource.health_pack", "resourceName": "回血包", "description": "历史保留配置（击杀掉落设计未实现），不参与地图随机生成。",
+          "enabled": false, "pickupEffectType": "None", "attackBonus": 0, "healRatio": 0,
+          "defenseBonus": 0, "goldAmount": 0, "explorationGoldBonus": 10, "spawnWeight": 0 }
+      ]
+    },
+    {
+      "sheetName": "地图资源全局",
+      "key": "configId",
+      "description": "地图资源全局生成参数。emptySpawnWeight=14 与旧算法 Next(0,18)/roll<5 一致（4 资源权重1 + 空白14）。",
+      "columns": [
+        { "name": "configId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID" },
+        { "name": "emptySpawnWeight", "type": "int", "required": true, "min": 0, "note": "不生成资源的权重（现状14）" },
+        { "name": "baseExplorationGold", "type": "int", "required": true, "min": 0, "note": "探索任意地块基础金币奖励" }
+      ],
+      "rules": [],
+      "seed": [
+        { "configId": "resource_global", "emptySpawnWeight": 14, "baseExplorationGold": 5 }
+      ]
+    },
+    {
+      "sheetName": "地图地貌",
+      "key": "landFormId",
+      "description": "地图地貌（散落/簇生成）效果与生成参数。山脉（mountainForm）独立配置（RidgeGenerator 经 MountainConfig 引用），不入本散落地貌表。模型/浮标等资源引用保留在手工资源 SO。",
+      "columns": [
+        { "name": "landFormId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID，如 landform.forest" },
+        { "name": "landFormName", "type": "string", "required": true, "note": "显示名称" },
+        { "name": "description", "type": "string", "required": true, "note": "描述文案" },
+        { "name": "enabled", "type": "bool", "required": true, "note": "是否启用" },
+        { "name": "effectType", "type": "enum", "required": true,
+          "enum": ["None", "DefenseBonus", "PeriodicHeal", "GoldIncomeBoost"], "note": "地貌效果类型" },
+        { "name": "defenseBonus", "type": "float", "required": true, "min": 0, "note": "防御加数（DefenseBonus）" },
+        { "name": "healRatio", "type": "float", "required": true, "min": 0, "note": "每次回复最大生命比例（PeriodicHeal）" },
+        { "name": "healInterval", "type": "float", "required": true, "min": 0, "note": "周期回血间隔秒（PeriodicHeal）" },
+        { "name": "goldIncomePerSecond", "type": "float", "required": true, "min": 0, "note": "占领每秒金币加成（GoldIncomeBoost）" },
+        { "name": "blockBuildingSpawn", "type": "bool", "required": true, "note": "该地貌格不可部署建筑" },
+        { "name": "spawnWeight", "type": "int", "required": true, "min": 0, "note": "散落生成权重（0=不散落）" },
+        { "name": "clusterSpawn", "type": "bool", "required": true, "note": "是否簇生成（仅扎堆类，如金矿）" },
+        { "name": "clusterCount", "type": "int", "required": true, "min": 1, "note": "簇数量" },
+        { "name": "clusterTargetSize", "type": "int", "required": true, "min": 1, "note": "每簇目标格数上限" },
+        { "name": "clusterFillProbability", "type": "float", "required": true, "min": 0, "max": 1, "note": "簇生长每格填充概率 0~1" },
+        { "name": "clusterMinSpacing", "type": "int", "required": true, "min": 1, "note": "簇心最小六边形距离" },
+        { "name": "clusterMaxRadius", "type": "int", "required": true, "min": 1, "note": "簇生长最大半径" }
+      ],
+      "rules": [],
+      "seed": [
+        { "landFormId": "landform.forest", "landFormName": "森林", "description": "纯视觉地貌，无任何效果。",
+          "enabled": true, "effectType": "None", "defenseBonus": 0, "healRatio": 0, "healInterval": 0,
+          "goldIncomePerSecond": 0, "blockBuildingSpawn": false, "spawnWeight": 1, "clusterSpawn": false,
+          "clusterCount": 1, "clusterTargetSize": 8, "clusterFillProbability": 0.8, "clusterMinSpacing": 4, "clusterMaxRadius": 4 },
+        { "landFormId": "landform.stone", "landFormName": "石头", "description": "纯视觉地貌，无任何效果。",
+          "enabled": true, "effectType": "None", "defenseBonus": 0, "healRatio": 0, "healInterval": 0,
+          "goldIncomePerSecond": 0, "blockBuildingSpawn": false, "spawnWeight": 1, "clusterSpawn": false,
+          "clusterCount": 1, "clusterTargetSize": 8, "clusterFillProbability": 0.8, "clusterMinSpacing": 4, "clusterMaxRadius": 4 },
+        { "landFormId": "landform.big_bones", "landFormName": "大骨阵", "description": "被攻击者站在其上时防御系数 +0.3。",
+          "enabled": true, "effectType": "DefenseBonus", "defenseBonus": 0.3, "healRatio": 0, "healInterval": 0,
+          "goldIncomePerSecond": 0, "blockBuildingSpawn": false, "spawnWeight": 1, "clusterSpawn": false,
+          "clusterCount": 1, "clusterTargetSize": 8, "clusterFillProbability": 0.8, "clusterMinSpacing": 4, "clusterMaxRadius": 4 },
+        { "landFormId": "landform.farmland", "landFormName": "农田", "description": "单位站在其上每 5 秒回复 10% 最大生命。",
+          "enabled": true, "effectType": "PeriodicHeal", "defenseBonus": 0, "healRatio": 0.1, "healInterval": 5,
+          "goldIncomePerSecond": 0, "blockBuildingSpawn": false, "spawnWeight": 1, "clusterSpawn": false,
+          "clusterCount": 1, "clusterTargetSize": 8, "clusterFillProbability": 0.8, "clusterMinSpacing": 4, "clusterMaxRadius": 4 },
+        { "landFormId": "landform.gold_mine", "landFormName": "金矿", "description": "占领其所在地块时，金币累积速度+2。",
+          "enabled": true, "effectType": "GoldIncomeBoost", "defenseBonus": 0, "healRatio": 0, "healInterval": 0,
+          "goldIncomePerSecond": 2, "blockBuildingSpawn": true, "spawnWeight": 3, "clusterSpawn": true,
+          "clusterCount": 3, "clusterTargetSize": 5, "clusterFillProbability": 0.413, "clusterMinSpacing": 5, "clusterMaxRadius": 4 }
+      ]
+    },
+    {
+      "sheetName": "地图地貌全局",
+      "key": "configId",
+      "description": "地图地貌全局生成参数。emptySpawnWeight=10 与旧算法 Next(0,14)（4 散落地貌权重1 + 空白10）一致。",
+      "columns": [
+        { "name": "configId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID" },
+        { "name": "emptySpawnWeight", "type": "int", "required": true, "min": 0, "note": "不生成地貌的权重（现状10）" }
+      ],
+      "rules": [],
+      "seed": [
+        { "configId": "landform_global", "emptySpawnWeight": 10 }
+      ]
+    },
+    {
+      "sheetName": "公共建筑",
+      "key": "buildingId",
+      "description": "公共建筑血量与占格关系。prefab/markerIcon 等资源引用保留在手工资源 SO（PublicBuildingSO）。配置为空时导入严格报错。",
+      "columns": [
+        { "name": "buildingId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID，如 public.fort" },
+        { "name": "legacyId", "type": "int", "required": true, "min": 0, "note": "迁移期旧整数索引（buildings 数组下标）" },
+        { "name": "buildingName", "type": "string", "required": true, "note": "显示名称" },
+        { "name": "enabled", "type": "bool", "required": true, "note": "是否启用" },
+        { "name": "captureHp", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "首次夺取所需血量" },
+        { "name": "defenseHp", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "归属后防守血量" },
+        { "name": "subHexDirections", "type": "string", "required": true, "note": "子格偏移方向，逗号分隔（如 NE,E,SE，3个方向固定形状）" }
+      ],
+      "rules": [],
+      "seed": [
+        { "buildingId": "public.fort", "legacyId": 0, "buildingName": "堡垒", "enabled": true,
+          "captureHp": 100, "defenseHp": 150, "subHexDirections": "NE,E,SE" }
+      ]
+    },
+    {
+      "sheetName": "经济配置",
+      "key": "configId",
+      "description": "全局经济参数（单行）。收口 GoldWallet/GoldIncomeService 的起始金币、被动收入、AI 补贴、结算周期与费用兜底硬编码。",
+      "columns": [
+        { "name": "configId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID" },
+        { "name": "startingGold", "type": "int", "required": true, "min": 0, "note": "起始金币（双方一致）" },
+        { "name": "baseIncomePerTick", "type": "int", "required": true, "min": 0, "note": "每结算周期基础被动收入" },
+        { "name": "aiIncomeBonusPerTick", "type": "int", "required": true, "min": 0, "note": "AI 每结算周期额外补贴（不参与天赋倍率）" },
+        { "name": "incomeTickInterval", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "收入结算周期（秒）" },
+        { "name": "explorationCostFallback", "type": "int", "required": true, "min": 0, "note": "探索费用兜底（奖励配置缺失/越界时）" },
+        { "name": "cardCostFallback", "type": "int", "required": true, "min": 0, "note": "出牌费用兜底（CardData 缺失时）" }
+      ],
+      "rules": [],
+      "seed": [
+        { "configId": "economy.main", "startingGold": 100, "baseIncomePerTick": 2,
+          "aiIncomeBonusPerTick": 6, "incomeTickInterval": 1.0,
+          "explorationCostFallback": 50, "cardCostFallback": 10 }
+      ]
+    },
+    {
+      "sheetName": "游戏流程配置",
+      "key": "configId",
+      "description": "全局流程时间与表现参数（单行）。收口 GlobalTimer/SunCycle/GlobalTimerUI/EndGame/Logistics/FogTransition 硬编码；昼夜周期与游戏时长已解耦为独立字段。",
+      "columns": [
+        { "name": "configId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID" },
+        { "name": "gameDurationSeconds", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "游戏总时长（秒）" },
+        { "name": "dayNightCycleSeconds", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "昼夜循环周期（秒，与游戏时长解耦）" },
+        { "name": "noonLightIntensity", "type": "float", "required": true, "min": 0, "note": "正午光照强度" },
+        { "name": "sunsetLightIntensity", "type": "float", "required": true, "min": 0, "note": "日落光照强度" },
+        { "name": "countdownUrgentThreshold", "type": "float", "required": true, "min": 0, "note": "倒计时紧急阈值（秒）" },
+        { "name": "settlementDelaySeconds", "type": "float", "required": true, "min": 0, "note": "结算延迟（秒）" },
+        { "name": "endGameUiDelaySeconds", "type": "float", "required": true, "min": 0, "note": "结算 UI 展示延迟（秒）" },
+        { "name": "annexationRecalcDepth", "type": "int", "required": true, "min": 1, "note": "吞并重算递归深度上限" },
+        { "name": "fogTransitionSpeed", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "迷雾过渡速度（每秒改变量）" }
+      ],
+      "rules": [],
+      "seed": [
+        { "configId": "gameflow.main", "gameDurationSeconds": 300, "dayNightCycleSeconds": 300,
+          "noonLightIntensity": 1.2, "sunsetLightIntensity": 0.4, "countdownUrgentThreshold": 60,
+          "settlementDelaySeconds": 1.5, "endGameUiDelaySeconds": 6.5,
+          "annexationRecalcDepth": 3, "fogTransitionSpeed": 0.5 }
+      ]
+    },
+    {
+      "sheetName": "AI配置",
+      "key": "configId",
+      "description": "AI 节奏与出牌优先级（单行）。收口 AICardTicker/AIAutoExplorer/AICardBrain/ExplorationRewardSystem 硬编码。AI 阵营索引=1 属多阵营化架构项，暂不配表。",
+      "columns": [
+        { "name": "configId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID" },
+        { "name": "cardPlayInterval", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "AI 出牌节奏（秒）" },
+        { "name": "exploreInterval", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "AI 探索间隔（秒）" },
+        { "name": "globalActionMinInterval", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "AI 全局操作最小间隔（秒）" },
+        { "name": "settlerCardPriority", "type": "int", "required": true, "min": 0, "note": "移民卡出牌优先级" },
+        { "name": "technologyCardPriority", "type": "int", "required": true, "min": 0, "note": "科文建筑出牌优先级" },
+        { "name": "unitCardPriority", "type": "int", "required": true, "min": 0, "note": "单位卡出牌优先级" },
+        { "name": "buildingCardPriority", "type": "int", "required": true, "min": 0, "note": "普通建筑出牌优先级" },
+        { "name": "militaryRewardOverflowRings", "type": "int", "required": true, "min": 1, "note": "军事奖励溢出搜索环数（单位放置失败时向外扩展）" }
+      ],
+      "rules": [],
+      "seed": [
+        { "configId": "ai.main", "cardPlayInterval": 1.5, "exploreInterval": 1.5,
+          "globalActionMinInterval": 1.0, "settlerCardPriority": 100, "technologyCardPriority": 90,
+          "unitCardPriority": 70, "buildingCardPriority": 60, "militaryRewardOverflowRings": 5 }
+      ]
+    },
+    {
+      "sheetName": "战斗公式",
+      "key": "configId",
+      "description": "战斗公式共享系数（单行）。收口 CombatResolver/BuildingBase/UnitMovementController 3 处重复的河流/雕像/高低地系数，以及高地射程 4 处重复与近战警戒范围。",
+      "columns": [
+        { "name": "configId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID" },
+        { "name": "riverDefensePenalty", "type": "float", "required": true, "note": "河流防御惩罚（负值，如 -0.5）" },
+        { "name": "attackStatueBonus", "type": "float", "required": true, "min": 0, "note": "攻击雕像加成（每座，可叠加，如 0.7）" },
+        { "name": "highGroundAttackBonus", "type": "float", "required": true, "min": 0, "note": "高低地攻击加成（绝对值，攻高+、攻低-，如 0.5）" },
+        { "name": "highGroundRangeBonus", "type": "int", "required": true, "min": 0, "note": "高地射程加成（格，如 1）" },
+        { "name": "meleeAlertRange", "type": "int", "required": true, "min": 1, "note": "近战警戒范围（格，如 3）" }
+      ],
+      "rules": [],
+      "seed": [
+        { "configId": "battle_formula.main", "riverDefensePenalty": -0.5, "attackStatueBonus": 0.7,
+          "highGroundAttackBonus": 0.5, "highGroundRangeBonus": 1, "meleeAlertRange": 3 }
+      ]
+    },
+    {
+      "sheetName": "地图生成参数",
+      "key": "configId",
+      "description": "地图生成 Perlin 噪声与竞技场参数（单行）。收口 MapGenerator 的噪声频率/八度/持续与 ArenaEventManager 的半径/动画时长硬编码。",
+      "columns": [
+        { "name": "configId", "type": "string", "required": true, "unique": true,
+          "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID" },
+        { "name": "perlinFrequency", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "Perlin 噪声频率" },
+        { "name": "perlinOctaves", "type": "int", "required": true, "min": 1, "note": "Perlin 噪声八度数" },
+        { "name": "perlinPersistence", "type": "float", "required": true, "min": 0, "note": "Perlin 噪声持续度" },
+        { "name": "arenaRadius", "type": "int", "required": true, "min": 1, "note": "竞技场半径（格）" },
+        { "name": "arenaRiseDurationSeconds", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "竞技场突起动画时长（秒）" }
+      ],
+      "rules": [],
+      "seed": [
+        { "configId": "map_gen.main", "perlinFrequency": 0.05, "perlinOctaves": 3,
+          "perlinPersistence": 0.6, "arenaRadius": 3, "arenaRiseDurationSeconds": 1.2 }
+      ]
+    }
+  ]
+}

@@ -206,7 +206,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         int effectiveRange = characterData.unitData.BasicAttackRange;
         HexCellData selfCell = _mapDataService.GetCell(currentHex);
         if (selfCell != null && WaterLevelConfig.ClassifyHeight(selfCell.Height) == 2)
-            effectiveRange = characterData.unitData.BasicAttackRange + 1;
+            effectiveRange = characterData.unitData.BasicAttackRange + BattleFormulaRule.HighGroundRangeBonus;
 
         Vector3 targetHex = _mapDataService.WorldToHexCoordinate(target.transform.position);
         float distance = (Mathf.Abs(currentHex.x - targetHex.x) +
@@ -413,22 +413,22 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         if (!h.hasRiver)
             theAttacked.LandFormType_River = 0;
         else
-            theAttacked.LandFormType_River = -0.5f;
+            theAttacked.LandFormType_River = BattleFormulaRule.RiverDefensePenalty;
 
         float AttackStatueGain = 0;
         for (int i = 0; i < 6; i++)
         {
             HexCellData neighborHex = _mapDataService.GetNeighbor(attackerHex, (Enums.HexDirection)i);
             if (neighborHex != null && neighborHex.BulidingTypeOnHex_Building.Key == Enums.BulidingType.AttackStatue)
-                AttackStatueGain += 0.7f;
+                AttackStatueGain += BattleFormulaRule.AttackStatueBonus;
         }
 
         float TerrainElevation = 0;
         float heightDiff = attackerHex.Height - h.Height;
         if (heightDiff > 0.01f)
-            TerrainElevation = 0.5f;
+            TerrainElevation = BattleFormulaRule.HighGroundAttackBonus;
         else if (heightDiff < -0.01f)
-            TerrainElevation = -0.5f;
+            TerrainElevation = -BattleFormulaRule.HighGroundAttackBonus;
 
         float AttackPower = attacker.currentAttackValue;
         float AttackGain = 1 + attacker.Resource_Animals + AttackStatueGain + TerrainElevation;

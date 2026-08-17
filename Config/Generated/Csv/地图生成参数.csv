@@ -1,0 +1,2 @@
+configId,perlinFrequency,perlinOctaves,perlinPersistence,arenaRadius,arenaRiseDurationSeconds
+map_gen.main,0.05,3,0.6,3,1.2

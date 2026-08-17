@@ -21,9 +21,9 @@ public class AIAutoExplorer : ITickable
     private readonly IExplorationCostProvider _costProvider;
     private readonly AIEntityFactory _aiFactory;
     private readonly IExplorationService _explorationService;
+    private readonly AIConfigProvider _aiConfig;
 
     private float _timer;
-    private const float ExploreInterval = 1.5f;
 
     public AIAutoExplorer(
         IMapDataService mapData,
@@ -35,7 +35,8 @@ public class AIAutoExplorer : ITickable
         ILogisticsService logisticsService,
         IExplorationCostProvider costProvider,
         AIEntityFactory aiFactory,
-        IExplorationService explorationService)
+        IExplorationService explorationService,
+        AIConfigProvider aiConfig = null)
     {
         _mapData = mapData;
         _enemyModelManager = enemyModelManager;
@@ -47,6 +48,7 @@ public class AIAutoExplorer : ITickable
         _costProvider = costProvider;
         _aiFactory = aiFactory;
         _explorationService = explorationService;
+        _aiConfig = aiConfig;
 
         _explorationService.ExplorationRewardTriggered += OnExplorationRewardTriggered;
     }
@@ -56,9 +58,9 @@ public class AIAutoExplorer : ITickable
         if (_gameLoop != null && _gameLoop.IsPaused) return;
         if (_aiManager.AIDisabled) return;
         _timer += UnityEngine.Time.deltaTime;
-        if (_timer < ExploreInterval) return;
+        if (_timer < (_aiConfig?.ExploreInterval ?? 1.5f)) return;
         // 探索准备完成后等待全局动作窗口，不丢失已累计的计时。
-        if (UnityEngine.Time.time - _aiState.LastActionTime < 1f) return;
+        if (UnityEngine.Time.time - _aiState.LastActionTime < (_aiConfig?.GlobalActionMinInterval ?? 1f)) return;
 
         if (TryAutoExplore())
         {
@@ -212,7 +214,7 @@ public class AIAutoExplorer : ITickable
 
     private HexCellData FindOverflowCell(HexCellData origin)
     {
-        const int maxRings = 5;
+        int maxRings = _aiConfig?.MilitaryRewardOverflowRings ?? 5;
         var visited = new HashSet<Vector3> { origin.HexCoordinate };
         var frontier = new List<HexCellData> { origin };
 

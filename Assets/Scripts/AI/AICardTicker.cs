@@ -10,24 +10,25 @@ public class AICardTicker : ITickable
     private readonly AIManager _aiManager;
     private readonly AIPlayerState _aiState;
     private readonly GameLoop _gameLoop;
+    private readonly AIConfigProvider _aiConfig;
     private float _timer;
-    private const float CardInterval = 1.5f;
 
-    public AICardTicker(AICardBrain cardBrain, AIManager aiManager, AIPlayerState aiState, GameLoop gameLoop)
+    public AICardTicker(AICardBrain cardBrain, AIManager aiManager, AIPlayerState aiState, GameLoop gameLoop, AIConfigProvider aiConfig = null)
     {
         _cardBrain = cardBrain;
         _aiManager = aiManager;
         _aiState = aiState;
         _gameLoop = gameLoop;
+        _aiConfig = aiConfig;
     }
 
     public void Tick()
     {
         if (_gameLoop != null && _gameLoop.IsPaused) return;
         if (_aiManager.AIDisabled) return;
-        if (UnityEngine.Time.time - _aiState.LastActionTime < 1f) return;
+        if (UnityEngine.Time.time - _aiState.LastActionTime < (_aiConfig?.GlobalActionMinInterval ?? 1f)) return;
         _timer += UnityEngine.Time.deltaTime;
-        if (_timer < CardInterval) return;
+        if (_timer < (_aiConfig?.CardPlayInterval ?? 1.5f)) return;
         _timer = 0f;
         if (_cardBrain.RunCardPipeline())
             _aiState.LastActionTime = UnityEngine.Time.time;

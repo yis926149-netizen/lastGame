@@ -3,10 +3,12 @@ using DG.Tweening;
 using UnityEngine;
 using UnityEngine.UI;
 using Zenject;
+using GameConfig;
 
 public class TacticalCardPresenter : IInitializable, ICardDropHandler
 {
     [Inject] private TacticalCardDatabaseSO _database;
+    [Inject(Optional = true)] private TacticalCardBalanceDatabaseSO _balance; // Excel 数值（只读；未生成则回退 Legacy）
     [Inject] private DiContainer _container;
     [Inject] private IMapDataService _mapDataService;
     [Inject] private IUIConfigProvider _uiConfig;
@@ -62,9 +64,24 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
 
         _cardViews = new List<CardController>();
 
-        for (int i = 0; i < _database.cards.Count && i < MaxAnchorCount; i++)
+        // 启用卡列表：Excel 数值库（enabled=true）→ 按 cardId 找资源；Excel 未生成时回退 Legacy 手工列表。
+        var source = new List<TacticalCardSO>();
+        if (_balance != null && _balance.EnabledCards.Count > 0)
         {
-            var config = _database.cards[i];
+            foreach (var b in _balance.EnabledCards)
+            {
+                var config = FindResource(b.cardId);
+                if (config != null) source.Add(config);
+            }
+        }
+        else
+        {
+            source.AddRange(_database.cards);
+        }
+
+        for (int i = 0; i < source.Count && i < MaxAnchorCount; i++)
+        {
+            var config = source[i];
             if (config == null) continue;
 
             CardController cardController = CreateCardView(i, config);
@@ -358,7 +375,7 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
         if (config == null) return false;
 
         // 释放目标检测（方案A：打cell的hex，从hex内找己方目标）
-        switch (config.effectType)
+        switch (GetEffectType(config))
         {
             case TacticalEffectType.Repair:
                 TryExecuteRepair(targetCell, config);
@@ -574,18 +591,56 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
             return;
         }
 
-        float healAmount = maxHp * config.effect.healRatio;
+        float healAmount = maxHp * GetEffect(config).healRatio;
         building.buildingData.currentHp = Mathf.Min(currentHp + healAmount, maxHp);
         building.SyncHealthBar();
 
-        Debug.Log($"[TacticalCardPresenter] Repair: healed {config.effect.healRatio * 100:F0}% ({healAmount:F0}HP).");
+        Debug.Log($"[TacticalCardPresenter] Repair: healed {GetEffect(config).healRatio * 100:F0}% ({healAmount:F0}HP).");
     }
 
     private bool TryExecuteBattleOrder(HexCellData cell, TacticalCardSO config)
     {
-        var effect = config.effect;
+        var effect = GetEffect(config);
         Debug.Log($"[TacticalCardPresenter] BattleOrder: +{effect.attackMultiplier - 1f:P0} ATK, +{effect.speedMultiplier - 1f:P0} SPD, {effect.duration}s (effect not yet applied — pending implementation)");
         return true;
+    }
+
+    /// <summary>按 cardId 在资源库中查找战术卡资源对象（图标等人工引用）。</summary>
+    private TacticalCardSO FindResource(string cardId)
+    {
+        if (_database == null || _database.cards == null) return null;
+        foreach (var card in _database.cards)
+            if (card != null && card.cardId == cardId) return card;
+        return null;
+    }
+
+    /// <summary>效果类型：优先 Excel 数值，缺失回退 Legacy SO。</summary>
+    private TacticalEffectType GetEffectType(TacticalCardSO config)
+    {
+        if (_balance != null && config != null && _balance.TryGetCard(config.cardId, out var b))
+            return ParseEffectType(b.effectType);
+        return config != null ? config.effectType : TacticalEffectType.Repair;
+    }
+
+    /// <summary>效果参数：优先 Excel 数值，缺失回退 Legacy SO。</summary>
+    private TacticalCardEffect GetEffect(TacticalCardSO config)
+    {
+        if (_balance != null && config != null && _balance.TryGetCard(config.cardId, out var b))
+        {
+            return new TacticalCardEffect
+            {
+                healRatio = b.healRatio,
+                attackMultiplier = b.attackMultiplier,
+                speedMultiplier = b.speedMultiplier,
+                duration = b.duration,
+            };
+        }
+        return config != null ? config.effect : default;
+    }
+
+    private static TacticalEffectType ParseEffectType(string s)
+    {
+        return s == "BattleOrder" ? TacticalEffectType.BattleOrder : TacticalEffectType.Repair;
     }
 
     private GameObject FindOwnBuildingOnCell(HexCellData cell)

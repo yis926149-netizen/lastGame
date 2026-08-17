@@ -1,0 +1,139 @@
+{
+  "schemaVersion": "1.0.0",
+  "exporterVersion": "0.1.0",
+  "workbook": "游戏数值配置.xlsx",
+  "workbookSha256": "eb721b5e8e2bf51eafc421938ddabeec193023c7483e3d272d2e5bf6f9339b67",
+  "tables": [
+    {
+      "sheetName": "单位",
+      "rowCount": 14
+    },
+    {
+      "sheetName": "建筑",
+      "rowCount": 7
+    },
+    {
+      "sheetName": "普通卡池",
+      "rowCount": 4
+    },
+    {
+      "sheetName": "战术卡",
+      "rowCount": 2
+    },
+    {
+      "sheetName": "天赋卡",
+      "rowCount": 3
+    },
+    {
+      "sheetName": "天赋抽卡规则",
+      "rowCount": 2
+    },
+    {
+      "sheetName": "探索奖励配置",
+      "rowCount": 1
+    },
+    {
+      "sheetName": "探索奖励池",
+      "rowCount": 5
+    },
+    {
+      "sheetName": "地图资源",
+      "rowCount": 5
+    },
+    {
+      "sheetName": "地图资源全局",
+      "rowCount": 1
+    },
+    {
+      "sheetName": "地图地貌",
+      "rowCount": 5
+    },
+    {
+      "sheetName": "地图地貌全局",
+      "rowCount": 1
+    },
+    {
+      "sheetName": "公共建筑",
+      "rowCount": 1
+    },
+    {
+      "sheetName": "经济配置",
+      "rowCount": 1
+    },
+    {
+      "sheetName": "游戏流程配置",
+      "rowCount": 1
+    },
+    {
+      "sheetName": "AI配置",
+      "rowCount": 1
+    },
+    {
+      "sheetName": "战斗公式",
+      "rowCount": 1
+    },
+    {
+      "sheetName": "地图生成参数",
+      "rowCount": 1
+    }
+  ],
+  "outputs": {
+    "Csv/AI配置.csv": {
+      "sha256": "1866bd003f97c28bdaa88acc903f7de25ead75aa6d6f1ec88722c44be5ed343e"
+    },
+    "Csv/公共建筑.csv": {
+      "sha256": "585b4c092a41c55f39104a891d237d3aca4ec573a0f37542197d7820754e3e8e"
+    },
+    "Csv/单位.csv": {
+      "sha256": "6147d4c73f508625744083e09c1ed5f7fadb3003bece32ddcfbf954f16400ce7"
+    },
+    "Csv/地图地貌.csv": {
+      "sha256": "b967c6349db9f56f459961be5c2068eacb52621cfe04d819dbffdabe7dbef4ed"
+    },
+    "Csv/地图地貌全局.csv": {
+      "sha256": "113ef2d484cc7fef14ad3e6280ec19fa0d44ef0a573bcd8881738ec19df8826f"
+    },
+    "Csv/地图生成参数.csv": {
+      "sha256": "d236f5af6777eef9eee9eb705d2293ac7470c09e89f7bc586b0fb3d4301475fb"
+    },
+    "Csv/地图资源.csv": {
+      "sha256": "2dc4f7c6566e5cc0e638dfc25b47365f3aeb2a68314bd016d8567c9ad5ba3fa0"
+    },
+    "Csv/地图资源全局.csv": {
+      "sha256": "4ad15f497d18a5d87d41a759e54770db9922b34a466ab33c7590fc3716c48fd7"
+    },
+    "Csv/天赋卡.csv": {
+      "sha256": "7f6fbae3f35e5a87616cec66924a635d8e75d06eff40b9960c0e543239429efb"
+    },
+    "Csv/天赋抽卡规则.csv": {
+      "sha256": "0d301c7eb25831c4512c4b7b549acfa68620a803d633f6e021ffe14f86864809"
+    },
+    "Csv/建筑.csv": {
+      "sha256": "cbaf28ea938357fabb50d74e9d09f9c6d71b32b0b64e5d6d92435dcbad0855af"
+    },
+    "Csv/战斗公式.csv": {
+      "sha256": "14418f3f3e407556b8509102d9ea4b2be1e7c3ce6d4ec1a37c84e693655e05f1"
+    },
+    "Csv/战术卡.csv": {
+      "sha256": "bf6957d0a9fccaa837af4b3c74c0c262c8dbf8716c36116e1c1fd0b268ba0c75"
+    },
+    "Csv/探索奖励池.csv": {
+      "sha256": "57e9410b20801980e1e43f4c9cfbf6196c59f9c429dfaa40f342f071fee62d52"
+    },
+    "Csv/探索奖励配置.csv": {
+      "sha256": "a515a4f86fd1e93bcc1eded6faa5ce36a98808a56f03559907b58302807d479d"
+    },
+    "Csv/普通卡池.csv": {
+      "sha256": "bf14af2c2f56c202376ab31071fafc4d0844a7e85bd3cc683d9db2d7423a7ad6"
+    },
+    "Csv/游戏流程配置.csv": {
+      "sha256": "cb1509fa07d17cc25cf78828ea33ef99d9c34ae84e21ff73bcb2a21baefd2c15"
+    },
+    "Csv/经济配置.csv": {
+      "sha256": "52816a7cf9b1bcd2321b713002293da9ec0f88b5bb0ebf737984ec8a2d03cb12"
+    },
+    "game-config.json": {
+      "sha256": "d8dae25364d75cd7a6657a3cf52495bb7052124a425cbe0799d18a5c5310dc67"
+    }
+  }
+}

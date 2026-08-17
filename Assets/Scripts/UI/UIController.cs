@@ -291,14 +291,8 @@ public class UIController : MonoBehaviour
             return;
         }
 
-        // 单位类型判断对象化：优先读 UnitConfig.strategyType，缺失时回退旧 ID 魔法数（过渡期兼容）。
-        UnitStrategyType strategyType = unitDataProvider.TryGetUnitConfig(characterData.UnitID, out var unitConfig)
-            ? unitConfig.strategyType
-            : (characterData.UnitID == 0
-                ? UnitStrategyType.Settler
-                : (characterData.UnitID == 3 || characterData.UnitID == 5 || characterData.UnitID == 9
-                    ? UnitStrategyType.Ranged
-                    : UnitStrategyType.Melee));
+        // 单位类型判断：数值优先 Excel，缺失回退 Legacy SO（Provider 内部处理）。
+        UnitStrategyType strategyType = unitDataProvider.GetUnitStrategyType(characterData.UnitID);
 
         if (strategyType == UnitStrategyType.Settler)
         {
@@ -348,7 +342,7 @@ public class UIController : MonoBehaviour
         Vector3 attackerHex = _mapDataService.WorldToHexCoordinate(attacker.transform.position);
         HexCellData attackerCell = _mapDataService.GetCell(attackerHex);
         if (attackerCell != null && WaterLevelConfig.ClassifyHeight(attackerCell.Height) == 2)
-            attackRange = baseRange + 1;
+            attackRange = baseRange + BattleFormulaRule.HighGroundRangeBonus;
 
         Vector3 startHex = _mapDataService.WorldToHexCoordinate(attacker.transform.position);
         List<Vector3> reachableHexes = _mapDataService.GetAllCells()

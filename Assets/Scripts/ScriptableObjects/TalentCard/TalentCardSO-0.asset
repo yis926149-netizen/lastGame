@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 14f4e59c01bb96c47bccc4020813cbec, type: 3}
   m_Name: TalentCardSO-0
   m_EditorClassIdentifier: 
-  talentId: 0
+  talentId: talent.damage
   typeIcon: {fileID: 21300000, guid: bd394792447a69645b28b6ad9def5361, type: 3}
   mainIcon: {fileID: 21300000, guid: 097c757042642a3409af3f57994ad3d5, type: 3}
   talentName: damage

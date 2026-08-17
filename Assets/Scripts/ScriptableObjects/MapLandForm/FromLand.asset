@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 295bc0a5ed8d4182b640a7de381a111d, type: 3}
   m_Name: FromLand
   m_EditorClassIdentifier: 
-  landFormId: FromLand
+  landFormId: landform.farmland
   landFormName: 农田
   description: 单位站在其上每 5 秒回复 10% 最大生命。
   modelPrefab: {fileID: 3374656001943004461, guid: ad0e09072af456746ac2ff6b77407d1c, type: 3}

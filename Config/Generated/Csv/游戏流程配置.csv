@@ -1,0 +1,2 @@
+configId,gameDurationSeconds,dayNightCycleSeconds,noonLightIntensity,sunsetLightIntensity,countdownUrgentThreshold,settlementDelaySeconds,endGameUiDelaySeconds,annexationRecalcDepth,fogTransitionSpeed
+gameflow.main,300,300,1.2,0.4,60,1.5,6.5,3,0.5

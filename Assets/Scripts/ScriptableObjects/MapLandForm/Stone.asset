@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 295bc0a5ed8d4182b640a7de381a111d, type: 3}
   m_Name: Stone
   m_EditorClassIdentifier: 
-  landFormId: Stone
+  landFormId: landform.stone
   landFormName: 石头
   description: 纯视觉地貌，无任何效果（原地形高度 +1 设计未实现，本次明确不提供）。
   modelPrefab: {fileID: 6759037398801056679, guid: c6d7e9e2b282a79448ea21d277267695, type: 3}

@@ -77,13 +77,17 @@ public sealed class LogisticsService : ILogisticsService
 
     private readonly AnnexationService _annexation;
     private int _recalcDepth;
-    private const int MaxAnnexationRecalcDepth = 3;
+    private readonly GameFlowConfigProvider _gameFlow;
 
-    public LogisticsService(IMapDataService mapDataService)
+    public LogisticsService(IMapDataService mapDataService, GameFlowConfigProvider gameFlow = null)
     {
         _mapDataService = mapDataService;
         _annexation = new AnnexationService(mapDataService);
+        _gameFlow = gameFlow;
     }
+
+    /// <summary>吞并重算递归深度上限。Excel 优先，缺失回退 3。</summary>
+    private int MaxAnnexationRecalcDepth => _gameFlow?.AnnexationRecalcDepth ?? 3;
 
     public void RegisterMainCity(int factionId, HexCellData rootCell)
     {

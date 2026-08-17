@@ -10,16 +10,16 @@ public class MapResourceCollectionService
 {
     private readonly GoldWallet _goldWallet;
     private readonly AudioManager _audioManager;
-    private readonly MapResourceDatabaseSO _database;
+    private readonly MapResourceProvider _provider;
 
     public MapResourceCollectionService(
         GoldWallet goldWallet,
         AudioManager audioManager,
-        MapResourceDatabaseSO database)
+        MapResourceProvider provider)
     {
         _goldWallet = goldWallet;
         _audioManager = audioManager;
-        _database = database;
+        _provider = provider;
     }
 
     /// <summary>
@@ -39,8 +39,8 @@ public class MapResourceCollectionService
         DestroyResourceModel(cell);
         PlayPickupVisual(cell, resource);
 
-        ResourcePickupEffect effect = resource.pickupEffect;
-        switch (resource.pickupEffectType)
+        ResourcePickupEffect effect = _provider.GetPickupEffect(resource);
+        switch (_provider.GetPickupEffectType(resource))
         {
             case ResourcePickupEffectType.AttackBoost:
                 character.Resource_Animals = effect.attackBonus;
@@ -79,8 +79,7 @@ public class MapResourceCollectionService
         if (cell == null) return 0;
 
         MapResourceSO resource = cell.TakeResource();
-        int baseReward = _database != null ? _database.baseExplorationGold : 0;
-        int reward = ResourceRewardRule.ComputeExplorationReward(baseReward, resource);
+        int reward = _provider.ComputeExplorationReward(resource);
 
         if (resource != null)
         {

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 295bc0a5ed8d4182b640a7de381a111d, type: 3}
   m_Name: Forest
   m_EditorClassIdentifier: 
-  landFormId: Forest
+  landFormId: landform.forest
   landFormName: 森林
   description: 纯视觉地貌，无任何效果（原移动力 -1 设计已取消）。
   modelPrefab: {fileID: 8209611697627091481, guid: a959dbb7b69ddcc47a11a936f54eb5d5, type: 3}

@@ -1,0 +1,8 @@
+buildingId,legacyId,displayName,buildingType,hp,blocksMovement,cardCost,producedUnitId,goldIncomePerSecond
+building.altar,2,祭坛,Altar,100,false,10,,0
+building.arrow_tower,5,箭塔,ArrowTower,100,false,100,,0
+building.attack_statue,0,攻击雕像,AttackStatue,100,true,10,,0
+building.barracks,4,兵营,Barracks,100,false,120,unit.angry_mushroom,0
+building.defense_statue,1,防御雕像,DefenseStatue,100,true,10,,0
+building.gold_mine,6,金矿,GoldMine,100,false,10,,1.5
+building.technology_culture,3,科技文化,TechnologyAndCultural,100,false,10,,0

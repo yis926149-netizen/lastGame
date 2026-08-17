@@ -10,11 +10,14 @@ public class MapGenerator : MonoBehaviour
     [Inject] private IUIConfigProvider uiConfigProvider;
     [Inject] private IMapDataService _mapDataService;
     [Inject] private MapGenerationConfigSO _config; 
-    // 【地图资源配置化】资源数据库（生成权重表）
-    [Inject] private MapResourceDatabaseSO _resourceDatabase;
-    // 【地图地貌配置化】地貌数据库（生成权重表）
-    [Inject] private MapLandFormDatabaseSO _landFormDatabase;
-    [Inject] private ExplorationRewardConfigSO _explorationRewardConfig;
+    // 【地图资源配置化 + Excel 数值化】资源提供者（生成权重表 + 效果数值）
+    [Inject] private MapResourceProvider _resourceProvider;
+    // 【地图地貌配置化 + Excel 数值化】地貌提供者（生成权重表 + 簇参数）
+    [Inject] private MapLandFormProvider _landFormProvider;
+    // 【探索奖励 Excel 数值化】探索奖励提供者
+    [Inject] private ExplorationRewardProvider _rewardProvider;
+    // 【地图生成参数 Excel 数值化】Perlin 噪声参数提供者
+    [Inject] private MapGenConfigProvider _mapGenConfig;
 
     //�ο�
     public GameObject NextCardPlaceholder;
@@ -89,7 +92,11 @@ public class MapGenerator : MonoBehaviour
         int z = _config.zNumber;
         float InnerRadius = _config.InnerRadius;
         float OuterRadius = _config.OuterRadius;
-        TerrainGenerator.TerrainHeights terrainHeights = new TerrainGenerator.TerrainHeights(0.05f, 3, 0.6f, _config.minHeight, _config.maxHeight);
+        TerrainGenerator.TerrainHeights terrainHeights = new TerrainGenerator.TerrainHeights(
+            _mapGenConfig?.PerlinFrequency ?? 0.05f,
+            _mapGenConfig?.PerlinOctaves ?? 3,
+            _mapGenConfig?.PerlinPersistence ?? 0.6f,
+            _config.minHeight, _config.maxHeight);
         int minLongestLength = _config.minLongestLength;
         int maxLongestLength = _config.maxLongestLength;
         float riverSourceGenerationProbability = _config.RiverSourceGenerationProbability;
@@ -268,14 +275,14 @@ public class MapGenerator : MonoBehaviour
             // 【程序化山脉】山脉先于其他地貌生成：散落地貌跳过已有山格（决策 ③/⑫）
             if (isLakeOrSea(hexCellData) || MountainCellRule.IsMountainCell(hexCellData)) { continue; }
 
-            // 【地图地貌配置化】按数据库权重表掷点；掷中空白保持 null
-            hexCellData.landForm = LandFormSpawnRule.RollLandForm(_landFormDatabase, random);
+            // 【地图地貌配置化 + Excel 数值化】按数据库权重表掷点；掷中空白保持 null
+            hexCellData.landForm = _landFormProvider.RollLandForm(random);
         }
 
         // 【金矿扎堆 + 程序化山脉】多簇遍历（决策 ⑮）：按数据库顺序处理所有 clusterSpawn 地貌，
         // 共享占用集合保证簇间互斥；山脉地貌不入数据库（RidgeGenerator 专属 pass），山格不参与簇生长。
         LandFormClusterSpawnRule.PlaceAllClusters(
-            _landFormDatabase, _mapDataService.GetAllCells(), _mapDataService.GetNeighbors,
+            _landFormProvider, _mapDataService.GetAllCells(), _mapDataService.GetNeighbors,
             SeedService.GetRandom("LandFormCluster"));
     }
 
@@ -291,8 +298,8 @@ public class MapGenerator : MonoBehaviour
             //【地图地貌配置化】有地貌的格不生成资源（与旧行为一致）
             if (hexCellData.landForm != null) { continue; }
 
-            // 【地图资源配置化】按数据库权重表掷点；掷中空白保持 null
-            hexCellData.resource = ResourceSpawnRule.RollResource(_resourceDatabase, random);
+            // 【地图资源配置化 + Excel 数值化】按数据库权重表掷点；掷中空白保持 null
+            hexCellData.resource = _resourceProvider.RollResource(random);
         }
     }
 
@@ -314,7 +321,7 @@ public class MapGenerator : MonoBehaviour
                 continue;
             }
 
-            cell.SetExplorationReward(_explorationRewardConfig.GenerateReward(explorationRewardRandom));
+            cell.SetExplorationReward(_rewardProvider.GenerateReward(explorationRewardRandom));
         }
     }
 

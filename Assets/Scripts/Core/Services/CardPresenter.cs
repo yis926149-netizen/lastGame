@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using Zenject;
@@ -109,9 +109,10 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         });
     }
 
-    /// <summary>由普通卡配置构造 CardData（ID/IsUnit/CardSprite 派生自配置）。</summary>
-    private static CardData BuildCardData(NormalCardConfigSO config)
+    /// <summary>由普通卡配置构造 CardData（ID/IsUnit/CardSprite 派生自配置，卡费取 Excel 数值）。</summary>
+    private CardData BuildCardData(NormalCardConfigSO config)
     {
+        int cost = GetCardCost(config);
         if (config is UnitConfigSO unitConfig)
         {
             return new CardData
@@ -119,7 +120,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
                 NormalCardConfig = config,
                 ID = unitConfig.Id,
                 CardSprite = config.cardSprite,
-                CardCost = config.cardCost,
+                CardCost = cost,
                 IsUnit = true,
             };
         }
@@ -130,11 +131,21 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
                 NormalCardConfig = config,
                 ID = buildingConfig.buildingId,
                 CardSprite = config.cardSprite,
-                CardCost = config.cardCost,
+                CardCost = cost,
                 IsUnit = false,
             };
         }
-        return new CardData { NormalCardConfig = config, CardSprite = config.cardSprite, CardCost = config.cardCost };
+        return new CardData { NormalCardConfig = config, CardSprite = config.cardSprite, CardCost = cost };
+    }
+
+    private int GetCardCost(NormalCardConfigSO config)
+    {
+        // 卡费数值优先取 Excel 平衡库，缺失时回退 Legacy SO（Provider 内部处理）。
+        if (config is UnitConfigSO unitConfig)
+            return _unitData.GetUnitCardCost(unitConfig.Id);
+        if (config is BuildingConfigSO buildingConfig)
+            return _buildingData.GetBuildingCardCost(buildingConfig.buildingId);
+        return config != null ? config.cardCost : 0;
     }
 
     /// <summary>
@@ -293,12 +304,12 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         // 【探索重构-阶段7】部署需在势力范围内 + 有足够金币
         if (!_territoryService.IsInPlayerTerritory(cell)) return false;
         if (_logisticsService != null && !_logisticsService.IsLogisticsConnected(cell, 0)) return false;
-        if (_goldWallet.Gold < (config != null ? config.cardCost : _goldWallet.CardCost)) return false;
+        if (_goldWallet.Gold < (config != null ? GetCardCost(config) : _goldWallet.CardCost)) return false;
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
         if (cell.IsHaveUnit()) return false;
         // 金矿格不可部署建筑（单位不受限）
-        if (config is BuildingConfigSO && cell.landForm != null && cell.landForm.blockBuildingSpawn) return false;
+        if (config is BuildingConfigSO && cell.landForm != null && LandFormEffectRule.GetBlockBuildingSpawn(cell.landForm)) return false;
         return true;
     }
 
@@ -380,7 +391,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         var brain = g.AddComponent<PlayerUnitBrain>();
         brain.Initialize(
             characterData,
-            UnitStrategyFactory.Create(_unitData.TryGetUnitConfig(unitID, out var unitConfig) ? unitConfig : null),
+            UnitStrategyFactory.Create(_unitData.GetUnitStrategyType(unitID)),
             _mapDataService,
             _unitRepository,
             _movementSystem,
@@ -421,7 +432,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         HexCellData h = _mapDataService.GetCell(v);
 
         BuildingConfigSO config = _buildingData.TryGetBuildingConfig(buildingID, out var bc) ? bc : null;
-        Enums.BulidingType buildingType = config != null ? config.buildingType : (Enums.BulidingType)(buildingID + 1);
+        Enums.BulidingType buildingType = config != null ? _buildingData.GetBuildingType(buildingID) : (Enums.BulidingType)(buildingID + 1);
 
         GameObject prefab = _buildingData.GetBuildingPrefab(buildingID);
         Transform parent = GameObject.Find("PlayerBuilding")?.transform;
@@ -495,7 +506,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
                 break;
         }
 
-        if (config != null ? config.blocksMovement : (buildingID == 0 || buildingID == 1))
+        if (config != null ? _buildingData.GetBuildingBlocksMovement(buildingID) : (buildingID == 0 || buildingID == 1))
             h.movementCost = float.MaxValue;
 
         buildingController.Player_City_Index = h.Player_City_Index;

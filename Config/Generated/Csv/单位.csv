@@ -1,0 +1,15 @@
+unitId,legacyId,displayName,enabled,strategyType,hp,attack,defense,attackRange,movementPoints,viewPoints,attackIntervalSeconds,cardCost
+unit.angry_mushroom,1,愤怒蘑菇,true,Melee,20,15,2,1,0.5,1,1.5,10
+unit.archer,12,弓兵,true,Ranged,20,15,2,2,0.5,1,1.5,50
+unit.big_eye,9,大眼,true,Ranged,20,15,2,2,1,1,1.5,10
+unit.cactus,2,仙人掌,true,Melee,20,15,2,1,0.5,1,1.5,10
+unit.chest_monster,10,宝箱怪,true,Melee,20,15,2,1,1,1,1.5,10
+unit.free_lich,3,免费巫妖,true,Ranged,20,15,2,2,1,1,1.5,10
+unit.green_skin,4,绿皮,true,Melee,20,15,2,1,1,1,1.5,10
+unit.melee_iii,6,近战III,true,Melee,20,15,2,1,1,1,1.5,10
+unit.ranged_iii,5,远程III,true,Ranged,20,15,2,2,0.5,1,1.5,10
+unit.rpg_hero,11,RPG英杰,true,Melee,20,15,2,1,1,1,1.5,10
+unit.settler,0,开拓者,true,Settler,20,0,2,1,1,1,0,10
+unit.soul_dragon,7,噬魂龙,true,Melee,20,15,2,1,1,1,1.5,10
+unit.swordsman,13,剑客,true,Melee,20,15,2,1,0.5,1,1.5,40
+unit.terror_dragon,8,恐怖龙,true,Melee,20,15,2,1,1,1,1.5,10

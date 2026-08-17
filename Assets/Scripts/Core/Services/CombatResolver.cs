@@ -106,22 +106,22 @@ public class CombatResolver
         if (!h.hasRiver)
             theAttacked.LandFormType_River = 0;
         else
-            theAttacked.LandFormType_River = -0.5f;
+            theAttacked.LandFormType_River = BattleFormulaRule.RiverDefensePenalty;
 
         float AttackStatueGain = 0;
         for (int i = 0; i < 6; i++)
         {
             HexCellData neighborHex = _mapDataService.GetNeighbor(attackerHex, (Enums.HexDirection)i);
             if (neighborHex != null && neighborHex.BulidingTypeOnHex_Building.Key == Enums.BulidingType.AttackStatue)
-                AttackStatueGain += 0.7f;
+                AttackStatueGain += BattleFormulaRule.AttackStatueBonus;
         }
 
         float TerrainElevation = 0;
         float heightDiff = attackerHex.Height - h.Height;
         if (heightDiff > 0.01f)
-            TerrainElevation = 0.5f;
+            TerrainElevation = BattleFormulaRule.HighGroundAttackBonus;
         else if (heightDiff < -0.01f)
-            TerrainElevation = -0.5f;
+            TerrainElevation = -BattleFormulaRule.HighGroundAttackBonus;
 
         int attackerFaction = attacker.unitMovementController?.PlayerIndex ?? -1;
         float factionAttackMultiplier = _factionBuff.GetStatMultiplier(attackerFaction, "damage");

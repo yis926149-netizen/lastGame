@@ -25,6 +25,7 @@ public class LandFormClusterSpawnRuleTests
     public void FindClusterForm_ReturnsOnlyClusterEnabledForm()
     {
         var database = ScriptableObject.CreateInstance<MapLandFormDatabaseSO>();
+        var provider = new MapLandFormProvider(database);
         var forest = ScriptableObject.CreateInstance<MapLandFormSO>();
         var goldMine = ScriptableObject.CreateInstance<MapLandFormSO>();
         goldMine.clusterSpawn = true;
@@ -32,10 +33,10 @@ public class LandFormClusterSpawnRuleTests
         try
         {
             database.landForms.Add(forest);
-            Assert.IsNull(LandFormClusterSpawnRule.FindClusterForm(database), "无簇地貌应返回 null");
+            Assert.IsNull(LandFormClusterSpawnRule.FindClusterForm(provider), "无簇地貌应返回 null");
 
             database.landForms.Add(goldMine);
-            Assert.AreSame(goldMine, LandFormClusterSpawnRule.FindClusterForm(database));
+            Assert.AreSame(goldMine, LandFormClusterSpawnRule.FindClusterForm(provider));
         }
         finally
         {
@@ -55,7 +56,7 @@ public class LandFormClusterSpawnRuleTests
         try
         {
             List<HexCellData> centers = LandFormClusterSpawnRule.SelectCenters(
-                form, cells, c => GetGridNeighbors(cells, c), new System.Random(42));
+                LegacyProvider(), form, cells, c => GetGridNeighbors(cells, c), new System.Random(42));
 
             Assert.AreEqual(5, centers.Count, "固定成功数");
             foreach (HexCellData center in centers)
@@ -86,7 +87,7 @@ public class LandFormClusterSpawnRuleTests
         try
         {
             HashSet<HexCellData> cluster = LandFormClusterSpawnRule.GrowCluster(
-                form, center, c => GetGridNeighbors(cells, c), new System.Random(1));
+                LegacyProvider(), form, center, c => GetGridNeighbors(cells, c), new System.Random(1));
 
             Assert.AreEqual(8, cluster.Count, "fill=1 时应精确长满预算");
             Assert.IsTrue(cluster.Contains(center), "簇必须包含堆心");
@@ -111,7 +112,7 @@ public class LandFormClusterSpawnRuleTests
         try
         {
             HashSet<HexCellData> cluster = LandFormClusterSpawnRule.GrowCluster(
-                form, center, c => GetGridNeighbors(cells, c), new System.Random(1));
+                LegacyProvider(), form, center, c => GetGridNeighbors(cells, c), new System.Random(1));
 
             Assert.AreEqual(1, cluster.Count, "水域邻居不得被填充，堆只剩堆心");
             foreach (HexCellData cell in cluster)
@@ -133,7 +134,7 @@ public class LandFormClusterSpawnRuleTests
         try
         {
             HashSet<HexCellData> cluster = LandFormClusterSpawnRule.GrowCluster(
-                form, center, c => GetGridNeighbors(cells, c), new System.Random(7));
+                LegacyProvider(), form, center, c => GetGridNeighbors(cells, c), new System.Random(7));
 
             const int fullHexagonRadius3 = 1 + 6 + 12 + 18; // 37
             Assert.GreaterOrEqual(cluster.Count, 1);
@@ -154,7 +155,7 @@ public class LandFormClusterSpawnRuleTests
         try
         {
             HashSet<HexCellData> claimed = LandFormClusterSpawnRule.PlaceClusters(
-                form, cells, c => GetGridNeighbors(cells, c), new System.Random(42));
+                LegacyProvider(), form, cells, c => GetGridNeighbors(cells, c), new System.Random(42));
 
             Assert.AreEqual(4, CountPiles(cells, claimed), "必须生成固定 4 堆");
             foreach (HexCellData cell in claimed)
@@ -178,9 +179,9 @@ public class LandFormClusterSpawnRuleTests
         try
         {
             HashSet<HexCellData> a = LandFormClusterSpawnRule.PlaceClusters(
-                form, cellsA, c => GetGridNeighbors(cellsA, c), new System.Random(123));
+                LegacyProvider(), form, cellsA, c => GetGridNeighbors(cellsA, c), new System.Random(123));
             HashSet<HexCellData> b = LandFormClusterSpawnRule.PlaceClusters(
-                form, cellsB, c => GetGridNeighbors(cellsB, c), new System.Random(123));
+                LegacyProvider(), form, cellsB, c => GetGridNeighbors(cellsB, c), new System.Random(123));
 
             var coordsA = new HashSet<Vector3>(a.Select(c => c.HexCoordinate));
             var coordsB = new HashSet<Vector3>(b.Select(c => c.HexCoordinate));
@@ -202,7 +203,7 @@ public class LandFormClusterSpawnRuleTests
         try
         {
             HashSet<HexCellData> claimed = LandFormClusterSpawnRule.PlaceClusters(
-                form, cells, c => GetGridNeighbors(cells, c), new System.Random(5));
+                LegacyProvider(), form, cells, c => GetGridNeighbors(cells, c), new System.Random(5));
             HexCellData scattered = cells.First(c => !claimed.Contains(c));
             scattered.landForm = form; // 模拟散落掷中金矿但不在堆内
 
@@ -219,6 +220,10 @@ public class LandFormClusterSpawnRuleTests
     }
 
     // ── 测试辅助 ──────────────────────────────
+
+    // 簇方法只读地貌的 Legacy 字段（无 Excel balance 时 Provider 直接回退 form），
+    // 故用空库 Provider 即可驱动 SelectCenters/GrowCluster/PlaceClusters。
+    private static MapLandFormProvider LegacyProvider() => new MapLandFormProvider(null);
 
     private static MapLandFormSO CreateClusterForm(int clusterCount, int targetSize, float fill, int minSpacing, int maxRadius)
     {

@@ -1,0 +1,3 @@
+ruleId,triggerTalentId,targetCardType,weightMultiplier,enabled
+draw_rule.buildinghp_favor_building,talent.building_hp,Building,10,true
+draw_rule.damage_favor_unit,talent.damage,Unit,10,true

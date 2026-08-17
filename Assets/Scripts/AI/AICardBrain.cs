@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using GameConfig;
 
 //****************************************
 //功能说明：AI 卡牌脑。负责抽卡状态、每回合卡牌管线（抽卡 + 科文推进 + 出牌）与出牌落点决策。
@@ -22,6 +23,8 @@ public class AICardBrain
     private readonly GoldWallet _goldWallet;
     private readonly ILogisticsService _logisticsService;
     private readonly IFactionBuffService _factionBuff;
+    private readonly TalentDrawRuleDatabaseSO _drawRules;
+    private readonly AIConfigProvider _aiConfig;
 
     public AICardBrain(
         AIPlayerState aiPlayerState,
@@ -34,7 +37,9 @@ public class AICardBrain
         AIRandomProvider rng,
         GoldWallet goldWallet,
         ILogisticsService logisticsService,
-        IFactionBuffService factionBuff)
+        IFactionBuffService factionBuff,
+        TalentDrawRuleDatabaseSO drawRules = null,
+        AIConfigProvider aiConfig = null)
     {
         _aiPlayerState = aiPlayerState;
         _cardUnlockRuleProvider = cardUnlockRuleProvider;
@@ -47,6 +52,8 @@ public class AICardBrain
         _goldWallet = goldWallet;
         _logisticsService = logisticsService;
         _factionBuff = factionBuff;
+        _drawRules = drawRules;
+        _aiConfig = aiConfig;
     }
 
     private System.Random Random => _rng.Random;
@@ -74,7 +81,8 @@ public class AICardBrain
             _cardUnlockRuleProvider,
             Random,
             _factionBuff,
-            AIIndex);
+            AIIndex,
+            drawRules: _drawRules);
     }
 
     /// <summary>每回合卡牌管线：抽卡（一次）→ 科文推进 → 出牌。</summary>
@@ -126,28 +134,43 @@ public class AICardBrain
     {
         if (card is UnitConfigSO unitConfig)
         {
-            return unitConfig.strategyType == UnitStrategyType.Settler ? 100 : 70;
+            return _unitDataProvider.GetUnitStrategyType(unitConfig.Id) == UnitStrategyType.Settler
+                ? (_aiConfig?.SettlerCardPriority ?? 100)
+                : (_aiConfig?.UnitCardPriority ?? 70);
         }
 
         if (card is BuildingConfigSO buildingConfig)
         {
-            return buildingConfig.buildingType == Enums.BulidingType.TechnologyAndCultural ? 90 : 60;
+            return _buildingDataProvider.GetBuildingType(buildingConfig.buildingId) == Enums.BulidingType.TechnologyAndCultural
+                ? (_aiConfig?.TechnologyCardPriority ?? 90)
+                : (_aiConfig?.BuildingCardPriority ?? 60);
         }
 
-        return 60;
+        return _aiConfig?.BuildingCardPriority ?? 60;
+    }
+
+    private int GetCardCost(NormalCardConfigSO card)
+    {
+        // 卡费数值优先取 Excel 平衡库，缺失时回退 Legacy SO（Provider 内部处理）。
+        if (card is UnitConfigSO unitConfig)
+            return _unitDataProvider.GetUnitCardCost(unitConfig.Id);
+        if (card is BuildingConfigSO buildingConfig)
+            return _buildingDataProvider.GetBuildingCardCost(buildingConfig.buildingId);
+        return card != null ? card.cardCost : 0;
     }
 
     private bool TryPlaySingleCard(NormalCardConfigSO card)
     {
-        // 【探索重构-阶段7】出牌消耗金币（按卡单价收费）
-        if (_goldWallet.GetGold(AIIndex) < card.cardCost) return false;
+        // 【探索重构-阶段7】出牌消耗金币（按卡单价收费，数值来自 Excel）
+        int cost = GetCardCost(card);
+        if (_goldWallet.GetGold(AIIndex) < cost) return false;
 
         bool success = card is BuildingConfigSO
             ? TrySpawnBuildingFromCard((BuildingConfigSO)card)
             : TrySpawnUnitFromCard((UnitConfigSO)card);
 
         if (success)
-            _goldWallet.TrySpendGold(AIIndex, card.cardCost);
+            _goldWallet.TrySpendGold(AIIndex, cost);
         return success;
     }
 

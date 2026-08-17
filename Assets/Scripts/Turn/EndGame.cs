@@ -17,6 +17,7 @@ public class EndGame : MonoBehaviour
     [Inject] private IMapDataService _mapDataService;
     [Inject] private GlobalTimerService _globalTimer;
     [Inject] private ArenaEventManager _arenaEventManager;
+    [Inject] private GameFlowConfigProvider _gameFlow;
 
     public bool isEndThisGame = false;
     public bool neverWin;
@@ -155,7 +156,7 @@ public class EndGame : MonoBehaviour
 
         Result = result;
         isEndThisGame = true;
-        Invoke(nameof(EndThisGame), 1.5f);
+        Invoke(nameof(EndThisGame), _gameFlow?.SettlementDelaySeconds ?? 1.5f);
     }
 
     public void MarkInitializationComplete()
@@ -206,7 +207,7 @@ public class EndGame : MonoBehaviour
 
         animation.gameObject.SetActive(true);
         animation.SetAsLastSibling();
-        Invoke(nameof(DisplayEndGameUI), 6.5f);
+        Invoke(nameof(DisplayEndGameUI), _gameFlow?.EndGameUiDelaySeconds ?? 6.5f);
     }
 
     private void DisplayEndGameUI()

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1b2d8edb4de14df897f3b66776054121, type: 3}
   m_Name: Animals
   m_EditorClassIdentifier: 
-  resourceId: Animals
+  resourceId: resource.animals
   resourceName: 动物
   description: 拾取后提升下一次攻击力。
   modelPrefab: {fileID: 5268091864610406640, guid: 8888e3dcd08c9bd4fa681d5e3f1464f5, type: 3}
