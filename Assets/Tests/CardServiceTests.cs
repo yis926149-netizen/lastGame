@@ -9,6 +9,7 @@ public class CardServiceTests
     private DiContainer _container;
     private IUIConfigProvider _mockUiConfig;
     private ICardUnlockRuleProvider _mockUnlockRules;
+    private IFactionBuffService _mockFactionBuff;
     private CardService _service;
     private NormalCardPoolSO _pool;
 
@@ -33,9 +34,11 @@ public class CardServiceTests
         _mockUnlockRules = Substitute.For<ICardUnlockRuleProvider>();
         _mockUnlockRules.GetUnlockedCards().Returns(new List<NormalCardConfigSO> { unit0, unit1 });
         _mockUnlockRules.GetGuaranteedFirstCard().Returns(unit0);
+        _mockFactionBuff = Substitute.For<IFactionBuffService>();
 
         _container.Bind<IUIConfigProvider>().FromInstance(_mockUiConfig);
         _container.Bind<ICardUnlockRuleProvider>().FromInstance(_mockUnlockRules);
+        _container.Bind<IFactionBuffService>().FromInstance(_mockFactionBuff);
         _container.Bind<ICardService>().To<CardService>().AsSingle();
 
         _service = _container.Resolve<ICardService>() as CardService;

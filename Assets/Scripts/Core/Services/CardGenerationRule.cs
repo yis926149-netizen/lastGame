@@ -9,6 +9,10 @@ using System.Collections.Generic;
 
 public static class CardGenerationRule
 {
+    private const string UnitCardProbabilityTalentId = "0";
+    private const string BuildingCardProbabilityTalentId = "1";
+    private const int FavoredCardWeight = 10;
+
     /// <summary>生成下一张卡。</summary>
     /// <param name="giveFirstSettler">当前是否处于"应保底发移民卡"的时机（玩家=回合1；AI=开局 true）。</param>
     /// <param name="hasGivenFirstSettler">是否已发过保底移民卡（按引用读写；各方各自持有该标志）。</param>
@@ -16,7 +20,9 @@ public static class CardGenerationRule
         bool giveFirstSettler,
         ref bool hasGivenFirstSettler,
         ICardUnlockRuleProvider unlockProvider,
-        System.Random random)
+        System.Random random,
+        IFactionBuffService factionBuff,
+        int faction)
     {
         if (giveFirstSettler && !hasGivenFirstSettler)
         {
@@ -34,6 +40,33 @@ public static class CardGenerationRule
             throw new InvalidOperationException("[CardGenerationRule] 普通卡池为空且无保底卡，无法生成卡牌。");
         }
 
-        return cards[random.Next(cards.Count)];
+        bool favorUnits = factionBuff != null && factionBuff.HasBuff(faction, UnitCardProbabilityTalentId);
+        bool favorBuildings = factionBuff != null && factionBuff.HasBuff(faction, BuildingCardProbabilityTalentId);
+        if (!favorUnits && !favorBuildings)
+        {
+            return cards[random.Next(cards.Count)];
+        }
+
+        int totalWeight = 0;
+        for (int i = 0; i < cards.Count; i++)
+        {
+            totalWeight += GetCardWeight(cards[i], favorUnits, favorBuildings);
+        }
+
+        int roll = random.Next(totalWeight);
+        for (int i = 0; i < cards.Count; i++)
+        {
+            roll -= GetCardWeight(cards[i], favorUnits, favorBuildings);
+            if (roll < 0) return cards[i];
+        }
+
+        return cards[cards.Count - 1];
+    }
+
+    private static int GetCardWeight(NormalCardConfigSO card, bool favorUnits, bool favorBuildings)
+    {
+        if (favorUnits && card is UnitConfigSO) return FavoredCardWeight;
+        if (favorBuildings && card is BuildingConfigSO) return FavoredCardWeight;
+        return 1;
     }
 }

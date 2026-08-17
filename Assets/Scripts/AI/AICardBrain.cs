@@ -21,6 +21,7 @@ public class AICardBrain
     private readonly AIRandomProvider _rng;
     private readonly GoldWallet _goldWallet;
     private readonly ILogisticsService _logisticsService;
+    private readonly IFactionBuffService _factionBuff;
 
     public AICardBrain(
         AIPlayerState aiPlayerState,
@@ -32,7 +33,8 @@ public class AICardBrain
         AIEntityFactory factory,
         AIRandomProvider rng,
         GoldWallet goldWallet,
-        ILogisticsService logisticsService)
+        ILogisticsService logisticsService,
+        IFactionBuffService factionBuff)
     {
         _aiPlayerState = aiPlayerState;
         _cardUnlockRuleProvider = cardUnlockRuleProvider;
@@ -44,6 +46,7 @@ public class AICardBrain
         _rng = rng;
         _goldWallet = goldWallet;
         _logisticsService = logisticsService;
+        _factionBuff = factionBuff;
     }
 
     private System.Random Random => _rng.Random;
@@ -69,7 +72,9 @@ public class AICardBrain
             giveFirstSettler: true,
             ref _aiPlayerState.Card.HasGivenFirstTurnSettler,
             _cardUnlockRuleProvider,
-            Random);
+            Random,
+            _factionBuff,
+            AIIndex);
     }
 
     /// <summary>每回合卡牌管线：抽卡（一次）→ 科文推进 → 出牌。</summary>

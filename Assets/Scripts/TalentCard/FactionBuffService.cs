@@ -32,6 +32,17 @@ public class FactionBuffService : IFactionBuffService
         return accumulated;
     }
 
+    public bool HasBuff(int faction, string buffId)
+    {
+        if (!_buffs.TryGetValue(faction, out var buffs)) return false;
+
+        for (int i = 0; i < buffs.Count; i++)
+        {
+            if (buffs[i].id == buffId) return true;
+        }
+        return false;
+    }
+
     public void AddBuff(int faction, Buff buff)
     {
         if (buff == null) return;

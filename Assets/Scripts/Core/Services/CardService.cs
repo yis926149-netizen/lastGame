@@ -29,6 +29,7 @@ public class CardService : ICardService
 
     [Inject] private IUIConfigProvider _uiConfig;
     [Inject] private ICardUnlockRuleProvider _cardUnlockRuleProvider;
+    [Inject] private IFactionBuffService _factionBuff;
 
     private bool _hasGivenFirstTurnSettler = false;
 
@@ -47,7 +48,9 @@ public class CardService : ICardService
             giveFirstSettler,
             ref _hasGivenFirstTurnSettler,
             _cardUnlockRuleProvider,
-            Random);
+            Random,
+            _factionBuff,
+            faction: 0);
     }
 
     public void Reset()

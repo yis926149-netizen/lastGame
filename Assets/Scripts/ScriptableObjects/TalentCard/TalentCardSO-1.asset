@@ -20,4 +20,4 @@ MonoBehaviour:
   effect:
     type: 0
     statId: 3
-    value: 1.25
+    value: 4
