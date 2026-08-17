@@ -35,6 +35,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     // 由 SetChunkClipPlane 写入，surf/ShadowCaster 共用，§13.2 顶出 clip）
     private static readonly int ChunkAnimBaseYId = Shader.PropertyToID("_ChunkAnimBaseY");
     private static readonly int ChunkAnimRiseHeightId = Shader.PropertyToID("_ChunkAnimRiseHeight");
+    private static readonly int GridColorId = Shader.PropertyToID("_Color");
 
     // 【程序化山脉-阶段 7.8】Chunk 构建性能诊断钩子（默认关闭 = 零开销；仅编辑器工具
     // Tools/程序化山脉/性能基线 启用）。统计 Chunk 构建耗时（含/不含山体分类）、
@@ -94,6 +95,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     private readonly Dictionary<(Material, Material, Material), Material> _triMaterialCache = new Dictionary<(Material, Material, Material), Material>();
     private readonly Dictionary<Material, Material> _mountainBoundaryMaterialCache = new Dictionary<Material, Material>();
     private readonly Dictionary<Material, Material> _mountainBoundaryTransitionCache = new Dictionary<Material, Material>();
+    private Material _generatedGridMaterial;
 
     // 【阶段四修订】动画专用 *_Transition 材质缓存（§十九-21：动画 Shader 必须独立命名、
     // 独立材质，绝不修改三套稳定 Shader；仅在动画期间按 Chunk 切换使用）。
@@ -878,6 +880,15 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         riverHost.AddComponent<MeshFilter>();
         riverHost.AddComponent<MeshRenderer>();
 
+        GameObject gridHost = new GameObject("Grid");
+        gridHost.transform.SetParent(root.transform, false);
+        if (mapLayer >= 0) gridHost.layer = mapLayer;
+        MeshFilter gridFilter = gridHost.AddComponent<MeshFilter>();
+        MeshRenderer gridRenderer = gridHost.AddComponent<MeshRenderer>();
+        gridRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        gridRenderer.receiveShadows = false;
+        gridHost.SetActive(false);
+
         var chunk = new ChunkRenderData
         {
             Index = index,
@@ -889,12 +900,17 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             TerrainCollider = terrainCollider,
             WaterHost = waterHost,
             RiverHost = riverHost,
+            GridHost = gridHost,
+            GridFilter = gridFilter,
+            GridRenderer = gridRenderer,
             ActiveTerrain = new Mesh { name = $"ChunkTerrain_{index.X}_{index.Z}" },
             StagingTerrain = new Mesh { name = $"ChunkTerrainStaging_{index.X}_{index.Z}" },
             ActiveWater = new Mesh { name = $"ChunkWater_{index.X}_{index.Z}" },
             StagingWater = new Mesh { name = $"ChunkWaterStaging_{index.X}_{index.Z}" },
             ActiveRiver = new Mesh { name = $"ChunkRiver_{index.X}_{index.Z}" },
             StagingRiver = new Mesh { name = $"ChunkRiverStaging_{index.X}_{index.Z}" },
+            ActiveGrid = new Mesh { name = $"ChunkGrid_{index.X}_{index.Z}" },
+            StagingGrid = new Mesh { name = $"ChunkGridStaging_{index.X}_{index.Z}" },
             Cells = cells
         };
         _chunks[index] = chunk;
@@ -973,6 +989,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         staging.Terrain = BuildChunkTerrain(chunkCells, profileList, anim);
         staging.River = BuildChunkRiver(chunkCells);
         staging.Water = BuildChunkWater(chunkCells, profileList);
+        staging.Grid = BuildChunkGrid(chunkCells, staging.Terrain);
 
         // 【程序化山脉-阶段 7.8】按"本 Chunk 是否含山体渲染槽"分类累计构建耗时。
         if (timing != null)
@@ -1792,6 +1809,171 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         };
     }
 
+    private GridGeometry BuildChunkGrid(List<HexCellData> chunkCells, TerrainGeometry terrain)
+    {
+        if (_config == null || !_config.showHexGrid || terrain == null || terrain.Vertices == null)
+            return null;
+
+        var vertices = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var indices = new List<int>();
+        int[] surfaceIndices = GetGridSurfaceIndices(terrain);
+        Enums.HexDirection[] directions =
+        {
+            Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE,
+            Enums.HexDirection.SW, Enums.HexDirection.W, Enums.HexDirection.NW
+        };
+
+        foreach (HexCellData cell in chunkCells)
+        {
+            if (cell == null || WaterLevelConfig.IsWater(cell)) continue;
+            Vector3[] corners = GetLogicalHexCorners(cell.CenterWorldCoordinate);
+            foreach (Enums.HexDirection direction in directions)
+            {
+                HexCellData neighbor = _mapDataService.GetNeighbor(cell, direction);
+                bool positiveDirection = direction == Enums.HexDirection.NE
+                    || direction == Enums.HexDirection.E
+                    || direction == Enums.HexDirection.SE;
+                if (!positiveDirection && neighbor != null) continue;
+                if (neighbor != null && WaterLevelConfig.IsWater(neighbor)) continue;
+
+                GetLogicalEdgeCorners(corners, direction, out Vector3 start, out Vector3 end);
+                int subdivisions = GetGridEdgeSubdivisions(cell, neighbor);
+                AppendGridEdge(vertices, uvs, indices, start, end, subdivisions,
+                    terrain.Vertices, surfaceIndices, cell.RealCenterWorldCoordinate.y);
+            }
+        }
+
+        if (indices.Count == 0) return null;
+        return new GridGeometry
+        {
+            Vertices = vertices.ToArray(),
+            UVs = uvs.ToArray(),
+            Indices = indices.ToArray()
+        };
+    }
+
+    private Vector3[] GetLogicalHexCorners(Vector3 center)
+    {
+        float outer = _config.OuterRadius;
+        float inner = _config.InnerRadius;
+        return new[]
+        {
+            new Vector3(center.x, 0f, center.z + outer),
+            new Vector3(center.x + inner, 0f, center.z + 0.5f * outer),
+            new Vector3(center.x + inner, 0f, center.z - 0.5f * outer),
+            new Vector3(center.x, 0f, center.z - outer),
+            new Vector3(center.x - inner, 0f, center.z - 0.5f * outer),
+            new Vector3(center.x - inner, 0f, center.z + 0.5f * outer),
+        };
+    }
+
+    private static void GetLogicalEdgeCorners(
+        Vector3[] corners, Enums.HexDirection direction, out Vector3 start, out Vector3 end)
+    {
+        int first = direction switch
+        {
+            Enums.HexDirection.NE => 0,
+            Enums.HexDirection.E => 1,
+            Enums.HexDirection.SE => 2,
+            Enums.HexDirection.SW => 3,
+            Enums.HexDirection.W => 4,
+            _ => 5,
+        };
+        start = corners[first];
+        end = corners[(first + 1) % 6];
+    }
+
+    private int GetGridEdgeSubdivisions(HexCellData cell, HexCellData neighbor)
+    {
+        if (neighbor == null || !_config.useHeightBasedSubdivision) return 1;
+        float stepHeight = Mathf.Max(0.0001f, _config.stepHeight);
+        int byHeight = Mathf.CeilToInt(Mathf.Abs(cell.Height - neighbor.Height) / stepHeight);
+        return Mathf.Clamp(Mathf.Max(1, byHeight), 1, Mathf.Max(1, _config.maxStepSubdivision));
+    }
+
+    private void AppendGridEdge(
+        List<Vector3> vertices,
+        List<Vector2> uvs,
+        List<int> indices,
+        Vector3 start,
+        Vector3 end,
+        int subdivisions,
+        Vector3[] surfaceVertices,
+        int[] surfaceIndices,
+        float fallbackY)
+    {
+        Vector3 edge = end - start;
+        Vector3 side = new Vector3(-edge.z, 0f, edge.x).normalized * (_config.gridLineWidth * 0.5f);
+        float yOffset = _config.gridSurfaceOffset;
+        int rowStart = vertices.Count;
+        for (int i = 0; i <= subdivisions; i++)
+        {
+            float t = i / (float)subdivisions;
+            Vector3 center = Vector3.Lerp(start, end, t);
+            Vector3 left = center - side;
+            Vector3 right = center + side;
+            left.y = SampleTerrainSurfaceY(left, surfaceVertices, surfaceIndices, fallbackY) + yOffset;
+            right.y = SampleTerrainSurfaceY(right, surfaceVertices, surfaceIndices, fallbackY) + yOffset;
+            vertices.Add(left);
+            vertices.Add(right);
+            uvs.Add(new Vector2(t, 0f));
+            uvs.Add(new Vector2(t, 1f));
+        }
+
+        for (int i = 0; i < subdivisions; i++)
+        {
+            int a = rowStart + i * 2;
+            int b = a + 1;
+            int c = a + 2;
+            int d = a + 3;
+            indices.Add(a);
+            indices.Add(c);
+            indices.Add(b);
+            indices.Add(b);
+            indices.Add(c);
+            indices.Add(d);
+        }
+    }
+
+    private static int[] GetGridSurfaceIndices(TerrainGeometry terrain)
+    {
+        if (terrain.CollisionIndices != null && terrain.CollisionIndices.Length > 0)
+            return terrain.CollisionIndices;
+
+        int count = terrain.SubMeshIndices.Sum(submesh => submesh != null ? submesh.Length : 0);
+        var result = new int[count];
+        int offset = 0;
+        foreach (int[] submesh in terrain.SubMeshIndices)
+        {
+            if (submesh == null) continue;
+            System.Array.Copy(submesh, 0, result, offset, submesh.Length);
+            offset += submesh.Length;
+        }
+        return result;
+    }
+
+    private static float SampleTerrainSurfaceY(
+        Vector3 point, Vector3[] vertices, int[] indices, float fallbackY)
+    {
+        const float tolerance = 0.0001f;
+        float bestY = float.NegativeInfinity;
+        for (int i = 0; i + 2 < indices.Length; i += 3)
+        {
+            Vector3 a = vertices[indices[i]];
+            Vector3 b = vertices[indices[i + 1]];
+            Vector3 c = vertices[indices[i + 2]];
+            float denominator = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
+            if (Mathf.Abs(denominator) < tolerance) continue;
+            float wa = ((b.z - c.z) * (point.x - c.x) + (c.x - b.x) * (point.z - c.z)) / denominator;
+            float wb = ((c.z - a.z) * (point.x - c.x) + (a.x - c.x) * (point.z - c.z)) / denominator;
+            float wc = 1f - wa - wb;
+            if (wa < -tolerance || wb < -tolerance || wc < -tolerance) continue;
+            bestY = Mathf.Max(bestY, wa * a.y + wb * b.y + wc * c.y);
+        }
+        return float.IsNegativeInfinity(bestY) ? fallbackY : bestY;
+    }
+
     // ── staging → active 提交（双缓冲交换 + 材质复用）────────
 
     private void CommitChunkStaging(ChunkRenderData chunk, ChunkStagingGeometry staging)
@@ -1872,6 +2054,26 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             chunk.RiverHost.SetActive(false);
         }
 
+        if (_config.showHexGrid && staging.Grid != null)
+        {
+            Material gridMaterial = ResolveGridMaterial();
+            if (gridMaterial != null)
+            {
+                FillGridMeshData(chunk.StagingGrid, staging.Grid);
+                chunk.GridFilter.sharedMesh = chunk.StagingGrid;
+                chunk.GridRenderer.sharedMaterial = gridMaterial;
+                chunk.GridHost.SetActive(true);
+            }
+            else
+            {
+                chunk.GridHost.SetActive(false);
+            }
+        }
+        else
+        {
+            chunk.GridHost.SetActive(false);
+        }
+
         // 交换双缓冲（旧 active 即 staging——Chunk 后端以 staging 复用为唯一 mesh）
         Mesh temp = chunk.ActiveTerrain;
         chunk.ActiveTerrain = chunk.StagingTerrain;
@@ -1882,6 +2084,9 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         temp = chunk.ActiveRiver;
         chunk.ActiveRiver = chunk.StagingRiver;
         chunk.StagingRiver = temp;
+        temp = chunk.ActiveGrid;
+        chunk.ActiveGrid = chunk.StagingGrid;
+        chunk.StagingGrid = temp;
 
         // 【阶段四修订-审查修复】清除动画开始时保存的过期稳定材质：动画进行中被非动画路径
         // （Duration=0 提交/分帧提交）重建的 Chunk，Finalize 不应恢复旧数组（submesh 布局可能
@@ -2039,6 +2244,42 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         mesh.RecalculateBounds();
     }
 
+    private static void FillGridMeshData(Mesh mesh, GridGeometry geometry)
+    {
+        mesh.Clear(false);
+        mesh.indexFormat = geometry.Vertices.Length > ushort.MaxValue
+            ? UnityEngine.Rendering.IndexFormat.UInt32
+            : UnityEngine.Rendering.IndexFormat.UInt16;
+        mesh.vertices = geometry.Vertices;
+        mesh.uv = geometry.UVs;
+        mesh.triangles = geometry.Indices;
+        mesh.RecalculateBounds();
+    }
+
+    private Material ResolveGridMaterial()
+    {
+        Material material = _config.gridMaterial;
+        if (material == null)
+        {
+            if (_generatedGridMaterial == null)
+            {
+                Shader shader = Shader.Find("Custom/HexGridOverlay");
+                if (shader == null)
+                {
+                    Debug.LogError("[ChunkMapRenderer] Shader Custom/HexGridOverlay not found; grid disabled.");
+                    return null;
+                }
+                _generatedGridMaterial = new Material(shader) { name = "HexGridOverlay_Runtime" };
+            }
+            material = _generatedGridMaterial;
+        }
+
+        Color color = _config.gridColor;
+        color.a *= _config.gridAlpha;
+        material.SetColor(GridColorId, color);
+        return material;
+    }
+
     private static bool ValidateChunkStaging(ChunkStagingGeometry staging, out string error)
     {
         if (staging == null)
@@ -2050,6 +2291,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         if (!ValidateTerrain(staging.Terrain, out error)) return false;
         if (!ValidateRiver(staging.River, out error)) return false;
         if (!ValidateWater(staging.Water, out error)) return false;
+        if (!ValidateGrid(staging.Grid, out error)) return false;
         return true;
     }
 
@@ -2194,6 +2436,18 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
                 return false;
         }
         return true;
+    }
+
+    private static bool ValidateGrid(GridGeometry geometry, out string error)
+    {
+        if (geometry == null)
+        {
+            error = null;
+            return true;
+        }
+        if (!ValidateVertexChannels(geometry.Vertices, geometry.UVs, "Grid", out error))
+            return false;
+        return ValidateIndices(geometry.Indices, geometry.Vertices.Length, "Grid", out error);
     }
 
     private static bool ValidateVertexChannels(Vector3[] vertices, Vector2[] uvs, string label, out string error)
@@ -2548,6 +2802,8 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         {
             if (chunk.ActiveCollision != null) Object.Destroy(chunk.ActiveCollision);
             if (chunk.StagingCollision != null) Object.Destroy(chunk.StagingCollision);
+            if (chunk.ActiveGrid != null) Object.Destroy(chunk.ActiveGrid);
+            if (chunk.StagingGrid != null) Object.Destroy(chunk.StagingGrid);
         }
 
         DestroyMaterialIfNotNull(_terrainBaseMaterial0);
@@ -2557,6 +2813,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         DestroyMaterialIfNotNull(_mountainMaterial);
         // 【程序化山脉-阶段 5.4】山体 Transition 材质同属本 Renderer 独占创建，一并显式销毁
         DestroyMaterialIfNotNull(_mountainTransitionMaterial);
+        DestroyMaterialIfNotNull(_generatedGridMaterial);
         foreach (Material mat in _rectMaterialCache.Values)
             DestroyMaterialIfNotNull(mat);
         foreach (Material mat in _triMaterialCache.Values)
@@ -3021,6 +3278,9 @@ public sealed class ChunkRenderData
     public MeshCollider TerrainCollider;
     public GameObject WaterHost;
     public GameObject RiverHost;
+    public GameObject GridHost;
+    public MeshFilter GridFilter;
+    public MeshRenderer GridRenderer;
 
     public Mesh ActiveTerrain;
     public Mesh StagingTerrain;
@@ -3028,6 +3288,8 @@ public sealed class ChunkRenderData
     public Mesh StagingWater;
     public Mesh ActiveRiver;
     public Mesh StagingRiver;
+    public Mesh ActiveGrid;
+    public Mesh StagingGrid;
 
     /// <summary>【程序化山脉-阶段 3.2】独立碰撞双缓冲 Mesh（决策 ㉚：山体不参与 MeshCollider）。
     /// 延迟创建：仅 HasMountain Chunk 提交时分配，无山 Chunk 保持碰撞 = 渲染 mesh。</summary>

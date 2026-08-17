@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using DG.Tweening;
 using TMPro;
 using UnityEngine;
@@ -15,6 +16,16 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     [Inject] private GameLoop _gameLoop;
     [Inject] private LazyInject<PlayerInputHandler> _playerInputHandler;
     [Inject(Optional = true)] private IMapRaycastService _mapRaycastService;
+    [Inject] private GoldWallet _goldWallet;
+
+    /// <summary>金币不足时卡面压暗的透明度倍率。</summary>
+    private const float UnaffordableDim = 0.45f;
+
+    /// <summary>当前是否买得起（金币 >= 卡牌费用）。战术卡（无金币约束）恒为 true。</summary>
+    private bool _isAffordable = true;
+
+    /// <summary>各 Graphic 的原始颜色（含 alpha），用于压暗/还原。SetData 时采样。</summary>
+    private readonly Dictionary<Graphic, Color> _graphicBaseColors = new Dictionary<Graphic, Color>();
 
     /// <summary>允许外部覆盖 drop handler（战术卡等非默认材质）。应在 Zenject 注入之后、首次拖拽之前调用。</summary>
     public void OverrideDropHandler(ICardDropHandler handler) => _dropHandler = handler;
@@ -43,7 +54,16 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     public int CardID => _data?.ID ?? -1;
     public CardData Data => _data;
     public int PlacementID { get; set; }
-    public bool IsNextCard { get => _isNextCard; set => _isNextCard = value; }
+    public bool IsNextCard
+    {
+        get => _isNextCard;
+        set
+        {
+            if (_isNextCard == value) return;
+            _isNextCard = value;
+            RefreshAffordability();
+        }
+    }
     public RectTransform RectTransform => _rectTransform;
 
     [Inject]
@@ -94,6 +114,79 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _image.color = Color.white;
 
         try { _image.alphaHitTestMinimumThreshold = 0.01f; } catch (System.Exception) { }
+
+        // 在计算可负担性之前采样原始颜色，避免把预制体内隐形的大型 Button 显形。
+        CaptureBaseColors();
+
+        // 订阅金币变动以实时刷新“买不起 → 压暗 + 禁用交互”状态。
+        if (_goldWallet != null)
+        {
+            _goldWallet.OnGoldChanged -= OnGoldChanged;
+            _goldWallet.OnGoldChanged += OnGoldChanged;
+        }
+        RefreshAffordability();
+    }
+
+    /// <summary>金币变动回调：仅在跨越“买得起/买不起”阈值时更新视觉与交互。</summary>
+    private void OnGoldChanged(int _)
+    {
+        RefreshAffordability();
+    }
+
+    /// <summary>根据当前金币与卡牌费用刷新可用性；压暗卡面并阻断悬浮/拖拽。</summary>
+    private void RefreshAffordability()
+    {
+        // 预告卡与战术卡（负数 ID / 无金币约束）不做金币压暗。
+        if (_data == null || IsNextCard)
+        {
+            SetAffordable(true);
+            return;
+        }
+
+        bool affordable = _goldWallet == null || _goldWallet.Gold >= _data.CardCost;
+        SetAffordable(affordable);
+    }
+
+    /// <summary>采样根 Image 及所有子级可见 Graphic 的原始颜色，作为压暗/还原的基准。</summary>
+    private void CaptureBaseColors()
+    {
+        _graphicBaseColors.Clear();
+        foreach (Graphic g in GetComponentsInChildren<Graphic>(true))
+        {
+            if (g == null) continue;
+            // 预制体内隐藏着一块超大但完全透明的 Button Image（用于表现层），
+            // 其 alpha=0；若纳入压暗集合会被显形为半透明白板，因此跳过完全透明的组件。
+            if (g.color.a <= 0f) continue;
+            _graphicBaseColors[g] = g.color;
+        }
+    }
+
+    private void SetAffordable(bool affordable)
+    {
+        _isAffordable = affordable;
+
+        // 买不起时按各组件原始 alpha 缩放压暗，买得起时还原原色。
+        foreach (var kv in _graphicBaseColors)
+        {
+            if (kv.Key == null) continue;
+            Color c = kv.Value;
+            if (!affordable) c.a *= UnaffordableDim;
+            kv.Key.color = c;
+        }
+
+        // 买不起时停止接收射线（悬浮/拖拽），并复位悬浮上移；若在拖拽中立即取消。
+        if (_image != null) _image.raycastTarget = affordable;
+
+        if (!affordable)
+        {
+            // 悬浮中变为买不起时，UI 射线不再触发 OnPointerExit，需主动复位位置。
+            if (!_isDragging)
+            {
+                _rectTransform.DOKill();
+                _rectTransform.DOAnchorPos(_originPosition, 0.2f);
+            }
+            if (_isDragging) CancelDrag();
+        }
     }
 
     public void PlayDealAnimation(Vector3 targetPosition, System.Action onComplete, bool isNextCard = false)
@@ -147,6 +240,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     {
         if (IsNextCard) return;
         if (_isDragging) return;
+        if (!_isAffordable) return;
 
         _rectTransform.DOAnchorPos(_originPosition + new Vector3(0, Screen.height * 0.025f, 0), 0.2f); // B3: 悬停上移改为屏幕高度比例
     }
@@ -161,7 +255,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        if (IsNextCard || (_gameLoop != null && _gameLoop.IsPaused))
+        if (IsNextCard || !_isAffordable || (_gameLoop != null && _gameLoop.IsPaused))
         {
             eventData.pointerDrag = null;
             return;
@@ -243,6 +337,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     private void OnDisable()
     {
+        if (_goldWallet != null) _goldWallet.OnGoldChanged -= OnGoldChanged;
         if (_isDragging) _dropHandler?.OnCardDragCancel(this);
         _rectTransform?.DOKill();
     }

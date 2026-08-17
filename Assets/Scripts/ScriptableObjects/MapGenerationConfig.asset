@@ -34,6 +34,12 @@ MonoBehaviour:
   - {fileID: 2100000, guid: f8e590430e4af3542a45e7eaa017cd4b, type: 2}
   - {fileID: 2100000, guid: 9c4b6d3952de6594cb92614744a08616, type: 2}
   - {fileID: 2100000, guid: 68a655e9895fc74458cf1ab29e06acea, type: 2}
+  showHexGrid: 1
+  gridMaterial: {fileID: 0}
+  gridColor: {r: 0.3018868, g: 0.3018868, b: 0.3018868, a: 1}
+  gridAlpha: 0.5
+  gridLineWidth: 0.1
+  gridSurfaceOffset: 0.15
   blendMask: {fileID: 2800000, guid: 13ee39f8cdf6dbe44a66c683f709d60d, type: 3}
   blendSmooth: 1.2
   blendContrast: 0.4
@@ -73,7 +79,7 @@ MonoBehaviour:
   fogEdgeAnimSpeed: 2
   mountainConfig: {fileID: 11400000, guid: 93c6c6aa29bc24946a1fde8cdd47afb9, type: 2}
   mountainHeightScale: 3
-  ArenaActivateTime: 10
+  ArenaActivateTime: 90
   ArenaFloorHeight: 4
   ArenaWallHeight: 4
   centralChestModel: {fileID: 8526569099747661489, guid: 685fc0a37029f7449809a785ca062099, type: 3}

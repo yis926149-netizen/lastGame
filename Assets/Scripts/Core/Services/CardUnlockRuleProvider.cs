@@ -9,8 +9,8 @@ public interface ICardUnlockRuleProvider
     /// <summary>当前可抽取的普通卡列表（单位卡 + 建筑卡）。</summary>
     IReadOnlyList<NormalCardConfigSO> GetUnlockedCards();
 
-    /// <summary>首张保底卡（移民卡），替代硬编码 return 0。</summary>
-    UnitConfigSO GetGuaranteedFirstCard();
+    /// <summary>首张保底卡（单位卡或建筑卡均可），替代硬编码 return 0。</summary>
+    NormalCardConfigSO GetGuaranteedFirstCard();
 }
 
 public class CardUnlockRuleProvider : ICardUnlockRuleProvider
@@ -28,5 +28,5 @@ public class CardUnlockRuleProvider : ICardUnlockRuleProvider
         return _pool.cards;
     }
 
-    public UnitConfigSO GetGuaranteedFirstCard() => _pool != null ? _pool.guaranteedFirstCard : null;
+    public NormalCardConfigSO GetGuaranteedFirstCard() => _pool != null ? _pool.guaranteedFirstCard : null;
 }

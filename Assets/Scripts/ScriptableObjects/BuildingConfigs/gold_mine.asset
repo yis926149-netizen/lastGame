@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: gold_mine
   m_EditorClassIdentifier: 
   cardSprite: {fileID: 21300000, guid: d3db6703e01dad44283659ddf0ec80a2, type: 3}
+  cardCost: 10
   buildingId: 6
   buildingType: 9
   buildingModel: {fileID: 303768924288924495, guid: 5d9aaf33e95f28d45b9f5f63a6eeca70, type: 3}
@@ -20,4 +21,4 @@ MonoBehaviour:
   baseHP: 100
   blocksMovement: 0
   producedUnit: {fileID: 0}
-  goldIncomePerSecond: 2
+  goldIncomePerSecond: 1.5

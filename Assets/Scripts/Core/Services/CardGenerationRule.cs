@@ -21,7 +21,7 @@ public static class CardGenerationRule
         if (giveFirstSettler && !hasGivenFirstSettler)
         {
             hasGivenFirstSettler = true;
-            UnitConfigSO first = unlockProvider.GetGuaranteedFirstCard();
+            NormalCardConfigSO first = unlockProvider.GetGuaranteedFirstCard();
             if (first != null) return first;
         }
 
@@ -29,7 +29,7 @@ public static class CardGenerationRule
         if (cards == null || cards.Count == 0)
         {
             // 空池回退保底（保持旧 return 0 的语义）
-            UnitConfigSO fallback = unlockProvider.GetGuaranteedFirstCard();
+            NormalCardConfigSO fallback = unlockProvider.GetGuaranteedFirstCard();
             if (fallback != null) return fallback;
             throw new InvalidOperationException("[CardGenerationRule] 普通卡池为空且无保底卡，无法生成卡牌。");
         }

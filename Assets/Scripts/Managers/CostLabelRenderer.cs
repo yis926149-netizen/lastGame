@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using DG.Tweening;
 using UnityEngine;
 using UnityEngine.UI;
 using Zenject;
@@ -24,7 +23,6 @@ public class CostLabelRenderer : MonoBehaviour
 
     private readonly Dictionary<Vector3, GameObject> _activeLabels = new Dictionary<Vector3, GameObject>();
     private readonly Dictionary<Vector3, Vector3> _labelWorldPositions = new Dictionary<Vector3, Vector3>();
-    private readonly Dictionary<GameObject, Vector3> _labelBaseScales = new Dictionary<GameObject, Vector3>();
     private readonly Stack<GameObject> _pool = new Stack<GameObject>();
 
     private ILogisticsService _logisticsService;
@@ -228,21 +226,6 @@ public class CostLabelRenderer : MonoBehaviour
                     _explorationService.TryExplore(capturedCell, 0);
                     RefreshLabels();
                 });
-
-                var t = label.transform;
-                t.DOKill();
-                if (!_labelBaseScales.TryGetValue(label, out var baseScale))
-                {
-                    baseScale = t.localScale;
-                    _labelBaseScales[label] = baseScale;
-                }
-                t.DOScale(baseScale * 1.12f, 0.6f).SetLoops(-1, LoopType.Yoyo).SetEase(Ease.InOutSine);
-            }
-            else
-            {
-                label.transform.DOKill();
-                if (_labelBaseScales.TryGetValue(label, out var baseScale))
-                    label.transform.localScale = baseScale;
             }
         }
 
@@ -255,10 +238,6 @@ public class CostLabelRenderer : MonoBehaviour
             {
                 var btn = label.GetComponent<Button>();
                 if (btn != null) btn.onClick.RemoveAllListeners();
-                label.transform.DOKill();
-                if (_labelBaseScales.TryGetValue(label, out var storedScale))
-                    label.transform.localScale = storedScale;
-                _labelBaseScales.Remove(label);
                 label.SetActive(false);
                 _pool.Push(label);
                 _activeLabels.Remove(coord);

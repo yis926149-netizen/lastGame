@@ -12,6 +12,9 @@ public class GoldIncomeService : ITickable
 
     public float IncomeInterval { get; set; } = 1f;
 
+    /// <summary>AI 专属额外金币收入（每结算周期）。固定值、不参与天赋倍率放大，用于平滑增强 AI 竞争力。</summary>
+    public int AIIncomeBonusPerTick { get; set; } = 6;
+
     public GoldIncomeService(
         GoldWallet wallet,
         IFactionBuffService factionBuff,
@@ -58,6 +61,7 @@ public class GoldIncomeService : ITickable
             : 1f;
 
         return UnityEngine.Mathf.RoundToInt(
-            (_wallet.PassiveIncomePerTick + mineBonus + buildingMineIncome) * multiplier);
+            (_wallet.PassiveIncomePerTick + mineBonus + buildingMineIncome) * multiplier)
+            + (factionId == 1 ? AIIncomeBonusPerTick : 0);
     }
 }

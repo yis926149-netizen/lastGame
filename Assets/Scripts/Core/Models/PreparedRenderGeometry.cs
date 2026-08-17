@@ -69,3 +69,10 @@ internal sealed class WaterGeometry
     public Vector2[] UVs;
     public int[][] Indices;
 }
+
+internal sealed class GridGeometry
+{
+    public Vector3[] Vertices;
+    public Vector2[] UVs;
+    public int[] Indices;
+}

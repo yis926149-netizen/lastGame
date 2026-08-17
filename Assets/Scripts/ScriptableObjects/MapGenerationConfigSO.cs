@@ -59,6 +59,23 @@ public class MapGenerationConfigSO : ScriptableObject
     [Tooltip("地形材质数组，索引顺序：[0]=高地, [1]=平地, [2]=水域")]
     public Material[] mapMaterial;
 
+    [Header("六边形网格覆盖层")]
+    [Tooltip("是否显示规则六边形网格覆盖层")]
+    public bool showHexGrid = true;
+    [Tooltip("可选的网格覆盖材质；为空时运行时使用 Custom/HexGridOverlay")]
+    public Material gridMaterial;
+    [Tooltip("网格线颜色；最终透明度还会乘 gridAlpha")]
+    public Color gridColor = new Color(0.08f, 0.1f, 0.12f, 1f);
+    [Range(0f, 1f)]
+    [Tooltip("网格线整体透明度")]
+    public float gridAlpha = 0.32f;
+    [Min(0.001f)]
+    [Tooltip("网格线世界空间宽度")]
+    public float gridLineWidth = 0.06f;
+    [Min(0f)]
+    [Tooltip("网格线相对采样地表沿世界 Y 的抬升量")]
+    public float gridSurfaceOffset = 0.05f;
+
     [Header("混合纹理")]
     [Tooltip("地形混合遮罩纹理")]
     public Texture2D blendMask;
