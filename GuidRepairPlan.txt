@@ -1,0 +1,249 @@
+.meta GUID 修复计划（只读）
+生成时间: 2026-08-17 16:59:04
+
+## 确定性反推原始 GUID（RESTORE）
+
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Events\MapVisualEvent.asset.meta
+      -> dc60f1366465c4d4a81b118cf83539be
+      (场景字段优先：_mapVisualEventSO)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\BuildingDatabase.asset.meta
+      -> 0bfebc4b346137d45a6303df32ba1987
+      (场景字段优先：_buildingDatabaseSO)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\BuildingDatabaseSO.cs.meta
+      -> 273566997b24a7e498371055c9aacd34
+      (E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\BuildingDatabase.asset 的 m_Script)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\MapGenerationConfig.asset.meta
+      -> 0a7ad5142d1fce34fb79cad5ae6024f5
+      (场景字段优先：_mapGenerationConfigSO)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\MapGenerationConfigSO.cs.meta
+      -> ae2adcfd643fb4846be1643aa911050f
+      (E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\MapGenerationConfig.asset 的 m_Script)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\MapVisualEventSO.cs.meta
+      -> c493d6ced72dd9e41a2046b205426f02
+      (E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Events\MapVisualEvent.asset 的 m_Script)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\TechTreeIcons.asset.meta
+      -> 0a2af90e3af58ab4c8fc9f3eed80dad0
+      (Installer 字段：_techTreeIconsSO)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\UIConfig.asset.meta
+      -> 2ba0eff9153800544abde9aefc750fe1
+      (场景字段优先：_uiConfigSO（Installer 默认引用另存为 fbcd8c5b0eb1b9941be62064303a8be2，将同步）)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\UIConfigSO.cs.meta
+      -> 161e26a6884c5c640b05b745d81db4ba
+      (E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\UIConfig.asset 的 m_Script)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\UnitDatabase.asset.meta
+      -> c3443cc91121f3c42a8c6728de881c31
+      (场景字段优先：_unitDatabaseSO)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\UnitDatabaseSO.cs.meta
+      -> 21cc55e54f0b9cd4abb7773b52b5c282
+      (E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects\UnitDatabase.asset 的 m_Script)
+
+## 多引用不一致，需人工裁决（CONFLICT）
+
+  （无）
+
+## 未被引用，重建新 GUID（REGENERATE）
+
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Tests.meta
+      -> ddb5cdc4281749fe88525c83db7da91d
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\_Quarantine.meta
+      -> 84dca20e9a6348b0a12d1054c61f7df9
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Auido\SoundEffect.meta
+      -> b5bd340b3b3c4aa68c216bba5109b06e
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Plugins\UniRx.meta
+      -> 9a3c6a8eff24429a9c710c91eed56132
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Events.meta
+      -> 95a55059938c47e7b888ac446753a2fb
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core.meta
+      -> 83e63f4d3d3f45d0b60d3ee4712145b9
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Infrastructure.meta
+      -> 905e68e94a33415bbe901d0d30fdcb77
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Scenes.meta
+      -> 485143ab218c4ceb918ff0084b706c9d
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\ScriptableObjects.meta
+      -> ce836f5dd26145c6b7ca3bb9f076b884
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\UI.meta
+      -> 68a06ce6f34948e2b56957f28548204a
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Tests\CardServiceTests.cs.meta
+      -> 7ab647208e97433da65eceee1f2eb76b
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Tests\HexMapServiceTests.cs.meta
+      -> 7e541d09f9a74e83a506f9cb21353609
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Tests\UnitMovementSystemTests.cs.meta
+      -> 26e5879973fe427f894417f394254816
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Tests\UnitRepositoryTests.cs.meta
+      -> 7df0c10f2ea44e798f584a77a189ec7e
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\_Quarantine\2026-03-18.meta
+      -> 0f93b55a42d84364bbf7f2ac7eccdb37
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Interfaces.meta
+      -> cd6a575deb6a4a7684db7b522dd83b2d
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Models.meta
+      -> 44617c85bd374bd7a94c373f96a93e98
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services.meta
+      -> bd031611d2b441c8ac90a3e2aad6545b
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Infrastructure\Installers.meta
+      -> 394ca453aac849bf96d8b0d3329bb656
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Interfaces\ICardView.cs.meta
+      -> 34eda6dc0702414fa8a0b977dd1bd7c0
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Interfaces\IInputService.cs.meta
+      -> f85e8db58d8f4ed189fba4d5ee36c757
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Interfaces\IMapDataService.cs.meta
+      -> a5564da887be423ea8267c215cfc9491
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Interfaces\IMeshGenerator.cs.meta
+      -> 7cb07cb7fce14c96879824b053d56dcf
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Interfaces\IUIManagerView.cs.meta
+      -> e64b1a9de77f46bb933fbdec313ac951
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Interfaces\IUnitMovement.cs.meta
+      -> 27623f54160748a5b6e857e8526d4ddf
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Interfaces\IUnitRepository.cs.meta
+      -> a95296dc83e64805a377e2bee58f78e4
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Interfaces\IUnitService.cs.meta
+      -> a27c2dbc1a5f4fc6a7cd7cd02be8a2c5
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Models\AIPlayerState.cs.meta
+      -> 80ec0134f94846d38c1b159cdcb210a2
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Models\UnitData.cs.meta
+      -> 6272c6ea93e34674840f1bc6b79fe4e7
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\CardService.cs.meta
+      -> ad66fa0f4a7448c895a1746da62a5f95
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\CardUnlockRuleProvider.cs.meta
+      -> e1e08558791f401792ceca7f665543cc
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\DataProviders.meta
+      -> c17e132fb6b548719e36c69a04c5393a
+      (文件夹 meta，无序列化引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\HexMapService.cs.meta
+      -> 6ffee012f837498482756dc32630c425
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\InputService.cs.meta
+      -> 96626ddfd4e3491eb54dca4b1a2cc065
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\PlayerInputHandler.cs.meta
+      -> bd2bbb07483649f595b2fe8cb34b14fd
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\UIManagerPresenter.cs.meta
+      -> 56831ee4d7d943818d0e1de483c83ab8
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\UnitMovementSystem.cs.meta
+      -> f758f974ac4d411a8f480b23f5484eae
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\UnitRepository.cs.meta
+      -> 2adc8d13caa146c586249a3cbf296117
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\UnitService.cs.meta
+      -> afdbc7edcdaf491ab4491a74c8f80a85
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\DataProviders\BuildingDataProvider.cs.meta
+      -> ee98a23051b84d33940d397472644883
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\DataProviders\UIConfigProvider.cs.meta
+      -> 1f4e962b4fbc45f7890971053b0843f8
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\DataProviders\UnitDataProvider.cs.meta
+      -> 35410a90ff2340119e6834860b2cc56f
+      (普通类/接口，非 MonoBehaviour/ScriptableObject)
+
+## 暂不自动处理（REVIEW）
+
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\ProjectContext.prefab.meta
+      (未知类型：.prefab)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\MainGame.asmdef.meta
+      (未知类型：.asmdef)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Scripts.csproj.meta
+      (未知类型：.csproj)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Tests\Tests.asmdef.meta
+      (未知类型：.asmdef)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\DOTween_1_2_765\DOTween\DOTween.dll.meta
+      (未知类型：.dll)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\DOTween_1_2_765\DOTween\DOTween.Main.asmdef.meta
+      (未知类型：.asmdef)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Plugins\LibTessDotNet\LibTessDotNet.asmdef.meta
+      (未知类型：.asmdef)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\BuildingCards\Altar.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\BuildingCards\AttackStatue.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\BuildingCards\DefenseStatue.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\BuildingCards\Technology&Cultural.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\Icon\DefenseIcon.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\Icon\HealthIcon.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\BeholderPBRDefault.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\Cactus.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\ChestMonsterPBRDefault.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\CityBuilder.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\FreeLich.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\Green.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\Grey.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\Grunt.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\MagicCircle 1.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\Melee_3.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\MushroomAngry.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\Ranged_3.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\UI\UnitCards\RPGHeroPBR.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Scripts\Core\Services\CardPresenter.cs.meta
+      (MonoBehaviour 脚本，需人工核对引用)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\unity-chan!\Unity-chan! Model\Scripts\UnityChan.asmdef.meta
+      (未知类型：.asmdef)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Import\Cardboard_Fat_Man\Textures\Cardboard_Fat_Man_Normal.tga.meta
+      (未知类型：.tga)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Import\Altar_Ruins_FREE\Art\Textures\Tree\Tree_Normal.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Import\Altar_Ruins_FREE\Art\Textures\Trim_Mossy\Trim_Sheet_Normal.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Import\Altar_Ruins_FREE\Art\Textures\Old\Altar\Altar_normal.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Import\Altar_Ruins_FREE\Art\Textures\Old\Arches\Arches_normal.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Import\Altar_Ruins_FREE\Art\Textures\Old\Entrance\Entrance_normal.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Import\Altar_Ruins_FREE\Art\Textures\Old\Ground\Ground_Normal.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Import\Altar_Ruins_FREE\Art\Textures\Old\Platform\Platform_normal.png.meta
+      (未知类型：.png)
+  E:/BaiduNetdiskDownload/毕设/My project - new/Assets\Resources\Import\Altar_Ruins_FREE\Art\Textures\Old\Tree\Tree_normal.png.meta
+      (未知类型：.png)
+
