@@ -8,7 +8,7 @@ public interface IBuildingDataProvider
     GameObject GetEnemyCityModel();
     GameObject GetBuildingPrefab(int buildingId);
 
-    /// <summary>建筑基础血量：优先取 Excel 生成的平衡库，缺失时回退 Legacy SO（过渡期）。</summary>
+    /// <summary>建筑基础血量：仅取 Excel 平衡库（阶段6 唯一主源）。</summary>
     float GetBuildingBaseHP(int buildingId);
 
     Sprite GetBuildingCards(int buildingId);
@@ -19,16 +19,16 @@ public interface IBuildingDataProvider
     /// <summary>按显式 ID 查找建筑配置；不存在返回 false。</summary>
     bool TryGetBuildingConfig(int buildingId, out BuildingConfigSO config);
 
-    /// <summary>建筑类型：优先取 Excel 数值。</summary>
+    /// <summary>建筑类型：仅取 Excel 数值。</summary>
     Enums.BulidingType GetBuildingType(int buildingId);
 
-    /// <summary>是否阻挡移动：优先取 Excel 数值。</summary>
+    /// <summary>是否阻挡移动：仅取 Excel 数值。</summary>
     bool GetBuildingBlocksMovement(int buildingId);
 
-    /// <summary>建筑卡费：优先取 Excel 数值。</summary>
+    /// <summary>建筑卡费：仅取 Excel 数值。</summary>
     int GetBuildingCardCost(int buildingId);
 
-    /// <summary>金矿每秒收入：优先取 Excel 数值。</summary>
+    /// <summary>金矿每秒收入：仅取 Excel 数值。</summary>
     float GetBuildingGoldIncomePerSecond(int buildingId);
 }
 
@@ -67,42 +67,34 @@ public class BuildingDataProvider : IBuildingDataProvider
         return config != null;
     }
 
-    // —— 数值：优先 Excel 平衡库，缺失回退 Legacy ——
+    // —— 数值：仅 Excel 平衡库（阶段6 唯一主源）——
 
-    public float GetBuildingBaseHP(int buildingId)
+    private BuildingBalanceDatabaseSO RequireBalance()
     {
-        if (_balance != null && _balance.TryGetByLegacyId(buildingId, out var b))
-            return b.hp;
-        return GetBuildingConfig(buildingId).baseHP; // 过渡期回退
+        if (_balance == null)
+            throw new InvalidOperationException(
+                "[BuildingDataProvider] Excel 建筑平衡库未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 BuildingBalanceDatabaseSO。");
+        return _balance;
     }
 
-    public Enums.BulidingType GetBuildingType(int buildingId)
+    private BuildingBalanceData RequireBalanceData(int buildingId)
     {
-        if (_balance != null && _balance.TryGetByLegacyId(buildingId, out var b))
-            return ParseBuildingType(b.buildingType);
-        return GetBuildingConfig(buildingId).buildingType; // 过渡期回退
+        if (!RequireBalance().TryGetByLegacyId(buildingId, out var b))
+            throw new InvalidOperationException(
+                $"[BuildingDataProvider] 建筑 ID {buildingId} 未在 Excel 建筑平衡库命中，无法读取数值。");
+        return b;
     }
 
-    public bool GetBuildingBlocksMovement(int buildingId)
-    {
-        if (_balance != null && _balance.TryGetByLegacyId(buildingId, out var b))
-            return b.blocksMovement;
-        return GetBuildingConfig(buildingId).blocksMovement; // 过渡期回退
-    }
+    public float GetBuildingBaseHP(int buildingId) => RequireBalanceData(buildingId).hp;
 
-    public int GetBuildingCardCost(int buildingId)
-    {
-        if (_balance != null && _balance.TryGetByLegacyId(buildingId, out var b))
-            return b.cardCost;
-        return GetBuildingConfig(buildingId).cardCost; // 过渡期回退
-    }
+    public Enums.BulidingType GetBuildingType(int buildingId) =>
+        ParseBuildingType(RequireBalanceData(buildingId).buildingType);
 
-    public float GetBuildingGoldIncomePerSecond(int buildingId)
-    {
-        if (_balance != null && _balance.TryGetByLegacyId(buildingId, out var b))
-            return b.goldIncomePerSecond;
-        return GetBuildingConfig(buildingId).goldIncomePerSecond; // 过渡期回退
-    }
+    public bool GetBuildingBlocksMovement(int buildingId) => RequireBalanceData(buildingId).blocksMovement;
+
+    public int GetBuildingCardCost(int buildingId) => RequireBalanceData(buildingId).cardCost;
+
+    public float GetBuildingGoldIncomePerSecond(int buildingId) => RequireBalanceData(buildingId).goldIncomePerSecond;
 
     private static Enums.BulidingType ParseBuildingType(string s)
     {

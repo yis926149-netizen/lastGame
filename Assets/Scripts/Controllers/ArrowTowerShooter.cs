@@ -11,20 +11,12 @@ public class ArrowTowerShooter : MonoBehaviour
     [Inject] private IUnitRepository _unitRepository;
     [Inject] private UnitRemovalService _unitRemovalService;
 
-    [SerializeField, Tooltip("箭塔攻击范围（格）")]
-    private int _attackRange = 2;
-
-    [SerializeField, Tooltip("两次射击之间的间隔时间（秒）")]
-    private float _attackInterval = 1f;
-
-    [SerializeField, Tooltip("每次射击对目标造成的伤害值")]
-    private float _damage = 15f;
-
-    [SerializeField, Tooltip("箭矢飞行路径的抛物线高度")]
-    private float _arcHeight = 2f;
-
-    [SerializeField, Tooltip("箭矢从发射到命中所用的飞行时间（秒）")]
-    private float _arrowFlightDuration = 0.3f;
+    // 【Excel 数值化】箭塔射程/间隔/伤害/弹道/飞行时长迁移至 CoreGameplayConfigProvider（旧 Inspector 字段已删除）。
+    private int _attackRange => CoreGameplayConfigProvider.ArrowTowerRange;
+    private float _attackInterval => CoreGameplayConfigProvider.ArrowTowerAttackInterval;
+    private float _damage => CoreGameplayConfigProvider.ArrowTowerDamage;
+    private float _arcHeight => CoreGameplayConfigProvider.ArrowTowerArcHeight;
+    private float _arrowFlightDuration => CoreGameplayConfigProvider.ArrowTowerFlightDuration;
 
     [SerializeField, Tooltip("箭矢预制体，射击时实例化并飞向目标")]
     private GameObject _arrowPrefab;

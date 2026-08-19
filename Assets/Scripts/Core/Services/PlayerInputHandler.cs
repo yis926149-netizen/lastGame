@@ -27,6 +27,8 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     private readonly ILogisticsService _logisticsService;
 
     private bool _isDraggingCard;
+    private CardData _draggingCardData;
+    private ICardDropHandler _draggingDropHandler;
     private HexCellData _lastDraggingHighlightCell;
     [Inject] private HexHighlightRenderer _hexHighlightRenderer;
 
@@ -67,7 +69,16 @@ public class PlayerInputHandler : ITickable, System.IDisposable
             return;
         }
 
-        if (_input.GetMouseButtonDown(0) && IsMouseOverCard()) _isDraggingCard = true;
+        if (_input.GetMouseButtonDown(0))
+        {
+            CardController controller = GetCardUnderMouse();
+            if (controller != null && controller.DropHandler != null)
+            {
+                _isDraggingCard = true;
+                _draggingCardData = controller.Data;
+                _draggingDropHandler = controller.DropHandler;
+            }
+        }
         if (_input.GetMouseButtonUp(0))
             CancelCardDragging();
         if (_isDraggingCard) HighlightGridOnMouseHover();
@@ -76,6 +87,8 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     public void ClearCardDragHighlight()
     {
         _isDraggingCard = false;
+        _draggingCardData = null;
+        _draggingDropHandler = null;
         _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
         _lastDraggingHighlightCell = null;
     }
@@ -89,9 +102,7 @@ public class PlayerInputHandler : ITickable, System.IDisposable
             var cell = _mapData.GetCellByWorldPosition(hit.point);
             if (cell != null && cell != _lastDraggingHighlightCell)
             {
-                // 【程序化山脉-阶段6.5】放置预览资格 = CanSpawnUnitOnCell（决策 ①）：
-                // 山格/水域不显示部署预览；Renderer 门禁只作兜底，调用方不再把山格计入可用目标。
-                if (cell.IsExplored && MountainCellRule.CanSpawnUnitOnCell(cell))
+                if (CanHighlightCellForCard(cell))
                 {
                     _hexHighlightRenderer.SetHighlightedCells(HexHighlightChannel.CardPlacement, new[] { cell }, Color.yellow);
                     _lastDraggingHighlightCell = cell;
@@ -108,6 +119,17 @@ public class PlayerInputHandler : ITickable, System.IDisposable
             _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
             _lastDraggingHighlightCell = null;
         }
+    }
+
+    /// <summary>
+    /// 放置预览资格 = 该卡牌能否部署到该格（与确认路径共用同一规则）：
+    /// 普通卡 → CardPresenter.CanDeployTo（内部含地形/归属/后勤等，归属即隐含“已探索”）；
+    /// 战术卡 → TacticalCardPresenter.CanDeployTo（任意有效地图格均可）。
+    /// </summary>
+    private bool CanHighlightCellForCard(HexCellData cell)
+    {
+        if (cell == null || _draggingDropHandler == null) return false;
+        return _draggingDropHandler.CanDeployTo(_draggingCardData, cell);
     }
 
     // ---------- 空桩（外部调用点保留引用，不删调用方）----------
@@ -160,12 +182,12 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         return false;
     }
 
-    private bool IsMouseOverCard()
+    private CardController GetCardUnderMouse()
     {
-        if (!_input.IsPointerOverUI(_targetUICanvas)) return false;
+        if (!_input.IsPointerOverUI(_targetUICanvas)) return null;
 
         var eventSystem = UnityEngine.EventSystems.EventSystem.current;
-        if (eventSystem == null) return false;
+        if (eventSystem == null) return null;
 
         var pointerData = new UnityEngine.EventSystems.PointerEventData(eventSystem)
         {
@@ -173,7 +195,12 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         };
         var results = new List<UnityEngine.EventSystems.RaycastResult>();
         eventSystem.RaycastAll(pointerData, results);
-        return results.Any(result => result.gameObject.GetComponentInParent<CardController>() != null);
+        foreach (var result in results)
+        {
+            CardController controller = result.gameObject.GetComponentInParent<CardController>();
+            if (controller != null) return controller;
+        }
+        return null;
     }
 
     public void Dispose()

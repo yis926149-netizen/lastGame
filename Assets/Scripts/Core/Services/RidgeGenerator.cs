@@ -42,10 +42,10 @@ public static class RidgeGenerator
 
         // 【调试对照】勾选 debugSingleCellAndStraightRidge 后绕过正常生成规律
         // （ridgeCount/起点禁区/评分行走均不生效），正常生成代码路径保留不删。
-        if (config.debugSingleCellAndStraightRidge)
+        if (MountainConfigProvider.DebugSingleCellAndStraightRidge)
             return GenerateDebugComparison(config, cells, neighborsOf, random, heightScale);
 
-        if (config.ridgeCount <= 0)
+        if (MountainConfigProvider.RidgeCount <= 0)
             return new List<MountainRidgeData>();
 
         float cellDist = ComputeCellDistance(cells, neighborsOf);
@@ -57,9 +57,9 @@ public static class RidgeGenerator
         var blocked = new HashSet<HexCellData>();
         var results = new List<MountainRidgeData>();
 
-        int maxAttempts = config.ridgeCount * 200 + 500;
+        int maxAttempts = MountainConfigProvider.RidgeCount * 200 + 500;
         int nextRidgeId = 1;
-        for (int attempt = 0; attempt < maxAttempts && results.Count < config.ridgeCount; attempt++)
+        for (int attempt = 0; attempt < maxAttempts && results.Count < MountainConfigProvider.RidgeCount; attempt++)
         {
             HexCellData start = PickStart(config, cells, random, blocked, occupied);
             if (start == null) continue;
@@ -72,7 +72,7 @@ public static class RidgeGenerator
                 occupied.Add(cell);
             WidenMountain(config, ridge, path, cells, neighborsOf, occupied, cellDist);
 
-            int blockRadius = Mathf.Max(0, config.ridgeMinSpacing - 1);
+            int blockRadius = Mathf.Max(0, MountainConfigProvider.RidgeMinSpacing - 1);
             foreach (HexCellData cell in occupied)
                 MarkBlocked(blocked, cell, blockRadius, neighborsOf);
 
@@ -110,7 +110,7 @@ public static class RidgeGenerator
     private static List<HexCellData> WalkRidge(MountainConfigSO config, HexCellData start,
         Func<HexCellData, List<HexCellData>> neighborsOf, System.Random random, HashSet<HexCellData> occupied)
     {
-        int targetLength = random.Next(config.minRidgeLength, config.maxRidgeLength + 1);
+        int targetLength = random.Next(MountainConfigProvider.MinRidgeLength, MountainConfigProvider.MaxRidgeLength + 1);
         var path = new List<HexCellData> { start };
         var visited = new HashSet<HexCellData> { start };
 
@@ -130,7 +130,7 @@ public static class RidgeGenerator
             current = next;
         }
 
-        return path.Count >= config.minRidgeLength ? path : null;
+        return path.Count >= MountainConfigProvider.MinRidgeLength ? path : null;
     }
 
     /// <summary>收集可延伸方向：禁回访（决策 ⑰）、不与其他山脉交叉、不涉水、跳过永久清除格。</summary>
@@ -172,13 +172,13 @@ public static class RidgeGenerator
             minH = Mathf.Min(minH, c.Cell.Height);
             maxH = Mathf.Max(maxH, c.Cell.Height);
         }
-        if (maxH - minH < config.flatHeightThreshold)
+        if (maxH - minH < MountainConfigProvider.FlatHeightThreshold)
         {
             float flatTotal = 0f;
             foreach (RidgeCandidate c in candidates)
             {
                 int turn = prevDir == Enums.HexDirection.None ? 0 : TurnAmount(prevDir, c.Direction);
-                c.Weight = ComputeFlatWalkWeight(config.scoreTurnPenalty, turn);
+                c.Weight = ComputeFlatWalkWeight(MountainConfigProvider.ScoreTurnPenalty, turn);
                 flatTotal += c.Weight;
             }
             double rf = random.NextDouble() * flatTotal;
@@ -203,9 +203,9 @@ public static class RidgeGenerator
             int turn = prevDir == Enums.HexDirection.None ? 0 : TurnAmount(prevDir, c.Direction);
             float turnNorm = turn / 3f;
 
-            float raw = config.scoreHeightWeight * rankNorm
-                      + config.scoreDropWeight * crest
-                      - config.scoreTurnPenalty * turnNorm;
+            float raw = MountainConfigProvider.ScoreHeightWeight * rankNorm
+                      + MountainConfigProvider.ScoreDropWeight * crest
+                      - MountainConfigProvider.ScoreTurnPenalty * turnNorm;
             c.Weight = Mathf.Exp(raw);
         }
 
@@ -263,8 +263,8 @@ public static class RidgeGenerator
         // 决策 ㉔：H_max = clamp(baseH + k·(len − minLen), minH, maxH) × heightScale
         // （heightScale = 地图设置 SO 的全局高度缩放，2026-08-06；clamp 后缩放，允许突破 maxHeight）
         float hMax = Mathf.Clamp(
-            config.baseHeight + config.heightPerLength * (length - config.minRidgeLength),
-            config.minHeight, config.maxHeight) * Mathf.Max(0.01f, heightScale);
+            MountainConfigProvider.BaseHeight + MountainConfigProvider.HeightPerLength * (length - MountainConfigProvider.MinRidgeLength),
+            MountainConfigProvider.MinHeight, MountainConfigProvider.MaxHeight) * Mathf.Max(0.01f, heightScale);
         float innerRadius = cellDist * 0.5f;
 
         var ridge = new MountainRidgeData
@@ -272,16 +272,16 @@ public static class RidgeGenerator
             ridgeId = ridgeId,
             seed = random.Next(),
             length = length,
-            widthRadius = config.widthRadius,
-            gamma = config.gamma,
+            widthRadius = MountainConfigProvider.WidthRadius,
+            gamma = MountainConfigProvider.Gamma,
             hMax = hMax,
-            ridgeNoiseAmplitude = config.ridgeNoiseAmplitude,
-            cellNoiseScale = config.cellNoiseScale,
-            minVisibleHeight = config.minVisibleHeight,
-            maxSlope = config.maxSlopeRatio * cellDist,
-            xzPerturb = config.xzPerturbRatio * innerRadius,
-            peakEccentricMin = config.peakEccentricMinRatio * innerRadius,
-            peakEccentricMax = config.peakEccentricMaxRatio * innerRadius,
+            ridgeNoiseAmplitude = MountainConfigProvider.RidgeNoiseAmplitude,
+            cellNoiseScale = MountainConfigProvider.CellNoiseScale,
+            minVisibleHeight = MountainConfigProvider.MinVisibleHeight,
+            maxSlope = MountainConfigProvider.MaxSlopeRatio * cellDist,
+            xzPerturb = MountainConfigProvider.XzPerturbRatio * innerRadius,
+            peakEccentricMin = MountainConfigProvider.PeakEccentricMinRatio * innerRadius,
+            peakEccentricMax = MountainConfigProvider.PeakEccentricMaxRatio * innerRadius,
         };
 
         for (int i = 0; i < path.Count; i++)
@@ -316,7 +316,7 @@ public static class RidgeGenerator
         List<HexCellData> path, IReadOnlyList<HexCellData> cells,
         Func<HexCellData, List<HexCellData>> neighborsOf, HashSet<HexCellData> occupied, float cellDist)
     {
-        if (config.widthRadius <= 0f || path.Count < 2) return;
+        if (MountainConfigProvider.WidthRadius <= 0f || path.Count < 2) return;
 
         var poly = new Vector2[path.Count];
         for (int i = 0; i < path.Count; i++)
@@ -332,7 +332,7 @@ public static class RidgeGenerator
             float d = PointToPolylineDistance(
                 new Vector2(cell.CenterWorldCoordinate.x, cell.CenterWorldCoordinate.z), poly, out float arcLength);
             float dCells = d / cellDist;
-            if (dCells > config.widthRadius + 1e-4f) continue;
+            if (dCells > MountainConfigProvider.WidthRadius + 1e-4f) continue;
 
             cell.landForm = config.mountainLandForm;
             cell.mountainRidge = ridge;
@@ -497,7 +497,7 @@ public static class RidgeGenerator
         }
 
         // B：一条严格占 length 格的直脊线（不宽度化；与 A 保持距离，便于同图对照）
-        int length = Mathf.Max(2, config.debugStraightRidgeLength);
+        int length = Mathf.Max(2, MountainConfigProvider.DebugStraightRidgeLength);
         for (int attempt = 0; attempt < 200 && results.Count < 2; attempt++)
         {
             HexCellData start = PickDebugAnchor(cells, random, occupied, single, length + 3);

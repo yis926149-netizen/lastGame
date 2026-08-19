@@ -3,9 +3,9 @@ using GameConfig;
 
 //****************************************
 // 【公共建筑系统-决策#35】公共建筑数据提供者接口 + 实现
-// 【Excel 数值化】captureHp/defenseHp/subHexDirections（占格关系）优先由 Excel 数值库读取，
+// 【Excel 数值化 + 阶段6 唯一主源】captureHp/defenseHp/subHexDirections（占格关系）仅由 Excel 数值库读取，
 // prefab/markerIcon 等资源引用保留在手工资源 SO（PublicBuildingSO）。
-// Excel 未生成时回退 Legacy PublicBuildingSO 字段（双轨迁移期）。
+// Excel 未生成/未命中时抛异常，暴露配置缺失。
 //****************************************
 
 public interface IPublicBuildingDataProvider
@@ -21,7 +21,7 @@ public interface IPublicBuildingDataProvider
 
 public class PublicBuildingDataProvider : IPublicBuildingDataProvider
 {
-    private readonly PublicBuildingSO _database;                     // Legacy 资源（prefab/markerIcon）
+    private readonly PublicBuildingSO _database;                     // 资源（prefab/markerIcon）
     private readonly PublicBuildingBalanceDatabaseSO _balance;       // Excel 数值
 
     public PublicBuildingDataProvider(PublicBuildingSO database, PublicBuildingBalanceDatabaseSO balance = null)
@@ -51,41 +51,32 @@ public class PublicBuildingDataProvider : IPublicBuildingDataProvider
         return _database.buildings[buildingId].markerIcon;
     }
 
-    // —— 数值：优先 Excel，缺失回退 Legacy ——
+    // —— 数值：仅 Excel（阶段6 唯一主源）——
 
-    public float GetCaptureHp(int buildingId)
+    private PublicBuildingBalanceDatabaseSO RequireBalance()
     {
-        if (_balance != null && _balance.TryGetByLegacyId(buildingId, out var b))
-            return b.captureHp;
-        if (_database.buildings == null || buildingId < 0 || buildingId >= _database.buildings.Length)
-            return 100f;
-        return _database.buildings[buildingId].captureHp;
+        if (_balance == null)
+            throw new System.InvalidOperationException(
+                "[PublicBuilding] Excel 公共建筑平衡库未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 PublicBuildingBalanceDatabaseSO。");
+        return _balance;
     }
 
-    public float GetDefenseHp(int buildingId)
+    private PublicBuildingBalanceData RequireBalanceData(int buildingId)
     {
-        if (_balance != null && _balance.TryGetByLegacyId(buildingId, out var b))
-            return b.defenseHp;
-        if (_database.buildings == null || buildingId < 0 || buildingId >= _database.buildings.Length)
-            return 150f;
-        return _database.buildings[buildingId].defenseHp;
+        if (!RequireBalance().TryGetByLegacyId(buildingId, out var b))
+            throw new System.InvalidOperationException(
+                $"[PublicBuilding] 公共建筑 ID {buildingId} 未在 Excel 公共建筑平衡库命中，无法读取数值。");
+        return b;
     }
 
-    public Enums.HexDirection[] GetSubHexDirections(int buildingId)
-    {
-        if (_balance != null && _balance.TryGetByLegacyId(buildingId, out var b))
-            return ParseDirections(b.subHexDirections);
-        if (_database.buildings == null || buildingId < 0 || buildingId >= _database.buildings.Length)
-            return new Enums.HexDirection[] { Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE };
-        return _database.buildings[buildingId].subHexDirections;
-    }
+    public float GetCaptureHp(int buildingId) => RequireBalanceData(buildingId).captureHp;
 
-    public int GetBuildingCount()
-    {
-        if (_balance != null && _balance.EnabledBuildings.Count > 0)
-            return _balance.EnabledBuildings.Count;
-        return _database.buildings?.Length ?? 0;
-    }
+    public float GetDefenseHp(int buildingId) => RequireBalanceData(buildingId).defenseHp;
+
+    public Enums.HexDirection[] GetSubHexDirections(int buildingId) =>
+        ParseDirections(RequireBalanceData(buildingId).subHexDirections);
+
+    public int GetBuildingCount() => RequireBalance().EnabledBuildings.Count;
 
     private static Enums.HexDirection[] ParseDirections(string csv)
     {

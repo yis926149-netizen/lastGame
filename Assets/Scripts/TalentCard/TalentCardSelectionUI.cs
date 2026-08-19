@@ -37,11 +37,7 @@ public class TalentCardSelectionUI : MonoBehaviour
     [Tooltip("入场起始缩放")]
     [SerializeField] private float _entranceStartScale = 0.94f;
 
-    [Header("选中震动")]
-    [Tooltip("震动强度")]
-    [SerializeField] private float _screenShakeStrength = 0.15f;
-    [Tooltip("震动时长（秒）")]
-    [SerializeField] private float _screenShakeDuration = 0.3f;
+    // 【Excel 数值化】天赋卡选择震屏强度/时长迁移至 FeelConfigProvider（旧 Inspector 字段已删除）。
 
     private TalentCardTriggerAdapter _trigger;
     private GameLoop _gameLoop;
@@ -233,11 +229,11 @@ public class TalentCardSelectionUI : MonoBehaviour
                 if (_slots[i].NameText != null) _slots[i].NameText.text  = card.talentName;
                 if (_slots[i].DescText != null)
                 {
-                    // 描述：优先由 Excel 数值生成精确文案，缺失回退 Legacy 人工文案。
-                    var balance = _balance != null && _balance.TryGetTalent(card.talentId, out var b) ? b : null;
-                    _slots[i].DescText.text = balance != null
-                        ? TalentDescriptionFormatter.Format(balance)
-                        : card.description;
+                    // 描述：仅由 Excel 数值生成精确文案（阶段6 唯一主源，未命中抛异常）。
+                    if (_balance == null || !_balance.TryGetTalent(card.talentId, out var balance))
+                        throw new System.InvalidOperationException(
+                            $"[TalentCardUI] 天赋 {card.talentId} 未在 Excel 天赋数值库命中，无法生成描述。");
+                    _slots[i].DescText.text = TalentDescriptionFormatter.Format(balance);
                 }
             }
             else
@@ -319,7 +315,7 @@ public class TalentCardSelectionUI : MonoBehaviour
         }
 
         // 屏幕震动
-        _cameraController?.Shake(_screenShakeStrength, _screenShakeDuration);
+        _cameraController?.Shake(FeelConfigProvider.TalentScreenShakeStrength, FeelConfigProvider.TalentScreenShakeDuration);
 
         Debug.Log($"[TalentCardUI] Card clicked: {card.talentName} (id={card.talentId})");
 

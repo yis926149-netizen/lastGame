@@ -18,7 +18,7 @@ public class GameInstaller : MonoInstaller
     [SerializeField] private Canvas _targetUICanvas; // 拖拽操作的目标 Canvas
     [SerializeField] private TalentCardPoolSO _talentCardPoolSO; // 天赋卡池
     [SerializeField] private NormalCardPoolSO _normalCardPoolSO; // 普通卡池
-    [Header("Excel 生成的运行库（阶段2/3 接入；未生成时留空则回退 Legacy SO）")]
+    [Header("Excel 生成的运行库（阶段6 唯一主源；必须绑定，否则运行时抛异常）")]
     [SerializeField] private UnitBalanceDatabaseSO _unitBalanceSO;          // 单位数值库（Excel 生成）
     [SerializeField] private BuildingBalanceDatabaseSO _buildingBalanceSO;  // 建筑数值库（Excel 生成）
     [SerializeField] private NormalCardPoolDatabaseSO _cardPoolDatabaseSO;  // 普通卡池数值库（Excel 生成）
@@ -37,6 +37,9 @@ public class GameInstaller : MonoInstaller
     [SerializeField] private AIConfigDatabaseSO _aiConfigSO;                    // AI 配置（Excel 生成）
     [SerializeField] private BattleFormulaConfigDatabaseSO _battleFormulaConfigSO;  // 战斗公式（Excel 生成）
     [SerializeField] private MapGenConfigDatabaseSO _mapGenConfigSO;            // 地图生成参数（Excel 生成）
+    [SerializeField] private CoreGameplayConfigDatabaseSO _coreGameplayConfigSO;  // 核心玩法配置（Excel 生成）
+    [SerializeField] private FeelConfigDatabaseSO _feelConfigSO;              // 表现配置（Excel 生成）
+    [SerializeField] private MountainConfigDatabaseSO _mountainConfigSO;      // 山体配置（Excel 生成）
     [SerializeField] private TalentCardSelectionUI _talentCardSelectionUI; // 天赋卡选择 UI
     [SerializeField] private ExplorationRewardConfigSO _explorationRewardConfigSO; // 探索奖励配置
     [SerializeField] private TacticalCardDatabaseSO _tacticalCardDatabaseSO; // 战术牌数据库
@@ -53,8 +56,8 @@ public class GameInstaller : MonoInstaller
 
         // ��λ
 
-        // 【Excel 数值化（阶段2 接入）】数值运行库：字段为空（未生成）时跳过绑定，
-        // Provider 构造参数带默认值 null → 自动回退 Legacy SO（双轨迁移开关）。
+        // 【Excel 数值化（阶段6 唯一主源）】数值运行库：字段为空（未生成）时跳过绑定，
+        // Provider 读取数值时将抛异常，暴露配置缺失。
         if (_unitBalanceSO != null)
             Container.Bind<UnitBalanceDatabaseSO>().FromInstance(_unitBalanceSO).AsSingle();
         if (_buildingBalanceSO != null)
@@ -91,6 +94,12 @@ public class GameInstaller : MonoInstaller
             Container.Bind<BattleFormulaConfigDatabaseSO>().FromInstance(_battleFormulaConfigSO).AsSingle();
         if (_mapGenConfigSO != null)
             Container.Bind<MapGenConfigDatabaseSO>().FromInstance(_mapGenConfigSO).AsSingle();
+        if (_coreGameplayConfigSO != null)
+            Container.Bind<CoreGameplayConfigDatabaseSO>().FromInstance(_coreGameplayConfigSO).AsSingle();
+        if (_feelConfigSO != null)
+            Container.Bind<FeelConfigDatabaseSO>().FromInstance(_feelConfigSO).AsSingle();
+        if (_mountainConfigSO != null)
+            Container.Bind<MountainConfigDatabaseSO>().FromInstance(_mountainConfigSO).AsSingle();
 
         // 【Excel 数值化（阶段5）】经济/流程/AI/地图生成 提供者
         Container.Bind<EconomyConfigProvider>().AsSingle();
@@ -99,10 +108,15 @@ public class GameInstaller : MonoInstaller
         Container.Bind<MapGenConfigProvider>().AsSingle();
         // 战斗公式系数：静态注入（消费点分散且含静态/纯类，避免逐处 DI）
         BattleFormulaRule.Configure(_battleFormulaConfigSO);
+        // 核心玩法参数：静态注入（单位手感/兵营/箭塔/宝箱/手牌/公共建筑）
+        CoreGameplayConfigProvider.Configure(_coreGameplayConfigSO);
+        // 表现参数：静态注入（相机震动/迷雾刷新/卡牌暗淡/天赋震屏）
+        FeelConfigProvider.Configure(_feelConfigSO);
+        // 山体参数：静态注入（几何/材质数值走 Excel，资源引用仍在 _mapGenerationConfigSO.mountainConfig）
+        MountainConfigProvider.Configure(_mountainConfigSO);
 
-        // 迷雾过渡速度：静态注入（FogTransitionManager 由 ChunkMapRenderer new 出，非 DI 实例）
-        FogTransitionManager.Configure(_gameFlowConfigSO != null && _gameFlowConfigSO.Config != null
-            ? _gameFlowConfigSO.Config.fogTransitionSpeed : 0.5f);
+        // 迷雾过渡速度：静态注入（FogTransitionManager 由 ChunkMapRenderer new 出，非 DI 实例；阶段6 唯一主源）
+        FogTransitionManager.Configure(_gameFlowConfigSO.Config.fogTransitionSpeed);
 
         Container.Bind<UnitDatabaseSO>().FromInstance(_unitDatabaseSO).AsSingle();
 
@@ -139,7 +153,7 @@ public class GameInstaller : MonoInstaller
         // 【地图地貌配置化 + Excel 数值化】地貌数据库与提供者（生成权重表）
         Container.Bind<MapLandFormDatabaseSO>().FromInstance(_mapLandFormDatabaseSO).AsSingle();
         Container.Bind<MapLandFormProvider>().AsSingle();
-        // 地貌效果规则：静态注入 Excel 数值库（未生成时为 null，回退 Legacy）
+        // 地貌效果规则：静态注入 Excel 数值库（阶段6 唯一主源）
         LandFormEffectRule.Configure(_mapLandFormBalanceSO);
 
         // 【金矿提示图标】地貌提示浮标管理（复用公共建筑浮标视图；ITickable 轮询移除）
@@ -328,6 +342,7 @@ public class GameInstaller : MonoInstaller
 
         // 战术牌系统：具体类型 AsSingle 创建唯一实例（不绑定 ICardDropHandler，避免与 CardPresenter 冲突），
         // IInitializable 从该实例解析，ExplorationRewardSystem 注入同一实例。
+        Container.BindInterfacesAndSelfTo<BattleOrderBuffService>().AsSingle().NonLazy(); // 「战斗号令」临时增益（ITickable 计时，暂停冻结）
         Container.Bind<TacticalCardDatabaseSO>().FromInstance(_tacticalCardDatabaseSO).AsSingle();
         Container.Bind<TacticalCardPresenter>().AsSingle()
             .WithArguments(_tacticalCardAnchor1, _tacticalCardAnchor2,

@@ -1,0 +1,2 @@
+configId,ridgeCount,minRidgeLength,maxRidgeLength,widthRadius,ridgeMinSpacing,scoreHeightWeight,scoreDropWeight,scoreTurnPenalty,flatHeightThreshold,baseHeight,minHeight,maxHeight,heightPerLength,gamma,ridgeNoiseAmplitude,cellNoiseScale,minVisibleHeight,maxSlopeRatio,xzPerturbRatio,peakEccentricMinRatio,peakEccentricMaxRatio,debugSingleCellAndStraightRidge,debugStraightRidgeLength,triplanarWorldScale,triplanarBlendSharpness,roughness,metallic,shadowStrength
+mountain.main,0,5,12,1,3,1,1,1,1,1.2,0.8,2.5,0.12,1.2,0.4,0.3,0.15,0.8,0.15,0.05,0.2,false,5,1,4,0.9,0,1

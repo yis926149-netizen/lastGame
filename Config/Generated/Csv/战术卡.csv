@@ -1,3 +1,3 @@
 cardId,legacyId,displayName,description,enabled,effectType,healRatio,attackMultiplier,speedMultiplier,duration,initialQuantity
-tactical.battle_order,0,战斗号令,临时提升单位攻击与移速,false,BattleOrder,0,1.3,1.3,5,1
+tactical.battle_order,0,战斗号令,临时提升单位攻击与移速,true,BattleOrder,0,1.3,1.3,5,1
 tactical.repair,1,维修,群体回血,true,Repair,0.3,0,0,0,1

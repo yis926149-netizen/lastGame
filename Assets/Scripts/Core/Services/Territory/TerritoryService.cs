@@ -86,8 +86,8 @@ public sealed class LogisticsService : ILogisticsService
         _gameFlow = gameFlow;
     }
 
-    /// <summary>吞并重算递归深度上限。Excel 优先，缺失回退 3。</summary>
-    private int MaxAnnexationRecalcDepth => _gameFlow?.AnnexationRecalcDepth ?? 3;
+    /// <summary>吞并重算递归深度上限。Excel 唯一主源。</summary>
+    private int MaxAnnexationRecalcDepth => _gameFlow.AnnexationRecalcDepth;
 
     public void RegisterMainCity(int factionId, HexCellData rootCell)
     {

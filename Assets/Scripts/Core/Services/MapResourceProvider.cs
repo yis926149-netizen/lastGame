@@ -2,14 +2,14 @@ using System;
 using GameConfig;
 
 //****************************************
-//功能说明：地图资源提供者（对象化 + Excel 数值化）。
-//         生成权重/拾取效果/探索收割数值优先由 Excel（MapResourceBalanceDatabaseSO +
-//         ResourceGlobalConfigDatabaseSO）决定，通过 resourceId → 手工资源 SO（MapResourceSO）
-//         解析出模型/特效/音效等资源对象。Excel 未生成时回退 Legacy 手工 SO（双轨迁移期）。
+//功能说明：地图资源提供者（阶段6：Excel 唯一主源）。
+//         生成权重/拾取效果/探索收割数值仅由 Excel（MapResourceBalanceDatabaseSO +
+//         ResourceGlobalConfigDatabaseSO）读取；resourceId → 手工资源 SO（MapResourceSO）
+//         仅用于解析模型/特效/音效等资源对象。Excel 未生成/未命中时抛异常，暴露配置缺失。
 //****************************************
 public class MapResourceProvider
 {
-    private readonly MapResourceDatabaseSO _database;              // Legacy 资源库（模型/特效/音效）
+    private readonly MapResourceDatabaseSO _database;              // 手工资源库（模型/特效/音效）
     private readonly MapResourceBalanceDatabaseSO _balance;        // Excel 数值
     private readonly ResourceGlobalConfigDatabaseSO _global;       // Excel 全局参数
 
@@ -23,13 +23,27 @@ public class MapResourceProvider
         _global = global;
     }
 
-    /// <summary>不生成资源的权重（Excel 优先，缺失回退 Legacy）。</summary>
-    public int EmptySpawnWeight =>
-        _global?.Config?.emptySpawnWeight ?? _database?.emptySpawnWeight ?? 0;
+    private ResourceGlobalConfigData RequireGlobal()
+    {
+        if (_global?.Config == null)
+            throw new System.InvalidOperationException(
+                "[MapResource] Excel 资源全局配置未加载：请先运行 工具/游戏配置/导入并校验，并绑定 ResourceGlobalConfigDatabaseSO。");
+        return _global.Config;
+    }
 
-    /// <summary>探索任意地块的基础金币奖励（Excel 优先，缺失回退 Legacy）。</summary>
-    public int BaseExplorationGold =>
-        _global?.Config?.baseExplorationGold ?? _database?.baseExplorationGold ?? 0;
+    private MapResourceBalanceDatabaseSO RequireBalanceDb()
+    {
+        if (_balance == null)
+            throw new System.InvalidOperationException(
+                "[MapResource] Excel 资源数值库未加载：请先运行 工具/游戏配置/导入并校验，并绑定 MapResourceBalanceDatabaseSO。");
+        return _balance;
+    }
+
+    /// <summary>不生成资源的权重（Excel 唯一主源）。</summary>
+    public int EmptySpawnWeight => RequireGlobal().emptySpawnWeight;
+
+    /// <summary>探索任意地块的基础金币奖励（Excel 唯一主源）。</summary>
+    public int BaseExplorationGold => RequireGlobal().baseExplorationGold;
 
     /// <summary>按权重表掷点选择资源；掷中空白或数据库为空返回 null。</summary>
     public MapResourceSO RollResource(System.Random random)
@@ -48,24 +62,11 @@ public class MapResourceProvider
         if (remaining < EmptySpawnWeight) return null;
         remaining -= EmptySpawnWeight;
 
-        // Excel 数值优先
-        if (_balance != null && _balance.EnabledResources.Count > 0)
+        foreach (var b in RequireBalanceDb().EnabledResources)
         {
-            foreach (var b in _balance.EnabledResources)
-            {
-                if (b.spawnWeight <= 0) continue;
-                if (remaining < b.spawnWeight) return FindResource(b.resourceId);
-                remaining -= b.spawnWeight;
-            }
-        }
-        else if (_database != null && _database.resources != null)
-        {
-            foreach (var r in _database.resources)
-            {
-                if (r == null || r.spawnWeight <= 0) continue;
-                if (remaining < r.spawnWeight) return r;
-                remaining -= r.spawnWeight;
-            }
+            if (b.spawnWeight <= 0) continue;
+            if (remaining < b.spawnWeight) return FindResource(b.resourceId);
+            remaining -= b.spawnWeight;
         }
 
         return null;
@@ -83,58 +84,52 @@ public class MapResourceProvider
     /// <summary>按资源 SO 查 Excel 数值；未命中返回 null。</summary>
     public MapResourceBalanceData GetBalance(MapResourceSO resource)
     {
-        if (resource == null || _balance == null) return null;
-        return _balance.TryGetResource(resource.resourceId, out var b) ? b : null;
+        if (resource == null) return null;
+        return RequireBalanceDb().TryGetResource(resource.resourceId, out var b) ? b : null;
     }
 
-    /// <summary>拾取效果类型：Excel 优先，缺失回退 Legacy SO。</summary>
+    /// <summary>拾取效果类型（Excel 唯一主源；无资源返回 None，未命中抛异常）。</summary>
     public ResourcePickupEffectType GetPickupEffectType(MapResourceSO resource)
     {
-        var balance = GetBalance(resource);
-        if (balance != null) return ParseEffectType(balance.pickupEffectType);
-        return resource != null ? resource.pickupEffectType : ResourcePickupEffectType.None;
+        if (resource == null) return ResourcePickupEffectType.None;
+        return ParseEffectType(RequireBalance(resource).pickupEffectType);
     }
 
-    /// <summary>拾取效果参数：Excel 优先，缺失回退 Legacy SO。</summary>
+    /// <summary>拾取效果参数（Excel 唯一主源；无资源返回 default，未命中抛异常）。</summary>
     public ResourcePickupEffect GetPickupEffect(MapResourceSO resource)
     {
-        var balance = GetBalance(resource);
-        if (balance != null)
+        if (resource == null) return default;
+        var balance = RequireBalance(resource);
+        return new ResourcePickupEffect
         {
-            return new ResourcePickupEffect
-            {
-                attackBonus = balance.attackBonus,
-                healRatio = balance.healRatio,
-                defenseBonus = balance.defenseBonus,
-                goldAmount = balance.goldAmount,
-            };
-        }
-        return resource != null ? resource.pickupEffect : default;
+            attackBonus = balance.attackBonus,
+            healRatio = balance.healRatio,
+            defenseBonus = balance.defenseBonus,
+            goldAmount = balance.goldAmount,
+        };
     }
 
-    /// <summary>探索收割金币 = 基础奖励 + 资源加成（Excel 优先）。</summary>
+    /// <summary>探索收割金币 = 基础奖励 + 资源加成（Excel 唯一主源；无资源仅基础奖励）。</summary>
     public int ComputeExplorationReward(MapResourceSO resource)
     {
+        if (resource == null) return BaseExplorationGold;
+        return BaseExplorationGold + RequireBalance(resource).explorationGoldBonus;
+    }
+
+    private MapResourceBalanceData RequireBalance(MapResourceSO resource)
+    {
         var balance = GetBalance(resource);
-        int bonus = balance != null
-            ? balance.explorationGoldBonus
-            : (resource != null ? resource.explorationGoldBonus : 0);
-        return BaseExplorationGold + bonus;
+        if (balance == null)
+            throw new System.InvalidOperationException(
+                $"[MapResource] 资源 {resource?.resourceId ?? "(null)"} 未在 Excel 资源数值库命中，无法读取数值。");
+        return balance;
     }
 
     private int ComputeTotalWeight()
     {
         int total = EmptySpawnWeight;
-        if (_balance != null && _balance.EnabledResources.Count > 0)
-        {
-            foreach (var b in _balance.EnabledResources)
-                if (b.spawnWeight > 0) total += b.spawnWeight;
-        }
-        else if (_database != null && _database.resources != null)
-        {
-            foreach (var r in _database.resources)
-                if (r != null && r.spawnWeight > 0) total += r.spawnWeight;
-        }
+        foreach (var b in RequireBalanceDb().EnabledResources)
+            if (b.spawnWeight > 0) total += b.spawnWeight;
         return total;
     }
 

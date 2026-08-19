@@ -3,14 +3,13 @@ using System.Collections.Generic;
 using GameConfig;
 
 //****************************************
-//功能说明：探索奖励提供者（对象化 + Excel 数值化）。
-//         奖励类型权重、金币/单位数量档位、探索费用、奖励池关系优先由 Excel 决定；
+//功能说明：探索奖励提供者（阶段6：Excel 唯一主源）。
+//         奖励类型权重、金币/单位数量档位、探索费用、奖励池关系仅由 Excel 决定；
 //         奖励池的 configId（unit.*/tactical.*/building.*）经映射解析到手工资源 SO。
-//         Excel 未生成时回退 Legacy ExplorationRewardConfigSO 字段（双轨迁移期）。
+//         Excel 未生成/未命中时抛异常，暴露配置缺失。
 //****************************************
 public class ExplorationRewardProvider
 {
-    private readonly ExplorationRewardConfigSO _legacyConfig;  // Legacy 手工配置（回退）
     private readonly ExplorationRewardConfigDatabaseSO _config; // Excel 数值
     private readonly ExplorationRewardPoolDatabaseSO _pool;     // Excel 奖励池
     private readonly IUnitDataProvider _unitProvider;           // 按 legacyId 找 UnitConfigSO
@@ -20,7 +19,6 @@ public class ExplorationRewardProvider
     private readonly TacticalCardDatabaseSO _tacticalDatabase;  // TacticalCardSO.cardId（稳定 ID）
 
     public ExplorationRewardProvider(
-        ExplorationRewardConfigSO legacyConfig = null,
         ExplorationRewardConfigDatabaseSO config = null,
         ExplorationRewardPoolDatabaseSO pool = null,
         IUnitDataProvider unitProvider = null,
@@ -29,7 +27,6 @@ public class ExplorationRewardProvider
         BuildingBalanceDatabaseSO buildingBalance = null,
         TacticalCardDatabaseSO tacticalDatabase = null)
     {
-        _legacyConfig = legacyConfig;
         _config = config;
         _pool = pool;
         _unitProvider = unitProvider;
@@ -39,88 +36,86 @@ public class ExplorationRewardProvider
         _tacticalDatabase = tacticalDatabase;
     }
 
-    public ExplorationRewardConfigData Config => _config?.Config;
+    private ExplorationRewardConfigData RequireConfig()
+    {
+        if (_config?.Config == null)
+            throw new InvalidOperationException(
+                "[ExplorationReward] Excel 探索奖励配置未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 ExplorationRewardConfigDatabaseSO。");
+        return _config.Config;
+    }
 
     public ExplorationRewardConfigSO.ExplorationRewardType RollRewardType(Random random)
     {
-        var cfg = Config;
-        if (cfg != null)
-        {
-            int total = cfg.noneWeight + cfg.goldWeight + cfg.militaryWeight + cfg.tacticalWeight + cfg.buildingWeight;
-            if (total <= 0) return ExplorationRewardConfigSO.ExplorationRewardType.None;
+        var cfg = RequireConfig();
+        int total = cfg.noneWeight + cfg.goldWeight + cfg.militaryWeight + cfg.tacticalWeight + cfg.buildingWeight;
+        if (total <= 0) return ExplorationRewardConfigSO.ExplorationRewardType.None;
 
-            int roll = random.Next(0, total);
-            if (roll < cfg.noneWeight) return ExplorationRewardConfigSO.ExplorationRewardType.None;
-            roll -= cfg.noneWeight;
-            if (roll < cfg.goldWeight) return ExplorationRewardConfigSO.ExplorationRewardType.Gold;
-            roll -= cfg.goldWeight;
-            if (roll < cfg.militaryWeight) return ExplorationRewardConfigSO.ExplorationRewardType.MilitaryUnit;
-            roll -= cfg.militaryWeight;
-            if (roll < cfg.tacticalWeight) return ExplorationRewardConfigSO.ExplorationRewardType.TacticalCard;
-            return ExplorationRewardConfigSO.ExplorationRewardType.Building;
-        }
-
-        return _legacyConfig != null
-            ? _legacyConfig.RollRewardType(random)
-            : ExplorationRewardConfigSO.ExplorationRewardType.None;
+        int roll = random.Next(0, total);
+        if (roll < cfg.noneWeight) return ExplorationRewardConfigSO.ExplorationRewardType.None;
+        roll -= cfg.noneWeight;
+        if (roll < cfg.goldWeight) return ExplorationRewardConfigSO.ExplorationRewardType.Gold;
+        roll -= cfg.goldWeight;
+        if (roll < cfg.militaryWeight) return ExplorationRewardConfigSO.ExplorationRewardType.MilitaryUnit;
+        roll -= cfg.militaryWeight;
+        if (roll < cfg.tacticalWeight) return ExplorationRewardConfigSO.ExplorationRewardType.TacticalCard;
+        return ExplorationRewardConfigSO.ExplorationRewardType.Building;
     }
 
     public int RollGold(Random random)
     {
-        var cfg = Config;
-        if (cfg != null)
-        {
-            int[] tiers = ParseIntList(cfg.goldTiers);
-            if (tiers.Length > 0) return tiers[random.Next(0, tiers.Length)];
-            return 0;
-        }
-        return _legacyConfig != null ? _legacyConfig.RollGold(random) : 0;
+        int[] tiers = ParseIntList(RequireConfig().goldTiers);
+        if (tiers.Length > 0) return tiers[random.Next(0, tiers.Length)];
+        return 0;
     }
 
     public int RollUnitCount(Random random)
     {
-        var cfg = Config;
-        if (cfg != null)
-        {
-            int[] tiers = ParseIntList(cfg.unitCountTiers);
-            if (tiers.Length > 0) return Math.Max(0, tiers[random.Next(0, tiers.Length)]);
-            return 0;
-        }
-        return _legacyConfig != null ? _legacyConfig.RollUnitCount(random) : 0;
+        int[] tiers = ParseIntList(RequireConfig().unitCountTiers);
+        if (tiers.Length > 0) return Math.Max(0, tiers[random.Next(0, tiers.Length)]);
+        return 0;
     }
 
     public UnitConfigSO RollUnitConfig(Random random)
     {
         string configId = RollPoolEntry("MilitaryUnit", random);
-        if (!string.IsNullOrEmpty(configId)
-            && _unitBalance != null && _unitBalance.TryGetUnit(configId, out var ub)
-            && _unitProvider != null && _unitProvider.TryGetUnitConfig(ub.legacyId, out var unit))
-            return unit;
+        if (string.IsNullOrEmpty(configId)) return null;
 
-        return _legacyConfig != null ? _legacyConfig.RollUnitConfig(random) : null;
+        if (_unitBalance == null || !_unitBalance.TryGetUnit(configId, out var ub))
+            throw new InvalidOperationException(
+                $"[ExplorationReward] 奖励池 unit.{configId} 未在 Excel 单位平衡库命中。");
+        if (_unitProvider == null || !_unitProvider.TryGetUnitConfig(ub.legacyId, out var unit))
+            throw new InvalidOperationException(
+                $"[ExplorationReward] 奖励池 unit.{configId} 映射的 legacyId {ub.legacyId} 无对应 UnitConfigSO 资源。");
+        return unit;
     }
 
     public TacticalCardSO RollTacticalCard(Random random)
     {
         string configId = RollPoolEntry("TacticalCard", random);
-        if (!string.IsNullOrEmpty(configId) && _tacticalDatabase != null && _tacticalDatabase.cards != null)
-        {
-            foreach (var card in _tacticalDatabase.cards)
-                if (card != null && card.cardId == configId) return card;
-        }
+        if (string.IsNullOrEmpty(configId)) return null;
 
-        return _legacyConfig != null ? _legacyConfig.RollTacticalCard(random) : null;
+        if (_tacticalDatabase == null || _tacticalDatabase.cards == null)
+            throw new InvalidOperationException(
+                "[ExplorationReward] 战术卡资源库 TacticalCardDatabaseSO 未加载。");
+        foreach (var card in _tacticalDatabase.cards)
+            if (card != null && card.cardId == configId) return card;
+
+        throw new InvalidOperationException(
+            $"[ExplorationReward] 奖励池 tactical.{configId} 无对应 TacticalCardSO 资源。");
     }
 
     public BuildingConfigSO RollBuildingConfig(Random random)
     {
         string configId = RollPoolEntry("Building", random);
-        if (!string.IsNullOrEmpty(configId)
-            && _buildingBalance != null && _buildingBalance.TryGetBuilding(configId, out var bb)
-            && _buildingProvider != null && _buildingProvider.TryGetBuildingConfig(bb.legacyId, out var building))
-            return building;
+        if (string.IsNullOrEmpty(configId)) return null;
 
-        return _legacyConfig != null ? _legacyConfig.RollBuildingConfig(random) : null;
+        if (_buildingBalance == null || !_buildingBalance.TryGetBuilding(configId, out var bb))
+            throw new InvalidOperationException(
+                $"[ExplorationReward] 奖励池 building.{configId} 未在 Excel 建筑平衡库命中。");
+        if (_buildingProvider == null || !_buildingProvider.TryGetBuildingConfig(bb.legacyId, out var building))
+            throw new InvalidOperationException(
+                $"[ExplorationReward] 奖励池 building.{configId} 映射的 legacyId {bb.legacyId} 无对应 BuildingConfigSO 资源。");
+        return building;
     }
 
     /// <summary>地图生成时一次性固化奖励类型及其全部随机结果。</summary>
@@ -159,28 +154,25 @@ public class ExplorationRewardProvider
         return reward;
     }
 
-    /// <summary>按奖励类型返回探索费用（Excel 优先，缺失回退 Legacy）。</summary>
+    /// <summary>按奖励类型返回探索费用（Excel 唯一主源）。</summary>
     public int GetExplorationCost(ExplorationRewardConfigSO.ExplorationRewardType rewardType)
     {
-        var cfg = Config;
-        if (cfg != null)
+        var cfg = RequireConfig();
+        return rewardType switch
         {
-            return rewardType switch
-            {
-                ExplorationRewardConfigSO.ExplorationRewardType.Gold => cfg.costGold,
-                ExplorationRewardConfigSO.ExplorationRewardType.MilitaryUnit => cfg.costMilitary,
-                ExplorationRewardConfigSO.ExplorationRewardType.TacticalCard => cfg.costTactical,
-                ExplorationRewardConfigSO.ExplorationRewardType.Building => cfg.costBuilding,
-                _ => cfg.costNone,
-            };
-        }
-
-        return _legacyConfig != null ? _legacyConfig.GetExplorationCost(rewardType) : 0;
+            ExplorationRewardConfigSO.ExplorationRewardType.Gold => cfg.costGold,
+            ExplorationRewardConfigSO.ExplorationRewardType.MilitaryUnit => cfg.costMilitary,
+            ExplorationRewardConfigSO.ExplorationRewardType.TacticalCard => cfg.costTactical,
+            ExplorationRewardConfigSO.ExplorationRewardType.Building => cfg.costBuilding,
+            _ => cfg.costNone,
+        };
     }
 
     private string RollPoolEntry(string rewardType, Random random)
     {
-        if (_pool == null) return null;
+        if (_pool == null)
+            throw new InvalidOperationException(
+                "[ExplorationReward] Excel 奖励池未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 ExplorationRewardPoolDatabaseSO。");
 
         var candidates = new List<ExplorationRewardPoolEntry>();
         int totalWeight = 0;

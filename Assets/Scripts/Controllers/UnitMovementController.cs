@@ -27,9 +27,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     //与之对应的CharacterData - 在生产单位模型时外部设置的
     public CharacterData characterData;
 
-    [Header("移动设置")]
-    public float moveSpeed = 20.0f; // 移动速度（仅供动画或参考，实际移动由系统控制）
-    public float rotationSpeed = 5.0f; // 旋转速度
+    // 【Excel 数值化】移动/转向/攻击手感参数迁移至 CoreGameplayConfigProvider；
+    // 旧 Inspector 字段 moveSpeed/rotationSpeed 已删除。
 
     //移动力
     public float MaxMovementPoints;
@@ -343,7 +342,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             canvas.gameObject.SetActive(false);
         animator.SetBool("isDeath", true);
         _audioManager.PlaySFX("cartoon_trumpet_fail(5)");
-        Invoke(nameof(RemoveUnit), 2.2f);
+        Invoke(nameof(RemoveUnit), CoreGameplayConfigProvider.UnitDeathDestroyDelay);
     }
 
     private void RemoveUnit()
@@ -450,7 +449,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         {
             MoveToTargetVector(attackTargetPosition);
             // 到达目标附近
-            if (Vector3.Distance(transform.position, attackTargetPosition) < 1.5f)
+            if (Vector3.Distance(transform.position, attackTargetPosition) < CoreGameplayConfigProvider.AttackArrivalThreshold)
             {              
                 GoToAttackPosition = false;
                 CommenceAttack = true;
@@ -461,7 +460,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         if (ReturnToOriginalPosition)
         {
             MoveToTargetVector(attackerPosition);
-            if (Vector3.Distance(transform.position, attackerPosition) < 0.2f)
+            if (Vector3.Distance(transform.position, attackerPosition) < CoreGameplayConfigProvider.AttackReturnThreshold)
             {
                 transform.position = attackerPosition;
                 ReturnToOriginalPosition = false;
@@ -506,8 +505,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             PlayAttackSfx();
 
             // 延迟停止动画和启动返回
-            Invoke(nameof(StopAttackAnimation), 1.5f);
-            Invoke(nameof(SetReturnToOriginalPositionTrue), 1.5f);
+            Invoke(nameof(StopAttackAnimation), CoreGameplayConfigProvider.AttackAnimationDuration);
+            Invoke(nameof(SetReturnToOriginalPositionTrue), CoreGameplayConfigProvider.AttackAnimationDuration);
         }
 
         // ----- 4. 初始触发逻辑：移动结束或远程单位准备攻击 -----
@@ -710,11 +709,11 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             if (horizontalDir != Vector3.zero)
             {
                 Quaternion targetRot = Quaternion.LookRotation(horizontalDir);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * Time.deltaTime);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, CoreGameplayConfigProvider.UnitRotationSpeed * Time.deltaTime);
             }
 
             // 移动
-            Vector3 move = direction.normalized * moveSpeed * Time.deltaTime;
+            Vector3 move = direction.normalized * CoreGameplayConfigProvider.AttackDashSpeed * Time.deltaTime;
             if (move.magnitude > direction.magnitude)
                 transform.position = targetPosition;
             else

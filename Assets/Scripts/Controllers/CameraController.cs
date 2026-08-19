@@ -85,7 +85,7 @@ public class CameraController : MonoBehaviour, ITickable
     private float _shakeDuration;
     private float _shakeElapsed;
     private Vector3 _shakeOffset;
-    private const float ShakeFrequency = 50f; // 震动频率 Hz（更高 = 更细碎）
+    // 【Excel 数值化】相机震动频率迁移至 FeelConfigProvider（原 const ShakeFrequency = 50）。
 
     /// <summary>触发一次屏幕震动（叠加在平滑位移之上，不影响相机目标位置）。</summary>
     public void Shake(float strength, float duration)
@@ -491,7 +491,7 @@ public class CameraController : MonoBehaviour, ITickable
         // 衰减包络：随时间线性降至 0
         float falloff = _shakeStrength * (1f - _shakeElapsed / _shakeDuration);
         // 高频正弦波 + 少量随机扰动，保证视觉上是快速细碎抖动而非大幅漂移
-        float t = _shakeElapsed * ShakeFrequency;
+        float t = _shakeElapsed * FeelConfigProvider.CameraShakeFrequency;
         float x = Mathf.Sin(t * 1.0f) + Random.Range(-0.05f, 0.05f);
         float y = Mathf.Sin(t * 1.3f) + Random.Range(-0.05f, 0.05f);
         _shakeOffset = new Vector3(x * falloff, y * falloff, 0f);

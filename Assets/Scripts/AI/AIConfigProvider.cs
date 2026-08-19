@@ -1,34 +1,36 @@
 using GameConfig;
 
 //****************************************
-//功能说明：AI 配置提供者。
+//功能说明：AI 配置提供者（阶段6：Excel 唯一主源）。
 //         AI 出牌/探索节奏、全局操作间隔、出牌优先级与军事奖励溢出搜索环数
-//         优先由 Excel 读取，Excel 未生成时回退 Legacy 默认值（双轨迁移期，阶段6 删除回退）。
+//         仅由 Excel 读取；Excel 未生成/未绑定时抛异常，暴露配置缺失。
 //****************************************
 public class AIConfigProvider
 {
-    private readonly AIConfigDatabaseSO _database;   // Excel 数值（可选）
+    private readonly AIConfigDatabaseSO _database;
 
     public AIConfigProvider(AIConfigDatabaseSO database = null)
     {
         _database = database;
     }
 
-    public AIConfigData Config => _database?.Config;
+    public AIConfigData Config
+    {
+        get
+        {
+            if (_database?.Config == null)
+                throw new System.InvalidOperationException(
+                    "[AI] Excel AI 配置未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 AIConfigDatabaseSO。");
+            return _database.Config;
+        }
+    }
 
-    public float CardPlayInterval => Config?.cardPlayInterval ?? 1.5f;
-
-    public float ExploreInterval => Config?.exploreInterval ?? 1.5f;
-
-    public float GlobalActionMinInterval => Config?.globalActionMinInterval ?? 1f;
-
-    public int SettlerCardPriority => Config?.settlerCardPriority ?? 100;
-
-    public int TechnologyCardPriority => Config?.technologyCardPriority ?? 90;
-
-    public int UnitCardPriority => Config?.unitCardPriority ?? 70;
-
-    public int BuildingCardPriority => Config?.buildingCardPriority ?? 60;
-
-    public int MilitaryRewardOverflowRings => Config?.militaryRewardOverflowRings ?? 5;
+    public float CardPlayInterval => Config.cardPlayInterval;
+    public float ExploreInterval => Config.exploreInterval;
+    public float GlobalActionMinInterval => Config.globalActionMinInterval;
+    public int SettlerCardPriority => Config.settlerCardPriority;
+    public int TechnologyCardPriority => Config.technologyCardPriority;
+    public int UnitCardPriority => Config.unitCardPriority;
+    public int BuildingCardPriority => Config.buildingCardPriority;
+    public int MilitaryRewardOverflowRings => Config.militaryRewardOverflowRings;
 }

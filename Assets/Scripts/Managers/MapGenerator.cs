@@ -93,9 +93,9 @@ public class MapGenerator : MonoBehaviour
         float InnerRadius = _config.InnerRadius;
         float OuterRadius = _config.OuterRadius;
         TerrainGenerator.TerrainHeights terrainHeights = new TerrainGenerator.TerrainHeights(
-            _mapGenConfig?.PerlinFrequency ?? 0.05f,
-            _mapGenConfig?.PerlinOctaves ?? 3,
-            _mapGenConfig?.PerlinPersistence ?? 0.6f,
+            _mapGenConfig.PerlinFrequency,
+            _mapGenConfig.PerlinOctaves,
+            _mapGenConfig.PerlinPersistence,
             _config.minHeight, _config.maxHeight);
         int minLongestLength = _config.minLongestLength;
         int maxLongestLength = _config.maxLongestLength;

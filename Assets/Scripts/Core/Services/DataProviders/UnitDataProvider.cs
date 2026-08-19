@@ -9,7 +9,7 @@ public interface IUnitDataProvider
     /// <summary>敌方（AI）单位预制体；enemyUnitModel 留空时回退 unitModel。</summary>
     GameObject GetEnemyUnitPrefab(int unitId);
 
-    /// <summary>单位数值：优先取 Excel 生成的平衡库，缺失时回退 Legacy SO（过渡期）。</summary>
+    /// <summary>单位数值：仅取 Excel 平衡库（阶段6 唯一主源）。</summary>
     UnitData GetUnitData(int unitId);
 
     Sprite GetUnitIcon(int unitId);
@@ -22,10 +22,10 @@ public interface IUnitDataProvider
     /// <summary>按显式 ID 查找单位配置；不存在返回 false。</summary>
     bool TryGetUnitConfig(int unitId, out UnitConfigSO config);
 
-    /// <summary>单位策略类型：优先取 Excel 数值。</summary>
+    /// <summary>单位策略类型：仅取 Excel 数值。</summary>
     UnitStrategyType GetUnitStrategyType(int unitId);
 
-    /// <summary>单位卡费：优先取 Excel 数值。</summary>
+    /// <summary>单位卡费：仅取 Excel 数值。</summary>
     int GetUnitCardCost(int unitId);
 }
 
@@ -64,28 +64,30 @@ public class UnitDataProvider : IUnitDataProvider
         return config != null;
     }
 
-    // —— 数值：优先 Excel 平衡库，缺失回退 Legacy ——
+    // —— 数值：仅 Excel 平衡库（阶段6 唯一主源）——
 
-    public UnitData GetUnitData(int unitId)
+    private UnitBalanceDatabaseSO RequireBalance()
     {
-        if (_balance != null && _balance.TryGetByLegacyId(unitId, out var b))
-            return BuildUnitData(b);
-        return GetUnitConfig(unitId).unitData; // 过渡期回退
+        if (_balance == null)
+            throw new InvalidOperationException(
+                "[UnitDataProvider] Excel 单位平衡库未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 UnitBalanceDatabaseSO。");
+        return _balance;
     }
 
-    public UnitStrategyType GetUnitStrategyType(int unitId)
+    private UnitBalanceData RequireBalanceData(int unitId)
     {
-        if (_balance != null && _balance.TryGetByLegacyId(unitId, out var b))
-            return ParseStrategyType(b.strategyType);
-        return GetUnitConfig(unitId).strategyType; // 过渡期回退
+        if (!RequireBalance().TryGetByLegacyId(unitId, out var b))
+            throw new InvalidOperationException(
+                $"[UnitDataProvider] 单位 ID {unitId} 未在 Excel 单位平衡库命中，无法读取数值。");
+        return b;
     }
 
-    public int GetUnitCardCost(int unitId)
-    {
-        if (_balance != null && _balance.TryGetByLegacyId(unitId, out var b))
-            return b.cardCost;
-        return GetUnitConfig(unitId).cardCost; // 过渡期回退
-    }
+    public UnitData GetUnitData(int unitId) => BuildUnitData(RequireBalanceData(unitId));
+
+    public UnitStrategyType GetUnitStrategyType(int unitId) =>
+        ParseStrategyType(RequireBalanceData(unitId).strategyType);
+
+    public int GetUnitCardCost(int unitId) => RequireBalanceData(unitId).cardCost;
 
     private static UnitData BuildUnitData(UnitBalanceData b)
     {

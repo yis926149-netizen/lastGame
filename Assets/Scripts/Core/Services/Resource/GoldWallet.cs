@@ -16,17 +16,17 @@ public class GoldWallet : IPlayerResourceWallet
         _economy = economy;
     }
 
-    /// <summary>起始金币（双方一致）。Excel 优先，缺失回退 100。</summary>
-    public int StartingGold => _economy?.StartingGold ?? 100;
+    /// <summary>起始金币（双方一致）。Excel 唯一主源。</summary>
+    public int StartingGold => _economy.StartingGold;
 
-    /// <summary>每秒被动收入（双方一致）。Excel 优先，缺失回退 2。</summary>
-    public int PassiveIncomePerTick => _economy?.BaseIncomePerTick ?? 2;
+    /// <summary>每秒被动收入（双方一致）。Excel 唯一主源。</summary>
+    public int PassiveIncomePerTick => _economy.BaseIncomePerTick;
 
-    /// <summary>探索固定费用（奖励配置缺失/越界时的兜底）。Excel 优先，缺失回退 50。</summary>
-    public int ExplorationCost => _economy?.ExplorationCostFallback ?? 50;
+    /// <summary>探索固定费用（奖励配置缺失/越界时的兜底）。Excel 唯一主源。</summary>
+    public int ExplorationCost => _economy.ExplorationCostFallback;
 
-    /// <summary>出牌费用兜底（CardData 缺失时）。Excel 优先，缺失回退 10。</summary>
-    public int CardCost => _economy?.CardCostFallback ?? 10;
+    /// <summary>出牌费用兜底（CardData 缺失时）。Excel 唯一主源。</summary>
+    public int CardCost => _economy.CardCostFallback;
 
     /// <summary>玩家（Index 0）金币变动事件</summary>
     public event System.Action<int> OnGoldChanged;

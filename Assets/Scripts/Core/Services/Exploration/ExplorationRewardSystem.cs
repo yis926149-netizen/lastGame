@@ -185,7 +185,7 @@ public class ExplorationRewardSystem
     /// </summary>
     private HexCellData FindOverflowCell(HexCellData originCell)
     {
-        int maxRings = _aiConfig?.MilitaryRewardOverflowRings ?? 5;
+        int maxRings = _aiConfig.MilitaryRewardOverflowRings;
 
         var visited = new HashSet<Vector3> { originCell.HexCoordinate };
         var frontier = new List<HexCellData> { originCell };

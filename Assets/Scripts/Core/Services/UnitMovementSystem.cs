@@ -131,7 +131,8 @@ public class UnitMovementSystem : ITickable
         // 5. 提交移动任务
         var umc = unit as UnitMovementController;
         float baseMovementPoints = umc?.characterData?.unitData?.MovementPoints ?? 3f;
-        float computedSpeed = Mathf.Max(1f, baseMovementPoints * 10f);
+        float speedMultiplier = umc?.characterData?.moveSpeedMultiplier ?? 1f;
+        float computedSpeed = Mathf.Max(1f, baseMovementPoints * CoreGameplayConfigProvider.MovementSpeedPerPoint * speedMultiplier);
 
         var movingUnit = new MovingUnit
         {
@@ -493,7 +494,7 @@ public class UnitMovementSystem : ITickable
     private bool UpdateMovement(MovingUnit mu)
     {
         float moveSpeed = mu.MoveSpeed;
-        const float rotationSpeed = 5f;
+        float rotationSpeed = CoreGameplayConfigProvider.UnitRotationSpeed;
         Transform trans = mu.Unit.gameObject.transform;
 
         if (mu.CurrentPathIndex >= mu.Path.Count)

@@ -18,8 +18,8 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     [Inject(Optional = true)] private IMapRaycastService _mapRaycastService;
     [Inject] private GoldWallet _goldWallet;
 
-    /// <summary>金币不足时卡面压暗的透明度倍率。</summary>
-    private const float UnaffordableDim = 0.45f;
+    /// <summary>金币不足时卡面压暗的透明度倍率（已迁移至 FeelConfigProvider）。</summary>
+    // 【Excel 数值化】原 const UnaffordableDim = 0.45f 迁移至 FeelConfigProvider。
 
     /// <summary>当前是否买得起（金币 >= 卡牌费用）。战术卡（无金币约束）恒为 true。</summary>
     private bool _isAffordable = true;
@@ -29,6 +29,9 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     /// <summary>允许外部覆盖 drop handler（战术卡等非默认材质）。应在 Zenject 注入之后、首次拖拽之前调用。</summary>
     public void OverrideDropHandler(ICardDropHandler handler) => _dropHandler = handler;
+
+    /// <summary>当前 drop handler（普通卡 = CardPresenter，战术卡 = TacticalCardPresenter）。</summary>
+    public ICardDropHandler DropHandler => _dropHandler;
 
     /// <summary>设置拖拽代理（幽灵）：非空时 OnDragUpdate 移动/缩放代理而非本体。</summary>
     public void SetDragProxy(RectTransform proxy) => _dragProxy = proxy;
@@ -170,7 +173,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         {
             if (kv.Key == null) continue;
             Color c = kv.Value;
-            if (!affordable) c.a *= UnaffordableDim;
+            if (!affordable) c.a *= FeelConfigProvider.UnaffordableCardDim;
             kv.Key.color = c;
         }
 

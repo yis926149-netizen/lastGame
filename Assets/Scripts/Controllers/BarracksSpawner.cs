@@ -21,8 +21,9 @@ public class BarracksSpawner : MonoBehaviour
     [Inject] private PublicBuildingMarkerManager _publicBuildingMarkerManager;
     [InjectOptional] private AIEntityFactory _aiFactory;
 
-    [SerializeField] private float _spawnInterval = 15f;
-    [SerializeField] private int _spawnUnitID = 1;
+    // 【Excel 数值化】兵营生产间隔与兜底单位迁移至 CoreGameplayConfigProvider（旧 Inspector 字段已删除）。
+    private float _spawnInterval => CoreGameplayConfigProvider.BarracksSpawnInterval;
+    private int _spawnUnitID => CoreGameplayConfigProvider.BarracksFallbackUnitLegacyId;
     private UnitConfigSO _producedUnit;   // 由建筑配置注入（BuildingConfigSO.producedUnit），优先于 _spawnUnitID
     private float _timer;
     private bool _isPlayer;

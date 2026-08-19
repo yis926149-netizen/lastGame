@@ -511,6 +511,117 @@
         { "configId": "map_gen.main", "perlinFrequency": 0.05, "perlinOctaves": 3,
           "perlinPersistence": 0.6, "arenaRadius": 3, "arenaRiseDurationSeconds": 1.2 }
       ]
+    },
+    {
+      "sheetName": "核心玩法配置",
+      "key": "configId",
+      "description": "除 MapGenerationConfig.asset 外的核心玩法全局参数（单行）。收口单位手感、兵营/箭塔、中央宝箱、手牌/天赋与公共建筑生成硬编码。",
+      "columns": [
+        { "name": "configId", "type": "string", "required": true, "unique": true, "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID" },
+        { "name": "movementSpeedPerPoint", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "每点移动力换算的世界移动速度" },
+        { "name": "attackDashSpeed", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "近战攻击冲刺与返回速度" },
+        { "name": "unitRotationSpeed", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "单位移动和攻击转向速度" },
+        { "name": "attackArrivalThreshold", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "攻击冲刺到达目标的距离阈值" },
+        { "name": "attackReturnThreshold", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "攻击后返回原位的距离阈值" },
+        { "name": "attackAnimationDuration", "type": "float", "required": true, "min": 0, "note": "攻击动画持续时间（秒）" },
+        { "name": "unitDeathDestroyDelay", "type": "float", "required": true, "min": 0, "note": "单位死亡后销毁延迟（秒）" },
+        { "name": "buildingHealIntervalFallback", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "祭坛回血间隔缺失时的兜底秒数" },
+        { "name": "unitPathSearchThrottle", "type": "int", "required": true, "min": 1, "note": "单位寻路失败后的重试节流次数" },
+        { "name": "barracksSpawnInterval", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "兵营生产单位间隔（秒）" },
+        { "name": "barracksFallbackUnitLegacyId", "type": "int", "required": true, "min": 0, "note": "兵营未配置 producedUnit 时的旧单位ID兜底" },
+        { "name": "arrowTowerRange", "type": "int", "required": true, "min": 1, "note": "箭塔基础攻击范围（格）" },
+        { "name": "arrowTowerAttackInterval", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "箭塔攻击间隔（秒）" },
+        { "name": "arrowTowerDamage", "type": "float", "required": true, "min": 0, "note": "箭塔每次射击伤害" },
+        { "name": "arrowTowerArcHeight", "type": "float", "required": true, "min": 0, "note": "箭矢弹道抛物线高度" },
+        { "name": "arrowTowerFlightDuration", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "箭矢飞行与伤害结算延迟（秒）" },
+        { "name": "centralChestHp", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "竞技场中央宝箱生命值" },
+        { "name": "handCardLimit", "type": "int", "required": true, "min": 1, "note": "玩家与AI共享的手牌上限" },
+        { "name": "initialHandCardCount", "type": "int", "required": true, "min": 0, "note": "玩家与AI开局初始手牌数量" },
+        { "name": "tacticalCardSlotCount", "type": "int", "required": true, "min": 1, "note": "战术卡可用槽位数量" },
+        { "name": "talentOfferCount", "type": "int", "required": true, "min": 1, "note": "每次天赋选择展示的候选卡数量" },
+        { "name": "publicBuildingMaxCount", "type": "int", "required": true, "min": 0, "note": "每局公共建筑生成数量上限" },
+        { "name": "publicBuildingMinLandNeighbors", "type": "int", "required": true, "min": 0, "max": 6, "note": "公共建筑候选根格最少陆地邻居数" },
+        { "name": "publicBuildingArenaReserveExtraRings", "type": "int", "required": true, "min": 0, "note": "公共建筑避开竞技场预留区的额外环数" }
+      ],
+      "rules": [],
+      "seed": [
+        { "configId": "gameplay.main", "movementSpeedPerPoint": 10, "attackDashSpeed": 20,
+          "unitRotationSpeed": 5, "attackArrivalThreshold": 1.5, "attackReturnThreshold": 0.2,
+          "attackAnimationDuration": 1.5, "unitDeathDestroyDelay": 2.2,
+          "buildingHealIntervalFallback": 5, "unitPathSearchThrottle": 20,
+          "barracksSpawnInterval": 15, "barracksFallbackUnitLegacyId": 1,
+          "arrowTowerRange": 2, "arrowTowerAttackInterval": 1, "arrowTowerDamage": 15,
+          "arrowTowerArcHeight": 2, "arrowTowerFlightDuration": 0.3, "centralChestHp": 500,
+          "handCardLimit": 5, "initialHandCardCount": 5, "tacticalCardSlotCount": 2,
+          "talentOfferCount": 3, "publicBuildingMaxCount": 3,
+          "publicBuildingMinLandNeighbors": 2, "publicBuildingArenaReserveExtraRings": 1 }
+      ]
+    },
+    {
+      "sheetName": "表现配置",
+      "key": "configId",
+      "description": "相机/迷雾/卡牌/天赋选择等表现手感参数（单行）。阶段5⑥：收口相机震动、迷雾刷新、卡牌不可购买暗淡与天赋震屏硬编码。",
+      "columns": [
+        { "name": "configId", "type": "string", "required": true, "unique": true, "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID" },
+        { "name": "fogRefreshInterval", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "迷雾纹理刷新间隔（秒）" },
+        { "name": "cameraShakeFrequency", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "相机震动频率（Hz）" },
+        { "name": "unaffordableCardDim", "type": "float", "required": true, "min": 0, "max": 1, "note": "卡牌不可购买时的暗淡系数（0~1）" },
+        { "name": "talentScreenShakeStrength", "type": "float", "required": true, "min": 0, "note": "天赋卡选择震屏强度" },
+        { "name": "talentScreenShakeDuration", "type": "float", "required": true, "min": 0, "note": "天赋卡选择震屏时长（秒）" }
+      ],
+      "rules": [],
+      "seed": [
+        { "configId": "feel.main", "fogRefreshInterval": 0.05, "cameraShakeFrequency": 50,
+          "unaffordableCardDim": 0.45, "talentScreenShakeStrength": 0.15, "talentScreenShakeDuration": 0.3 }
+      ]
+    },
+    {
+      "sheetName": "山体配置",
+      "key": "configId",
+      "description": "程序化山脉生成几何/材质数值（单行）。资源引用（mountainLandForm/stableMaterial/rockTexture）与材质色阶（tierColorLow/Mid/High）保留在 MountainConfigSO 手工资产，不在此表。seed 采用资产实际值（ridgeCount=0 禁用山脉）。",
+      "columns": [
+        { "name": "configId", "type": "string", "required": true, "unique": true, "idPattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$", "note": "稳定ID" },
+        { "name": "ridgeCount", "type": "int", "required": true, "min": 0, "note": "期望山脉数量（0=不生成）" },
+        { "name": "minRidgeLength", "type": "int", "required": true, "min": 2, "note": "脊线最短长度（格）" },
+        { "name": "maxRidgeLength", "type": "int", "required": true, "min": 2, "note": "脊线最长长度（格）" },
+        { "name": "widthRadius", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "宽度化半径（格距）" },
+        { "name": "ridgeMinSpacing", "type": "int", "required": true, "min": 0, "note": "新脊线起点与已有山格最小距离" },
+        { "name": "scoreHeightWeight", "type": "float", "required": true, "note": "走向评分：高度权重" },
+        { "name": "scoreDropWeight", "type": "float", "required": true, "note": "走向评分：落差权重" },
+        { "name": "scoreTurnPenalty", "type": "float", "required": true, "note": "走向评分：转向惩罚权重" },
+        { "name": "flatHeightThreshold", "type": "float", "required": true, "min": 0, "note": "平坦区高度差阈值" },
+        { "name": "baseHeight", "type": "float", "required": true, "note": "脊线基准高度（世界单位）" },
+        { "name": "minHeight", "type": "float", "required": true, "note": "脊线高度下限（世界单位）" },
+        { "name": "maxHeight", "type": "float", "required": true, "note": "脊线高度上限（世界单位）" },
+        { "name": "heightPerLength", "type": "float", "required": true, "note": "高度随脊线长度增量（每格）" },
+        { "name": "gamma", "type": "float", "required": true, "note": "垂直脊线衰减指数" },
+        { "name": "ridgeNoiseAmplitude", "type": "float", "required": true, "min": 0, "max": 1, "note": "沿脊线起伏幅度" },
+        { "name": "cellNoiseScale", "type": "float", "required": true, "min": 0, "max": 1, "note": "每格噪声幅度" },
+        { "name": "minVisibleHeight", "type": "float", "required": true, "min": 0, "note": "最小可见隆起（世界单位）" },
+        { "name": "maxSlopeRatio", "type": "float", "required": true, "min": 0, "note": "最大坡度比" },
+        { "name": "xzPerturbRatio", "type": "float", "required": true, "min": 0, "max": 0.5, "note": "控制点 XZ 扰动比" },
+        { "name": "peakEccentricMinRatio", "type": "float", "required": true, "min": 0, "max": 0.5, "note": "主峰偏心量下限比" },
+        { "name": "peakEccentricMaxRatio", "type": "float", "required": true, "min": 0, "max": 0.5, "note": "主峰偏心量上限比" },
+        { "name": "debugSingleCellAndStraightRidge", "type": "bool", "required": true, "note": "调试：绕过正常生成" },
+        { "name": "debugStraightRidgeLength", "type": "int", "required": true, "min": 2, "note": "调试直脊线长度（格）" },
+        { "name": "triplanarWorldScale", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "Triplanar 世界缩放" },
+        { "name": "triplanarBlendSharpness", "type": "float", "required": true, "min": 1, "note": "Triplanar 权重锐度" },
+        { "name": "roughness", "type": "float", "required": true, "min": 0, "max": 1, "note": "表面粗糙度" },
+        { "name": "metallic", "type": "float", "required": true, "min": 0, "max": 1, "note": "金属度" },
+        { "name": "shadowStrength", "type": "float", "required": true, "min": 0, "max": 1, "note": "阴影强度" }
+      ],
+      "rules": [],
+      "seed": [
+        { "configId": "mountain.main", "ridgeCount": 0, "minRidgeLength": 5, "maxRidgeLength": 12,
+          "widthRadius": 1, "ridgeMinSpacing": 3, "scoreHeightWeight": 1, "scoreDropWeight": 1,
+          "scoreTurnPenalty": 1, "flatHeightThreshold": 1, "baseHeight": 1.2, "minHeight": 0.8,
+          "maxHeight": 2.5, "heightPerLength": 0.12, "gamma": 1.2, "ridgeNoiseAmplitude": 0.4,
+          "cellNoiseScale": 0.3, "minVisibleHeight": 0.15, "maxSlopeRatio": 0.8,
+          "xzPerturbRatio": 0.15, "peakEccentricMinRatio": 0.05, "peakEccentricMaxRatio": 0.2,
+          "debugSingleCellAndStraightRidge": false, "debugStraightRidgeLength": 5,
+          "triplanarWorldScale": 1, "triplanarBlendSharpness": 4, "roughness": 0.9,
+          "metallic": 0, "shadowStrength": 1 }
+      ]
     }
   ]
 }

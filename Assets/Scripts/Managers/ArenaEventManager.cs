@@ -22,8 +22,8 @@ public class ArenaEventManager : ITickable
     }
 
     public const string VisibilitySource = "Arena";
-    /// <summary>竞技场半径（格）。Excel 优先，缺失回退 3。</summary>
-    public int ArenaRadius => _mapGenConfig?.ArenaRadius ?? 3;
+    /// <summary>竞技场半径（格）。Excel 唯一主源。</summary>
+    public int ArenaRadius => _mapGenConfig.ArenaRadius;
 
     private readonly IMapDataService _mapDataService;
     private readonly MapGenerationConfigSO _config;
@@ -422,8 +422,8 @@ public class ArenaEventManager : ITickable
         public Enums.HexDirection DirectionB;
     }
 
-    /// <summary>阶段四：竞技场突起动画时长。Excel 优先，缺失回退 1.2s。</summary>
-    public float ArenaRiseDurationSeconds => _mapGenConfig?.ArenaRiseDurationSeconds ?? 1.2f;
+    /// <summary>阶段四：竞技场突起动画时长。Excel 唯一主源。</summary>
+    public float ArenaRiseDurationSeconds => _mapGenConfig.ArenaRiseDurationSeconds;
 
     // ── 宝箱 ─────────────────────────────────────────────────
 

@@ -1,25 +1,30 @@
 using GameConfig;
 
 /// <summary>
-/// 地图地貌效果规则（纯函数）。
+/// 地图地貌效果规则（纯函数，阶段6：Excel 唯一主源）。
 /// 【地图地貌配置化 + Excel 数值化】战斗与回血只按效果类型查询，不比较具体地貌 ID。
-/// 效果数值优先读 Excel（MapLandFormBalanceDatabaseSO，由 GameInstaller 启动时 Configure），
-/// 缺失回退 Legacy MapLandFormSO 字段（双轨迁移期）。
+/// 效果数值仅读 Excel（MapLandFormBalanceDatabaseSO，由 GameInstaller 启动时 Configure）；
+/// 地貌未在 Excel 命中时抛异常，暴露配置缺失。无地貌（landForm == null）时返回默认（0/false）。
 /// </summary>
 public static class LandFormEffectRule
 {
     private static MapLandFormBalanceDatabaseSO _balance;
 
-    /// <summary>由 GameInstaller 在绑定阶段配置 Excel 数值库（可选，未生成时为 null 回退 Legacy）。</summary>
+    /// <summary>由 GameInstaller 在绑定阶段配置 Excel 数值库。</summary>
     public static void Configure(MapLandFormBalanceDatabaseSO balance)
     {
         _balance = balance;
     }
 
-    private static MapLandFormBalanceData GetBalance(MapLandFormSO landForm)
+    private static MapLandFormBalanceData RequireBalance(MapLandFormSO landForm)
     {
-        if (landForm == null || _balance == null) return null;
-        return _balance.TryGetLandForm(landForm.landFormId, out var b) ? b : null;
+        if (_balance == null)
+            throw new System.InvalidOperationException(
+                "[LandFormEffect] Excel 地貌数值库未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 MapLandFormBalanceDatabaseSO。");
+        if (!_balance.TryGetLandForm(landForm.landFormId, out var b))
+            throw new System.InvalidOperationException(
+                $"[LandFormEffect] 地貌 {landForm.landFormId} 未在 Excel 地貌数值库命中，无法读取效果数值。");
+        return b;
     }
 
     /// <summary>
@@ -27,12 +32,9 @@ public static class LandFormEffectRule
     /// </summary>
     public static float GetDefenseBonus(MapLandFormSO landForm)
     {
-        var b = GetBalance(landForm);
-        if (b != null)
-            return b.effectType == "DefenseBonus" ? b.defenseBonus : 0f;
-        return landForm != null && landForm.effectType == LandFormEffectType.DefenseBonus
-            ? landForm.effect.defenseBonus
-            : 0f;
+        if (landForm == null) return 0f;
+        var b = RequireBalance(landForm);
+        return b.effectType == "DefenseBonus" ? b.defenseBonus : 0f;
     }
 
     /// <summary>
@@ -46,32 +48,21 @@ public static class LandFormEffectRule
         healRatio = 0f;
         healInterval = 0f;
 
-        var b = GetBalance(landForm);
-        if (b != null)
-        {
-            if (b.effectType != "PeriodicHeal") return false;
-            healRatio = b.healRatio;
-            healInterval = b.healInterval;
-            return healRatio > 0f && healInterval > 0f;
-        }
-
-        if (landForm == null || landForm.effectType != LandFormEffectType.PeriodicHeal)
-            return false;
-
-        healRatio = landForm.effect.healRatio;
-        healInterval = landForm.effect.healInterval;
+        if (landForm == null) return false;
+        var b = RequireBalance(landForm);
+        if (b.effectType != "PeriodicHeal") return false;
+        healRatio = b.healRatio;
+        healInterval = b.healInterval;
         return healRatio > 0f && healInterval > 0f;
     }
 
     /// <summary>
-    /// 查询地貌是否阻挡建筑部署（blockBuildingSpawn）；Excel 优先，缺失回退 Legacy。
+    /// 查询地貌是否阻挡建筑部署（blockBuildingSpawn）；无地貌返回 false。
     /// </summary>
     public static bool GetBlockBuildingSpawn(MapLandFormSO landForm)
     {
-        var b = GetBalance(landForm);
-        if (b != null)
-            return b.blockBuildingSpawn;
-        return landForm != null && landForm.blockBuildingSpawn;
+        if (landForm == null) return false;
+        return RequireBalance(landForm).blockBuildingSpawn;
     }
 
     /// <summary>
@@ -81,18 +72,10 @@ public static class LandFormEffectRule
     {
         bonusPerSecond = 0f;
 
-        var b = GetBalance(landForm);
-        if (b != null)
-        {
-            if (b.effectType != "GoldIncomeBoost") return false;
-            bonusPerSecond = b.goldIncomePerSecond;
-            return bonusPerSecond > 0f;
-        }
-
-        if (landForm == null || landForm.effectType != LandFormEffectType.GoldIncomeBoost)
-            return false;
-
-        bonusPerSecond = landForm.effect.goldIncomePerSecond;
+        if (landForm == null) return false;
+        var b = RequireBalance(landForm);
+        if (b.effectType != "GoldIncomeBoost") return false;
+        bonusPerSecond = b.goldIncomePerSecond;
         return bonusPerSecond > 0f;
     }
 

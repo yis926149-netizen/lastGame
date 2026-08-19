@@ -55,8 +55,8 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
                 "[CardPresenter] Initialization failed: NextCardPlaceholder has no RectTransform.");
         }
 
-        // 【决策 3】开局纯随机：5 张手牌全部从随机池抽取（第一张触发移民保底），无固定箭塔
-        for (int i = 0; i < 5; i++)
+        // 【决策 3】开局纯随机：N 张手牌全部从随机池抽取（第一张触发移民保底），无固定箭塔
+        for (int i = 0; i < CoreGameplayConfigProvider.InitialHandCardCount; i++)
         {
             _initialDealQueue.Enqueue(BuildCardData(_cardService.GenerateNextCard()));
         }
@@ -140,7 +140,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
 
     private int GetCardCost(NormalCardConfigSO config)
     {
-        // 卡费数值优先取 Excel 平衡库，缺失时回退 Legacy SO（Provider 内部处理）。
+        // 卡费数值仅取 Excel 平衡库（阶段6 唯一主源，Provider 内部处理）。
         if (config is UnitConfigSO unitConfig)
             return _unitData.GetUnitCardCost(unitConfig.Id);
         if (config is BuildingConfigSO buildingConfig)
@@ -264,33 +264,68 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
             return false;
 
         NormalCardConfigSO config = view.Data?.NormalCardConfig;
-        bool spawned = false;
-        if (config is UnitConfigSO unitConfig)
+        bool spawned;
+        try
         {
-            spawned = SpawnUnit(unitConfig.Id, targetCell.RealCenterWorldCoordinate) != null;
+            spawned = TrySpawnCard(config, targetCell);
         }
-        else if (config is BuildingConfigSO buildingConfig)
+        catch (System.Exception exception)
         {
-            spawned = SpawnBuilding(buildingConfig.buildingId, targetCell.RealCenterWorldCoordinate);
+            // Some spawn steps commit the entity before optional UI/audio/brain setup finishes.
+            // A committed entity must still consume its card, or the same card can deploy twice.
+            spawned = IsDeploymentCommitted(config, targetCell);
+            Debug.LogException(exception);
         }
         if (!spawned) return false;
+
+        ConsumePlayedCard(view);
+        return true;
+    }
+
+    private bool TrySpawnCard(NormalCardConfigSO config, HexCellData targetCell)
+    {
+        if (config is UnitConfigSO unitConfig)
+            return SpawnUnit(unitConfig.Id, targetCell.RealCenterWorldCoordinate) != null;
+
+        if (config is BuildingConfigSO buildingConfig)
+            return SpawnBuilding(buildingConfig.buildingId, targetCell.RealCenterWorldCoordinate);
+
+        return false;
+    }
+
+    private static bool IsDeploymentCommitted(NormalCardConfigSO config, HexCellData targetCell)
+    {
+        if (targetCell == null) return false;
+        if (config is UnitConfigSO) return targetCell.IsHaveUnit();
+        if (config is BuildingConfigSO) return targetCell.BulidingTypeOnHex_Building.Value != null;
+        return false;
+    }
+
+    private void ConsumePlayedCard(ICardView view)
+    {
+        // Hide first so later callbacks cannot leave a successfully played card usable.
+        MonoBehaviour viewBehaviour = view as MonoBehaviour;
+        if (viewBehaviour != null) viewBehaviour.gameObject.SetActive(false);
+
+        _cardService.RemoveCard(view.PlacementID);
+        _cardViews.Remove(view);
 
         // 【探索重构-阶段7】出牌扣费（按卡单价收费）
         _goldWallet.TrySpendGold(0, view.Data?.CardCost ?? _goldWallet.CardCost);
 
-        _cardService.RemoveCard(view.PlacementID);
-
-        (view as MonoBehaviour)?.gameObject.SetActive(false);
-        GameObject.Destroy((view as MonoBehaviour)?.gameObject);
-        _cardViews.Remove(view);
-
+        if (viewBehaviour != null) GameObject.Destroy(viewBehaviour.gameObject);
         TryDealFromNextIfPossible();
-        return true;
     }
 
     public void OnCardDragBegin(ICardView view) { }
 
     public void OnCardDragCancel(ICardView view) { }
+
+    /// <summary>ICardDropHandler：查询普通卡能否部署到指定格（放置预览高亮与确认路径共用同一规则）。</summary>
+    public bool CanDeployTo(CardData data, HexCellData cell)
+    {
+        return IsReleaseValid(data?.NormalCardConfig, cell);
+    }
 
     private bool IsReleaseValid(NormalCardConfigSO config, HexCellData cell)
     {
@@ -467,12 +502,14 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         // 共享样板 SpawnUIWiring；玩家建筑血条为绿色（canvas 已由上方 hasBuildingUi 预校验非空）。
         SpawnUIWiring.WireBuildingCanvas(g, buildingController, Color.green, _container, _uiConfig);
 
+        // Commit before notifying fallible visual listeners. If a listener fails, the deployed building
+        // remains authoritative and HandleCardDragEnd will still consume the card.
+        h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(buildingType, g);
+
         // 【探索重构-阶段5.5】建筑部署不拓展势力范围。势力范围仅由探索和公共建筑占领产生。
 
         // 【探索重构-阶段5】部署不再自动探索周围地块
         _mapVisualEvent.Raise();
-
-        h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(buildingType, g);
 
         // 建筑类型特殊处理
         switch (buildingController.bulidingType)

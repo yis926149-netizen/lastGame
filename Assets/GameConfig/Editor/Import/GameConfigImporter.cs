@@ -34,6 +34,9 @@ namespace GameConfig.Editor
         public const string AIConfigAssetPath = GeneratedDir + "/AIConfigDatabase.asset";
         public const string BattleFormulaConfigAssetPath = GeneratedDir + "/BattleFormulaConfigDatabase.asset";
         public const string MapGenConfigAssetPath = GeneratedDir + "/MapGenConfigDatabase.asset";
+        public const string CoreGameplayConfigAssetPath = GeneratedDir + "/CoreGameplayConfigDatabase.asset";
+        public const string FeelConfigAssetPath = GeneratedDir + "/FeelConfigDatabase.asset";
+        public const string MountainConfigAssetPath = GeneratedDir + "/MountainConfigDatabase.asset";
 
         public static ImportResult ImportAll(string jsonPath)
         {
@@ -72,6 +75,9 @@ namespace GameConfig.Editor
             var aiConfig = BuildAIConfig(file, errors);
             var battleFormula = BuildBattleFormulaConfig(file, errors);
             var mapGen = BuildMapGenConfig(file, errors);
+            var gameplay = BuildCoreGameplayConfig(file, errors);
+            var feel = BuildFeelConfig(file, errors);
+            var mountain = BuildMountainConfig(file, errors);
             if (errors.Count > 0)
                 return ImportResult.Fail(string.Join("\n", errors));
 
@@ -95,6 +101,9 @@ namespace GameConfig.Editor
             CreateOrReplace<AIConfigDatabaseSO>(AIConfigAssetPath, so => so.ReplaceAll(aiConfig.ToArray()));
             CreateOrReplace<BattleFormulaConfigDatabaseSO>(BattleFormulaConfigAssetPath, so => so.ReplaceAll(battleFormula.ToArray()));
             CreateOrReplace<MapGenConfigDatabaseSO>(MapGenConfigAssetPath, so => so.ReplaceAll(mapGen.ToArray()));
+            CreateOrReplace<CoreGameplayConfigDatabaseSO>(CoreGameplayConfigAssetPath, so => so.ReplaceAll(gameplay.ToArray()));
+            CreateOrReplace<FeelConfigDatabaseSO>(FeelConfigAssetPath, so => so.ReplaceAll(feel.ToArray()));
+            CreateOrReplace<MountainConfigDatabaseSO>(MountainConfigAssetPath, so => so.ReplaceAll(mountain.ToArray()));
 
             AssetDatabase.SaveAssets();
             return ImportResult.Ok(
@@ -723,6 +732,144 @@ namespace GameConfig.Editor
 
             if (result.Count == 0)
                 errors.Add("[地图生成参数] 表为空：地图生成参数是核心玩法，禁止空配置");
+
+            return result;
+        }
+
+        private static List<CoreGameplayConfigData> BuildCoreGameplayConfig(GameConfigFile file, List<string> errors)
+        {
+            var result = new List<CoreGameplayConfigData>();
+            var table = Array.Find(file.tables, t => t is not null && t.sheetName == "核心玩法配置");
+            if (table is null)
+            {
+                errors.Add("缺少 [核心玩法配置] 表");
+                return result;
+            }
+
+            var col = ColumnIndex(table.columns);
+
+            foreach (var row in table.rows ?? Array.Empty<RowEntry>())
+            {
+                var v = row?.values ?? Array.Empty<string>();
+                result.Add(new CoreGameplayConfigData
+                {
+                    configId = Get(v, col, "configId"),
+                    movementSpeedPerPoint = GetFloat(v, col, "movementSpeedPerPoint", 10f),
+                    attackDashSpeed = GetFloat(v, col, "attackDashSpeed", 20f),
+                    unitRotationSpeed = GetFloat(v, col, "unitRotationSpeed", 5f),
+                    attackArrivalThreshold = GetFloat(v, col, "attackArrivalThreshold", 1.5f),
+                    attackReturnThreshold = GetFloat(v, col, "attackReturnThreshold", 0.2f),
+                    attackAnimationDuration = GetFloat(v, col, "attackAnimationDuration", 1.5f),
+                    unitDeathDestroyDelay = GetFloat(v, col, "unitDeathDestroyDelay", 2.2f),
+                    buildingHealIntervalFallback = GetFloat(v, col, "buildingHealIntervalFallback", 5f),
+                    unitPathSearchThrottle = GetInt(v, col, "unitPathSearchThrottle", 20),
+                    barracksSpawnInterval = GetFloat(v, col, "barracksSpawnInterval", 15f),
+                    barracksFallbackUnitLegacyId = GetInt(v, col, "barracksFallbackUnitLegacyId", 1),
+                    arrowTowerRange = GetInt(v, col, "arrowTowerRange", 2),
+                    arrowTowerAttackInterval = GetFloat(v, col, "arrowTowerAttackInterval", 1f),
+                    arrowTowerDamage = GetFloat(v, col, "arrowTowerDamage", 15f),
+                    arrowTowerArcHeight = GetFloat(v, col, "arrowTowerArcHeight", 2f),
+                    arrowTowerFlightDuration = GetFloat(v, col, "arrowTowerFlightDuration", 0.3f),
+                    centralChestHp = GetFloat(v, col, "centralChestHp", 500f),
+                    handCardLimit = GetInt(v, col, "handCardLimit", 5),
+                    initialHandCardCount = GetInt(v, col, "initialHandCardCount", 5),
+                    tacticalCardSlotCount = GetInt(v, col, "tacticalCardSlotCount", 2),
+                    talentOfferCount = GetInt(v, col, "talentOfferCount", 3),
+                    publicBuildingMaxCount = GetInt(v, col, "publicBuildingMaxCount", 3),
+                    publicBuildingMinLandNeighbors = GetInt(v, col, "publicBuildingMinLandNeighbors", 2),
+                    publicBuildingArenaReserveExtraRings = GetInt(v, col, "publicBuildingArenaReserveExtraRings", 1),
+                });
+            }
+
+            if (result.Count == 0)
+                errors.Add("[核心玩法配置] 表为空：核心玩法参数禁止空配置");
+
+            return result;
+        }
+
+        private static List<FeelConfigData> BuildFeelConfig(GameConfigFile file, List<string> errors)
+        {
+            var result = new List<FeelConfigData>();
+            var table = Array.Find(file.tables, t => t is not null && t.sheetName == "表现配置");
+            if (table is null)
+            {
+                errors.Add("缺少 [表现配置] 表");
+                return result;
+            }
+
+            var col = ColumnIndex(table.columns);
+
+            foreach (var row in table.rows ?? Array.Empty<RowEntry>())
+            {
+                var v = row?.values ?? Array.Empty<string>();
+                result.Add(new FeelConfigData
+                {
+                    configId = Get(v, col, "configId"),
+                    fogRefreshInterval = GetFloat(v, col, "fogRefreshInterval", 0.05f),
+                    cameraShakeFrequency = GetFloat(v, col, "cameraShakeFrequency", 50f),
+                    unaffordableCardDim = GetFloat(v, col, "unaffordableCardDim", 0.45f),
+                    talentScreenShakeStrength = GetFloat(v, col, "talentScreenShakeStrength", 0.15f),
+                    talentScreenShakeDuration = GetFloat(v, col, "talentScreenShakeDuration", 0.3f),
+                });
+            }
+
+            if (result.Count == 0)
+                errors.Add("[表现配置] 表为空：表现配置参数禁止空配置");
+
+            return result;
+        }
+
+        private static List<MountainConfigData> BuildMountainConfig(GameConfigFile file, List<string> errors)
+        {
+            var result = new List<MountainConfigData>();
+            var table = Array.Find(file.tables, t => t is not null && t.sheetName == "山体配置");
+            if (table is null)
+            {
+                errors.Add("缺少 [山体配置] 表");
+                return result;
+            }
+
+            var col = ColumnIndex(table.columns);
+
+            foreach (var row in table.rows ?? Array.Empty<RowEntry>())
+            {
+                var v = row?.values ?? Array.Empty<string>();
+                result.Add(new MountainConfigData
+                {
+                    configId = Get(v, col, "configId"),
+                    ridgeCount = GetInt(v, col, "ridgeCount", 0),
+                    minRidgeLength = GetInt(v, col, "minRidgeLength", 5),
+                    maxRidgeLength = GetInt(v, col, "maxRidgeLength", 12),
+                    widthRadius = GetFloat(v, col, "widthRadius", 1f),
+                    ridgeMinSpacing = GetInt(v, col, "ridgeMinSpacing", 3),
+                    scoreHeightWeight = GetFloat(v, col, "scoreHeightWeight", 1f),
+                    scoreDropWeight = GetFloat(v, col, "scoreDropWeight", 1f),
+                    scoreTurnPenalty = GetFloat(v, col, "scoreTurnPenalty", 1f),
+                    flatHeightThreshold = GetFloat(v, col, "flatHeightThreshold", 1f),
+                    baseHeight = GetFloat(v, col, "baseHeight", 1.2f),
+                    minHeight = GetFloat(v, col, "minHeight", 0.8f),
+                    maxHeight = GetFloat(v, col, "maxHeight", 2.5f),
+                    heightPerLength = GetFloat(v, col, "heightPerLength", 0.12f),
+                    gamma = GetFloat(v, col, "gamma", 1.2f),
+                    ridgeNoiseAmplitude = GetFloat(v, col, "ridgeNoiseAmplitude", 0.4f),
+                    cellNoiseScale = GetFloat(v, col, "cellNoiseScale", 0.3f),
+                    minVisibleHeight = GetFloat(v, col, "minVisibleHeight", 0.15f),
+                    maxSlopeRatio = GetFloat(v, col, "maxSlopeRatio", 0.8f),
+                    xzPerturbRatio = GetFloat(v, col, "xzPerturbRatio", 0.15f),
+                    peakEccentricMinRatio = GetFloat(v, col, "peakEccentricMinRatio", 0.05f),
+                    peakEccentricMaxRatio = GetFloat(v, col, "peakEccentricMaxRatio", 0.2f),
+                    debugSingleCellAndStraightRidge = GetBool(v, col, "debugSingleCellAndStraightRidge", false),
+                    debugStraightRidgeLength = GetInt(v, col, "debugStraightRidgeLength", 5),
+                    triplanarWorldScale = GetFloat(v, col, "triplanarWorldScale", 1f),
+                    triplanarBlendSharpness = GetFloat(v, col, "triplanarBlendSharpness", 4f),
+                    roughness = GetFloat(v, col, "roughness", 0.9f),
+                    metallic = GetFloat(v, col, "metallic", 0f),
+                    shadowStrength = GetFloat(v, col, "shadowStrength", 1f),
+                });
+            }
+
+            if (result.Count == 0)
+                errors.Add("[山体配置] 表为空：山体配置参数禁止空配置");
 
             return result;
         }

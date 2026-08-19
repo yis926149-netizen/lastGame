@@ -8,11 +8,12 @@ using GameConfig;
 public class TacticalCardPresenter : IInitializable, ICardDropHandler
 {
     [Inject] private TacticalCardDatabaseSO _database;
-    [Inject(Optional = true)] private TacticalCardBalanceDatabaseSO _balance; // Excel 数值（只读；未生成则回退 Legacy）
+    [Inject(Optional = true)] private TacticalCardBalanceDatabaseSO _balance; // Excel 数值（只读；阶段6 唯一主源）
     [Inject] private DiContainer _container;
     [Inject] private IMapDataService _mapDataService;
     [Inject] private IUIConfigProvider _uiConfig;
     [Inject] private GameLoop _gameLoop;
+    [Inject] private BattleOrderBuffService _battleOrderBuff;
 
     private readonly Transform _anchor1;
     private readonly Transform _anchor2;
@@ -28,7 +29,8 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
     private bool _flyBusy;                                          // 飞行卡动画进行中
     private readonly Queue<(TacticalCardSO Config, Vector3 WorldPos)> _pendingFlies = new(); // 连续奖励队列
 
-    private const int MaxAnchorCount = 2;
+    // 【Excel 数值化】战术卡槽位数量迁移至 CoreGameplayConfigProvider。
+    private static int MaxAnchorCount => CoreGameplayConfigProvider.TacticalCardSlotCount;
 
     public TacticalCardPresenter(Transform tacticalCardAnchor1, Transform tacticalCardAnchor2,
         GameObject quantityBadge1, GameObject quantityBadge2)
@@ -64,19 +66,15 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
 
         _cardViews = new List<CardController>();
 
-        // 启用卡列表：Excel 数值库（enabled=true）→ 按 cardId 找资源；Excel 未生成时回退 Legacy 手工列表。
+        // 启用卡列表：仅 Excel 数值库（enabled=true）→ 按 cardId 找资源（阶段6 唯一主源）。
+        if (_balance == null)
+            throw new System.InvalidOperationException(
+                "[TacticalCard] Excel 战术卡数值库未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 TacticalCardBalanceDatabaseSO。");
         var source = new List<TacticalCardSO>();
-        if (_balance != null && _balance.EnabledCards.Count > 0)
+        foreach (var b in _balance.EnabledCards)
         {
-            foreach (var b in _balance.EnabledCards)
-            {
-                var config = FindResource(b.cardId);
-                if (config != null) source.Add(config);
-            }
-        }
-        else
-        {
-            source.AddRange(_database.cards);
+            var config = FindResource(b.cardId);
+            if (config != null) source.Add(config);
         }
 
         for (int i = 0; i < source.Count && i < MaxAnchorCount; i++)
@@ -374,7 +372,7 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
         var config = instance.Config;
         if (config == null) return false;
 
-        // 释放目标检测（方案A：打cell的hex，从hex内找己方目标）
+        // 按效果类型分发释放逻辑（Repair 为落点及其周围一环内的己方建筑回血）
         switch (GetEffectType(config))
         {
             case TacticalEffectType.Repair:
@@ -478,6 +476,12 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
         ReturnBorrowedCard(view.PlacementID);
     }
 
+    /// <summary>ICardDropHandler：战术卡任意有效地图格都可部署（放置预览恒高亮）。</summary>
+    public bool CanDeployTo(CardData data, HexCellData cell)
+    {
+        return cell != null;
+    }
+
     /// <summary>归还借出卡：数量 +1、销毁幽灵、恢复槽位徽标。</summary>
     private void ReturnBorrowedCard(int slot)
     {
@@ -555,53 +559,48 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
 
     private void TryExecuteRepair(HexCellData cell, TacticalCardSO config)
     {
-        // 查找相邻格或目标格上的己方建筑
-        GameObject targetBuilding = FindOwnBuildingOnCell(cell);
-
-        // 也检查6个相邻格
-        if (targetBuilding == null)
+        // 【群体回血】范围：落点格及其周围一环（6 个相邻格）内的己方建筑。
+        List<BuildingBase> ownBuildings = FindOwnBuildingsInOneRing(cell);
+        if (ownBuildings.Count == 0)
         {
-            for (int d = 0; d < 6; d++)
-            {
-                var neighbor = _mapDataService.GetNeighbor(cell, (Enums.HexDirection)d);
-                if (neighbor == null) continue;
-                targetBuilding = FindOwnBuildingOnCell(neighbor);
-                if (targetBuilding != null) break;
-            }
-        }
-
-        if (targetBuilding == null)
-        {
-            Debug.Log("[TacticalCardPresenter] Repair: no own building found, card consumed without effect.");
+            Debug.Log("[TacticalCardPresenter] Repair: no own building found in drop cell and its ring, card consumed without effect.");
             return;
         }
 
-        var building = targetBuilding.GetComponent<BuildingBase>();
-        if (building?.buildingData == null)
+        float healRatio = GetEffect(config).healRatio;
+        int healedCount = 0;
+
+        foreach (BuildingBase building in ownBuildings)
         {
-            Debug.Log("[TacticalCardPresenter] Repair: target has no BuildingBase/buildingData.");
-            return;
+            if (building == null || building.buildingData == null) continue;
+
+            float maxHp = building.buildingData.hp;
+            float currentHp = building.buildingData.currentHp;
+            if (currentHp >= maxHp) continue; // 满血建筑跳过
+
+            float healAmount = maxHp * healRatio;
+            building.buildingData.currentHp = Mathf.Min(currentHp + healAmount, maxHp);
+            building.SyncHealthBar();
+            healedCount++;
         }
 
-        float maxHp = building.buildingData.hp;
-        float currentHp = building.buildingData.currentHp;
-        if (currentHp >= maxHp)
-        {
-            Debug.Log("[TacticalCardPresenter] Repair: building already at fullHP.");
-            return;
-        }
-
-        float healAmount = maxHp * GetEffect(config).healRatio;
-        building.buildingData.currentHp = Mathf.Min(currentHp + healAmount, maxHp);
-        building.SyncHealthBar();
-
-        Debug.Log($"[TacticalCardPresenter] Repair: healed {GetEffect(config).healRatio * 100:F0}% ({healAmount:F0}HP).");
+        Debug.Log($"[TacticalCardPresenter] Repair: group-healed {healedCount} own building(s) in drop ring, {healRatio * 100:F0}% each.");
     }
 
     private bool TryExecuteBattleOrder(HexCellData cell, TacticalCardSO config)
     {
         var effect = GetEffect(config);
-        Debug.Log($"[TacticalCardPresenter] BattleOrder: +{effect.attackMultiplier - 1f:P0} ATK, +{effect.speedMultiplier - 1f:P0} SPD, {effect.duration}s (effect not yet applied — pending implementation)");
+
+        // 作用范围：落点及其周围一环内的己方单位（与「群体回血」一致）
+        List<CharacterData> targets = FindOwnUnitsInOneRing(cell);
+        if (targets.Count == 0)
+        {
+            Debug.Log("[TacticalCardPresenter] BattleOrder: no own unit found in drop cell and its ring, card consumed without effect.");
+            return true; // 卡仍消耗（与 Repair 行为一致）
+        }
+
+        _battleOrderBuff.Apply(targets, effect.attackMultiplier, effect.speedMultiplier, effect.duration);
+        Debug.Log($"[TacticalCardPresenter] BattleOrder: buffed {targets.Count} own unit(s) +{(effect.attackMultiplier - 1f) * 100:F0}% ATK, +{(effect.speedMultiplier - 1f) * 100:F0}% SPD for {effect.duration}s.");
         return true;
     }
 
@@ -614,28 +613,36 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
         return null;
     }
 
-    /// <summary>效果类型：优先 Excel 数值，缺失回退 Legacy SO。</summary>
-    private TacticalEffectType GetEffectType(TacticalCardSO config)
+    private TacticalCardBalanceData RequireBalance(TacticalCardSO config)
     {
-        if (_balance != null && config != null && _balance.TryGetCard(config.cardId, out var b))
-            return ParseEffectType(b.effectType);
-        return config != null ? config.effectType : TacticalEffectType.Repair;
+        if (_balance == null)
+            throw new System.InvalidOperationException(
+                "[TacticalCard] Excel 战术卡数值库未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 TacticalCardBalanceDatabaseSO。");
+        if (config == null)
+            throw new System.InvalidOperationException("[TacticalCard] 战术卡配置为 null，无法读取效果数值。");
+        if (!_balance.TryGetCard(config.cardId, out var b))
+            throw new System.InvalidOperationException(
+                $"[TacticalCard] 战术卡 {config.cardId} 未在 Excel 战术卡数值库命中，无法读取效果数值。");
+        return b;
     }
 
-    /// <summary>效果参数：优先 Excel 数值，缺失回退 Legacy SO。</summary>
+    /// <summary>效果类型：仅 Excel 数值（阶段6 唯一主源）。</summary>
+    private TacticalEffectType GetEffectType(TacticalCardSO config)
+    {
+        return ParseEffectType(RequireBalance(config).effectType);
+    }
+
+    /// <summary>效果参数：仅 Excel 数值（阶段6 唯一主源）。</summary>
     private TacticalCardEffect GetEffect(TacticalCardSO config)
     {
-        if (_balance != null && config != null && _balance.TryGetCard(config.cardId, out var b))
+        var b = RequireBalance(config);
+        return new TacticalCardEffect
         {
-            return new TacticalCardEffect
-            {
-                healRatio = b.healRatio,
-                attackMultiplier = b.attackMultiplier,
-                speedMultiplier = b.speedMultiplier,
-                duration = b.duration,
-            };
-        }
-        return config != null ? config.effect : default;
+            healRatio = b.healRatio,
+            attackMultiplier = b.attackMultiplier,
+            speedMultiplier = b.speedMultiplier,
+            duration = b.duration,
+        };
     }
 
     private static TacticalEffectType ParseEffectType(string s)
@@ -643,17 +650,66 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
         return s == "BattleOrder" ? TacticalEffectType.BattleOrder : TacticalEffectType.Repair;
     }
 
-    private GameObject FindOwnBuildingOnCell(HexCellData cell)
+    /// <summary>收集落点格及其周围一环（6 个相邻格）内的己方建筑（去重）。</summary>
+    private List<BuildingBase> FindOwnBuildingsInOneRing(HexCellData cell)
     {
-        if (cell == null) return null;
+        List<BuildingBase> result = new List<BuildingBase>();
+        if (cell == null) return result;
+
+        AddOwnBuildingOnCell(cell, result);
+        for (int d = 0; d < 6; d++)
+        {
+            HexCellData neighbor = _mapDataService.GetNeighbor(cell, (Enums.HexDirection)d);
+            if (neighbor == null) continue;
+            AddOwnBuildingOnCell(neighbor, result);
+        }
+        return result;
+    }
+
+    /// <summary>若该格上有己方建筑，加入结果（避免多格建筑重复入列）。</summary>
+    private void AddOwnBuildingOnCell(HexCellData cell, List<BuildingBase> result)
+    {
+        if (cell == null) return;
         var entry = cell.BulidingTypeOnHex_Building;
-        if (entry.Key == Enums.BulidingType.NoBuilding || entry.Value == null)
-            return null;
+        if (entry.Key == Enums.BulidingType.NoBuilding || entry.Value == null) return;
+        if (!entry.Value.CompareTag("PlayerBuilding")) return;
 
-        if (entry.Value.CompareTag("PlayerBuilding"))
-            return entry.Value;
+        BuildingBase building = entry.Value.GetComponent<BuildingBase>();
+        if (building != null && !building.IsDestroyed && !result.Contains(building))
+            result.Add(building);
+    }
 
-        return null;
+    /// <summary>收集落点格及其周围一环（6 个相邻格）内的己方单位（去重）。</summary>
+    private List<CharacterData> FindOwnUnitsInOneRing(HexCellData cell)
+    {
+        List<CharacterData> result = new List<CharacterData>();
+        if (cell == null) return result;
+
+        AddOwnUnitOnCell(cell, result);
+        for (int d = 0; d < 6; d++)
+        {
+            HexCellData neighbor = _mapDataService.GetNeighbor(cell, (Enums.HexDirection)d);
+            if (neighbor == null) continue;
+            AddOwnUnitOnCell(neighbor, result);
+        }
+        return result;
+    }
+
+    /// <summary>若该格上有己方单位，加入结果（跳过死亡中的单位，去重）。</summary>
+    private void AddOwnUnitOnCell(HexCellData cell, List<CharacterData> result)
+    {
+        if (cell == null) return;
+        GameObject unit = cell.GetOccupant() ?? cell.GetUnit();
+        if (unit == null) return;
+
+        var controller = unit.GetComponent<UnitMovementController>();
+        if (controller == null || controller.characterData == null) return;
+        if (controller.PlayerIndex != 0) return;              // 仅己方（玩家）单位
+        if (controller.IsDeathScheduled) return;              // 死亡流程中的单位跳过
+        if (controller.characterData.currentHp <= 0) return;  // 已阵亡单位跳过
+
+        if (!result.Contains(controller.characterData))
+            result.Add(controller.characterData);
     }
 
     // ── 飞行卡动画用缓动与曲线 ──────────────────────────────

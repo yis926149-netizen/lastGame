@@ -28,7 +28,7 @@ public class TalentCardTriggerAdapter
             return;
         }
 
-        var cards = _provider.DrawRandom(3);
+        var cards = _provider.DrawRandom(CoreGameplayConfigProvider.TalentOfferCount);
         if (cards.Count == 0)
         {
             Debug.LogWarning("[TalentCardTrigger] Drew 0 cards.");

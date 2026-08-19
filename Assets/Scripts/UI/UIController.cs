@@ -291,7 +291,7 @@ public class UIController : MonoBehaviour
             return;
         }
 
-        // 单位类型判断：数值优先 Excel，缺失回退 Legacy SO（Provider 内部处理）。
+        // 单位类型判断：数值仅取 Excel（阶段6 唯一主源，Provider 内部处理）。
         UnitStrategyType strategyType = unitDataProvider.GetUnitStrategyType(characterData.UnitID);
 
         if (strategyType == UnitStrategyType.Settler)

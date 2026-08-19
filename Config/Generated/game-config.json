@@ -436,7 +436,7 @@
             "0",
             "战斗号令",
             "临时提升单位攻击与移速",
-            "false",
+            "true",
             "BattleOrder",
             "0",
             "1.3",
@@ -488,7 +488,7 @@
             "buildingHp",
             "4",
             "1",
-            "false"
+            "true"
           ]
         },
         {
@@ -502,7 +502,7 @@
             "damage",
             "2",
             "1",
-            "false"
+            "true"
           ]
         },
         {
@@ -516,7 +516,7 @@
             "gold",
             "2",
             "1",
-            "false"
+            "true"
           ]
         }
       ]
@@ -1051,6 +1051,159 @@
             "0.6",
             "3",
             "1.2"
+          ]
+        }
+      ]
+    },
+    {
+      "sheetName": "核心玩法配置",
+      "columns": [
+        "configId",
+        "movementSpeedPerPoint",
+        "attackDashSpeed",
+        "unitRotationSpeed",
+        "attackArrivalThreshold",
+        "attackReturnThreshold",
+        "attackAnimationDuration",
+        "unitDeathDestroyDelay",
+        "buildingHealIntervalFallback",
+        "unitPathSearchThrottle",
+        "barracksSpawnInterval",
+        "barracksFallbackUnitLegacyId",
+        "arrowTowerRange",
+        "arrowTowerAttackInterval",
+        "arrowTowerDamage",
+        "arrowTowerArcHeight",
+        "arrowTowerFlightDuration",
+        "centralChestHp",
+        "handCardLimit",
+        "initialHandCardCount",
+        "tacticalCardSlotCount",
+        "talentOfferCount",
+        "publicBuildingMaxCount",
+        "publicBuildingMinLandNeighbors",
+        "publicBuildingArenaReserveExtraRings"
+      ],
+      "rows": [
+        {
+          "values": [
+            "gameplay.main",
+            "10",
+            "20",
+            "5",
+            "1.5",
+            "0.2",
+            "1.5",
+            "2.2",
+            "5",
+            "20",
+            "15",
+            "1",
+            "2",
+            "1",
+            "15",
+            "2",
+            "0.3",
+            "500",
+            "5",
+            "5",
+            "2",
+            "3",
+            "3",
+            "2",
+            "1"
+          ]
+        }
+      ]
+    },
+    {
+      "sheetName": "表现配置",
+      "columns": [
+        "configId",
+        "fogRefreshInterval",
+        "cameraShakeFrequency",
+        "unaffordableCardDim",
+        "talentScreenShakeStrength",
+        "talentScreenShakeDuration"
+      ],
+      "rows": [
+        {
+          "values": [
+            "feel.main",
+            "0.05",
+            "50",
+            "0.45",
+            "0.15",
+            "0.3"
+          ]
+        }
+      ]
+    },
+    {
+      "sheetName": "山体配置",
+      "columns": [
+        "configId",
+        "ridgeCount",
+        "minRidgeLength",
+        "maxRidgeLength",
+        "widthRadius",
+        "ridgeMinSpacing",
+        "scoreHeightWeight",
+        "scoreDropWeight",
+        "scoreTurnPenalty",
+        "flatHeightThreshold",
+        "baseHeight",
+        "minHeight",
+        "maxHeight",
+        "heightPerLength",
+        "gamma",
+        "ridgeNoiseAmplitude",
+        "cellNoiseScale",
+        "minVisibleHeight",
+        "maxSlopeRatio",
+        "xzPerturbRatio",
+        "peakEccentricMinRatio",
+        "peakEccentricMaxRatio",
+        "debugSingleCellAndStraightRidge",
+        "debugStraightRidgeLength",
+        "triplanarWorldScale",
+        "triplanarBlendSharpness",
+        "roughness",
+        "metallic",
+        "shadowStrength"
+      ],
+      "rows": [
+        {
+          "values": [
+            "mountain.main",
+            "0",
+            "5",
+            "12",
+            "1",
+            "3",
+            "1",
+            "1",
+            "1",
+            "1",
+            "1.2",
+            "0.8",
+            "2.5",
+            "0.12",
+            "1.2",
+            "0.4",
+            "0.3",
+            "0.15",
+            "0.8",
+            "0.15",
+            "0.05",
+            "0.2",
+            "false",
+            "5",
+            "1",
+            "4",
+            "0.9",
+            "0",
+            "1"
           ]
         }
       ]

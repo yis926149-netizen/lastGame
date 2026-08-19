@@ -1,28 +1,33 @@
 using GameConfig;
 
 //****************************************
-//功能说明：地图生成参数提供者。
-//         Perlin 噪声频率/八度/持续与竞技场半径/动画时长优先由 Excel 读取，
-//         Excel 未生成时回退 Legacy 默认值（双轨迁移期，阶段6 删除回退）。
+//功能说明：地图生成参数提供者（阶段6：Excel 唯一主源）。
+//         Perlin 噪声频率/八度/持续与竞技场半径/动画时长仅由 Excel 读取；
+//         Excel 未生成/未绑定时抛异常，暴露配置缺失。
 //****************************************
 public class MapGenConfigProvider
 {
-    private readonly MapGenConfigDatabaseSO _database;   // Excel 数值（可选）
+    private readonly MapGenConfigDatabaseSO _database;
 
     public MapGenConfigProvider(MapGenConfigDatabaseSO database = null)
     {
         _database = database;
     }
 
-    public MapGenConfigData Config => _database?.Config;
+    public MapGenConfigData Config
+    {
+        get
+        {
+            if (_database?.Config == null)
+                throw new System.InvalidOperationException(
+                    "[MapGen] Excel 地图生成参数未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 MapGenConfigDatabaseSO。");
+            return _database.Config;
+        }
+    }
 
-    public float PerlinFrequency => Config?.perlinFrequency ?? 0.05f;
-
-    public int PerlinOctaves => Config?.perlinOctaves ?? 3;
-
-    public float PerlinPersistence => Config?.perlinPersistence ?? 0.6f;
-
-    public int ArenaRadius => Config?.arenaRadius ?? 3;
-
-    public float ArenaRiseDurationSeconds => Config?.arenaRiseDurationSeconds ?? 1.2f;
+    public float PerlinFrequency => Config.perlinFrequency;
+    public int PerlinOctaves => Config.perlinOctaves;
+    public float PerlinPersistence => Config.perlinPersistence;
+    public int ArenaRadius => Config.arenaRadius;
+    public float ArenaRiseDurationSeconds => Config.arenaRiseDurationSeconds;
 }

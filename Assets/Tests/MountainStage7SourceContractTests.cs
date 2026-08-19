@@ -180,6 +180,27 @@ public class MountainStage7SourceContractTests
     }
 
     [Test]
+    public void CardPresenter_CommittedDeployment_AlwaysConsumesCard()
+    {
+        string presenter = ReadScript("Core/Services/CardPresenter.cs");
+
+        StringAssert.Contains("spawned = IsDeploymentCommitted(config, targetCell)", presenter,
+            "生成后置初始化抛异常时，必须按目标格已提交状态决定是否消耗卡牌");
+        StringAssert.Contains("if (viewBehaviour != null) viewBehaviour.gameObject.SetActive(false);", presenter,
+            "成功部署后必须先隐藏卡牌，再触发扣费和补牌回调");
+
+        int hideIndex = presenter.IndexOf("if (viewBehaviour != null) viewBehaviour.gameObject.SetActive(false);");
+        int removeIndex = presenter.IndexOf("_cardService.RemoveCard(view.PlacementID);");
+        Assert.That(hideIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(removeIndex, Is.GreaterThan(hideIndex), "卡牌槽更新必须发生在卡面隐藏之后");
+
+        int buildingCommitIndex = presenter.IndexOf("h.BulidingTypeOnHex_Building = new KeyValuePair<Enums.BulidingType, GameObject>(buildingType, g);");
+        int visualRaiseIndex = presenter.IndexOf("_mapVisualEvent.Raise();", buildingCommitIndex);
+        Assert.That(buildingCommitIndex, Is.GreaterThanOrEqualTo(0));
+        Assert.That(visualRaiseIndex, Is.GreaterThan(buildingCommitIndex), "建筑必须先提交到目标格，再触发可能抛异常的视觉回调");
+    }
+
+    [Test]
     public void AICardBrain_SpawnCellChecks_UseUnifiedGates()
     {
         string brain = ReadScript("AI/AICardBrain.cs");

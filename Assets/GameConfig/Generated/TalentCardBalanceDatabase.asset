@@ -22,7 +22,7 @@ MonoBehaviour:
     statId: buildingHp
     value: 4
     weight: 1
-    repeatable: 0
+    repeatable: 1
   - talentId: talent.damage
     legacyId: 0
     talentName: damage
@@ -32,7 +32,7 @@ MonoBehaviour:
     statId: damage
     value: 2
     weight: 1
-    repeatable: 0
+    repeatable: 1
   - talentId: talent.gold
     legacyId: 2
     talentName: gold
@@ -42,4 +42,4 @@ MonoBehaviour:
     statId: gold
     value: 2
     weight: 1
-    repeatable: 0
+    repeatable: 1

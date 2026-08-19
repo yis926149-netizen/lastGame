@@ -17,7 +17,7 @@ MonoBehaviour:
     legacyId: 0
     displayName: "\u6218\u6597\u53F7\u4EE4"
     description: "\u4E34\u65F6\u63D0\u5347\u5355\u4F4D\u653B\u51FB\u4E0E\u79FB\u901F"
-    enabled: 0
+    enabled: 1
     effectType: BattleOrder
     healRatio: 0
     attackMultiplier: 1.3

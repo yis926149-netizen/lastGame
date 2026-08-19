@@ -2,7 +2,7 @@
   "schemaVersion": "1.0.0",
   "exporterVersion": "0.1.0",
   "workbook": "游戏数值配置.xlsx",
-  "workbookSha256": "eb721b5e8e2bf51eafc421938ddabeec193023c7483e3d272d2e5bf6f9339b67",
+  "workbookSha256": "5d6d8bc5ae047712edb4f08f24b0edfd9f962d29fdd52eba16311382f25d3840",
   "tables": [
     {
       "sheetName": "单位",
@@ -75,6 +75,18 @@
     {
       "sheetName": "地图生成参数",
       "rowCount": 1
+    },
+    {
+      "sheetName": "核心玩法配置",
+      "rowCount": 1
+    },
+    {
+      "sheetName": "表现配置",
+      "rowCount": 1
+    },
+    {
+      "sheetName": "山体配置",
+      "rowCount": 1
     }
   ],
   "outputs": {
@@ -103,10 +115,13 @@
       "sha256": "4ad15f497d18a5d87d41a759e54770db9922b34a466ab33c7590fc3716c48fd7"
     },
     "Csv/天赋卡.csv": {
-      "sha256": "7f6fbae3f35e5a87616cec66924a635d8e75d06eff40b9960c0e543239429efb"
+      "sha256": "b62f0803acc373011e3324d389efb2627036f2277a123fe7aa067d7dfb521007"
     },
     "Csv/天赋抽卡规则.csv": {
       "sha256": "0d301c7eb25831c4512c4b7b549acfa68620a803d633f6e021ffe14f86864809"
+    },
+    "Csv/山体配置.csv": {
+      "sha256": "495e4cb85b5cfa71fbc518638225a91fdc66e02850fedc8e9f84e7c791e5db42"
     },
     "Csv/建筑.csv": {
       "sha256": "cbaf28ea938357fabb50d74e9d09f9c6d71b32b0b64e5d6d92435dcbad0855af"
@@ -115,7 +130,7 @@
       "sha256": "14418f3f3e407556b8509102d9ea4b2be1e7c3ce6d4ec1a37c84e693655e05f1"
     },
     "Csv/战术卡.csv": {
-      "sha256": "bf6957d0a9fccaa837af4b3c74c0c262c8dbf8716c36116e1c1fd0b268ba0c75"
+      "sha256": "6cf8828bde23b92a94ff427e7d5dc02dabe2bf70c62eeea6d716593b978a3680"
     },
     "Csv/探索奖励池.csv": {
       "sha256": "57e9410b20801980e1e43f4c9cfbf6196c59f9c429dfaa40f342f071fee62d52"
@@ -126,14 +141,20 @@
     "Csv/普通卡池.csv": {
       "sha256": "bf14af2c2f56c202376ab31071fafc4d0844a7e85bd3cc683d9db2d7423a7ad6"
     },
+    "Csv/核心玩法配置.csv": {
+      "sha256": "1fd2eb3b2dbc917400609a0f260fe71e5e5274689ddd3c7288b7ddab8a591452"
+    },
     "Csv/游戏流程配置.csv": {
       "sha256": "cb1509fa07d17cc25cf78828ea33ef99d9c34ae84e21ff73bcb2a21baefd2c15"
     },
     "Csv/经济配置.csv": {
       "sha256": "52816a7cf9b1bcd2321b713002293da9ec0f88b5bb0ebf737984ec8a2d03cb12"
     },
+    "Csv/表现配置.csv": {
+      "sha256": "866bd0992b7db62c8f55fc61a08ca2545953f5d7130e64db5080b8bd921ff09e"
+    },
     "game-config.json": {
-      "sha256": "d8dae25364d75cd7a6657a3cf52495bb7052124a425cbe0799d18a5c5310dc67"
+      "sha256": "aa0a8a597cfae8db853a7d16576e0f88ff46941fa681b4384a09f56fc63caf0d"
     }
   }
 }

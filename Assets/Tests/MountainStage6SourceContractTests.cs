@@ -5,7 +5,7 @@ using NUnit.Framework;
 /// 【程序化山脉】阶段 6.9：阶段 6 调用方收口源码契约测试。
 /// 防止 6.4~6.8 的调用方收口被后续重构回滚：
 ///  - 6.4 HexHighlightRenderer 门禁（玩家通道过滤有效山格，DebugDirtyChunk 豁免）
-///  - 6.5 PlayerInputHandler 放置预览走 CanSpawnUnitOnCell；UIController 攻击范围过滤山格；
+///  - 6.5 PlayerInputHandler 放置预览委托 ICardDropHandler.CanDeployTo（统一部署资格）；UIController 攻击范围过滤山格；
 ///    调试工具走显式诊断豁免入口
 ///  - 6.8 CostLabelRenderer 山格不显示探索费用标签
 /// </summary>
@@ -31,12 +31,12 @@ public class MountainStage6SourceContractTests
     }
 
     [Test]
-    public void PlayerInputHandler_CardPlacementUsesCanSpawnUnitOnCell()
+    public void PlayerInputHandler_CardPlacementDelegatesToDropHandler()
     {
         string handler = ReadScript("Core/Services/PlayerInputHandler.cs");
 
-        StringAssert.Contains("MountainCellRule.CanSpawnUnitOnCell(cell)", handler,
-            "拖牌放置预览必须走统一部署资格（决策 ①，阶段 6.5）");
+        StringAssert.Contains("CanDeployTo", handler,
+            "拖牌放置预览必须委托 ICardDropHandler.CanDeployTo（统一部署资格，阶段 6.5）");
     }
 
     [Test]

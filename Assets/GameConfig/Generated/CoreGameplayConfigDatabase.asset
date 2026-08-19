@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 90cba5040728c8c499f27381f3a236f3, type: 3}
+  m_Name: CoreGameplayConfigDatabase
+  m_EditorClassIdentifier: 
+  config:
+    configId: gameplay.main
+    movementSpeedPerPoint: 10
+    attackDashSpeed: 20
+    unitRotationSpeed: 5
+    attackArrivalThreshold: 1.5
+    attackReturnThreshold: 0.2
+    attackAnimationDuration: 1.5
+    unitDeathDestroyDelay: 2.2
+    buildingHealIntervalFallback: 5
+    unitPathSearchThrottle: 20
+    barracksSpawnInterval: 15
+    barracksFallbackUnitLegacyId: 1
+    arrowTowerRange: 2
+    arrowTowerAttackInterval: 1
+    arrowTowerDamage: 15
+    arrowTowerArcHeight: 2
+    arrowTowerFlightDuration: 0.3
+    centralChestHp: 500
+    handCardLimit: 5
+    initialHandCardCount: 5
+    tacticalCardSlotCount: 2
+    talentOfferCount: 3
+    publicBuildingMaxCount: 3
+    publicBuildingMinLandNeighbors: 2
+    publicBuildingArenaReserveExtraRings: 1

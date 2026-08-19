@@ -18,6 +18,11 @@ MonoBehaviour:
     configId: building.gold_mine
     weight: 1
     enabled: 1
+  - poolId: reward_pool.tactical_battle_order
+    rewardType: TacticalCard
+    configId: tactical.battle_order
+    weight: 1
+    enabled: 1
   - poolId: reward_pool.tactical_repair
     rewardType: TacticalCard
     configId: tactical.repair

@@ -15,7 +15,8 @@ using UnityEngine;
 
 public class CentralChest : PublicBuildingBase
 {
-    public const float ChestHp = 500f;
+    // 【Excel 数值化】宝箱 HP 迁移至 CoreGameplayConfigProvider（保持静态访问兼容旧调用）。
+    public static float ChestHp => CoreGameplayConfigProvider.CentralChestHp;
 
     /// <summary>宝箱被摧毁事件（通知 ArenaEventManager 进入 Destroyed 恢复流程）。</summary>
     public event Action<CentralChest> ChestDestroyed;

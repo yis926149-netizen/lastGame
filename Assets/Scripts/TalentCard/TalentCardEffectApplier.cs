@@ -36,19 +36,18 @@ public static class TalentCardEffectApplier
         factionBuff.AddBuff(faction, buff);
     }
 
-    /// <summary>效果数值：优先 Excel 数值库，缺失回退 Legacy SO（过渡期）。</summary>
+    /// <summary>效果数值：仅 Excel 数值库（阶段6 唯一主源，balance 为 null 抛异常）。</summary>
     private static TalentCardEffect GetEffect(TalentCardConfigSO card, TalentCardBalanceData balance)
     {
-        if (balance != null)
+        if (balance == null)
+            throw new System.InvalidOperationException(
+                $"[TalentCardEffectApplier] 天赋 {card?.talentId ?? "(null)"} 缺少 Excel 数值（balance 为 null），无法应用效果。");
+        return new TalentCardEffect
         {
-            return new TalentCardEffect
-            {
-                type = ParseEffectType(balance.effectType),
-                statId = ParseStatId(balance.statId),
-                value = balance.value,
-            };
-        }
-        return card != null ? card.effect : default;
+            type = ParseEffectType(balance.effectType),
+            statId = ParseStatId(balance.statId),
+            value = balance.value,
+        };
     }
 
     private static TalentEffectType ParseEffectType(string s)

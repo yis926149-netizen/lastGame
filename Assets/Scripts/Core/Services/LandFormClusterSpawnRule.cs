@@ -5,7 +5,7 @@ using System.Collections.Generic;
 /// 地图地貌簇生成规则（纯函数）。
 /// 【金矿扎堆 + Excel 数值化】仅 clusterSpawn=true 的地貌（金矿）使用：固定 n 堆、
 /// 目标格数预算 + 概率生长的不规则扎堆；其余地貌保持原有散落生成。
-/// 簇参数优先由 Excel（MapLandFormProvider）读取，缺失回退 Legacy MapLandFormSO 字段。
+/// 簇参数仅由 Excel（MapLandFormProvider）读取（阶段6 唯一主源）。
 /// 设计要点：
 ///  - 散落池保持不变以锁定随机流，同种子下其他地貌位置逐格不变；
 ///  - 簇生成使用独立随机流（SeedService "LandFormCluster"），不消耗散落流的随机数；

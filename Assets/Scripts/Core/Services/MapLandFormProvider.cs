@@ -3,15 +3,15 @@ using System.Collections.Generic;
 using GameConfig;
 
 //****************************************
-//功能说明：地图地貌提供者（对象化 + Excel 数值化）。
-//         散落/簇生成的权重与参数优先由 Excel（MapLandFormBalanceDatabaseSO +
-//         LandFormGlobalConfigDatabaseSO）决定，通过 landFormId → 手工资源 SO（MapLandFormSO）
-//         解析出模型/浮标等资源对象。效果数值由 LandFormEffectRule 统一读取（同样 Excel 优先）。
-//         Excel 未生成时回退 Legacy 手工 SO（双轨迁移期）。
+//功能说明：地图地貌提供者（阶段6：Excel 唯一主源）。
+//         散落/簇生成的权重与参数仅由 Excel（MapLandFormBalanceDatabaseSO +
+//         LandFormGlobalConfigDatabaseSO）读取，通过 landFormId → 手工资源 SO（MapLandFormSO）
+//         仅用于解析模型/浮标等资源对象。效果数值由 LandFormEffectRule 统一读取（同样 Excel 唯一）。
+//         Excel 未生成/未命中时抛异常，暴露配置缺失。
 //****************************************
 public class MapLandFormProvider
 {
-    private readonly MapLandFormDatabaseSO _database;             // Legacy 地貌库（模型/浮标）
+    private readonly MapLandFormDatabaseSO _database;             // 手工地貌库（模型/浮标）
     private readonly MapLandFormBalanceDatabaseSO _balance;       // Excel 数值
     private readonly LandFormGlobalConfigDatabaseSO _global;      // Excel 全局参数
 
@@ -25,9 +25,24 @@ public class MapLandFormProvider
         _global = global;
     }
 
-    /// <summary>不生成地貌的权重（Excel 优先，缺失回退 Legacy）。</summary>
-    public int EmptySpawnWeight =>
-        _global?.Config?.emptySpawnWeight ?? _database?.emptySpawnWeight ?? 0;
+    private LandFormGlobalConfigData RequireGlobal()
+    {
+        if (_global?.Config == null)
+            throw new System.InvalidOperationException(
+                "[MapLandForm] Excel 地貌全局配置未加载：请先运行 工具/游戏配置/导入并校验，并绑定 LandFormGlobalConfigDatabaseSO。");
+        return _global.Config;
+    }
+
+    private MapLandFormBalanceDatabaseSO RequireBalanceDb()
+    {
+        if (_balance == null)
+            throw new System.InvalidOperationException(
+                "[MapLandForm] Excel 地貌数值库未加载：请先运行 工具/游戏配置/导入并校验，并绑定 MapLandFormBalanceDatabaseSO。");
+        return _balance;
+    }
+
+    /// <summary>不生成地貌的权重（Excel 唯一主源）。</summary>
+    public int EmptySpawnWeight => RequireGlobal().emptySpawnWeight;
 
     /// <summary>按权重表掷点选择散落地貌；掷中空白或数据库为空返回 null。</summary>
     public MapLandFormSO RollLandForm(System.Random random)
@@ -46,23 +61,11 @@ public class MapLandFormProvider
         if (remaining < EmptySpawnWeight) return null;
         remaining -= EmptySpawnWeight;
 
-        if (_balance != null && _balance.EnabledLandForms.Count > 0)
+        foreach (var b in RequireBalanceDb().EnabledLandForms)
         {
-            foreach (var b in _balance.EnabledLandForms)
-            {
-                if (b.spawnWeight <= 0) continue;
-                if (remaining < b.spawnWeight) return FindResource(b.landFormId);
-                remaining -= b.spawnWeight;
-            }
-        }
-        else if (_database != null && _database.landForms != null)
-        {
-            foreach (var f in _database.landForms)
-            {
-                if (f == null || f.spawnWeight <= 0) continue;
-                if (remaining < f.spawnWeight) return f;
-                remaining -= f.spawnWeight;
-            }
+            if (b.spawnWeight <= 0) continue;
+            if (remaining < b.spawnWeight) return FindResource(b.landFormId);
+            remaining -= b.spawnWeight;
         }
 
         return null;
@@ -77,22 +80,14 @@ public class MapLandFormProvider
         return null;
     }
 
-    /// <summary>启用散落地貌列表（资源对象），Excel 优先，缺失回退 Legacy。</summary>
+    /// <summary>启用散落地貌列表（资源对象），Excel 唯一主源。</summary>
     public IReadOnlyList<MapLandFormSO> GetEnabledForms()
     {
         var result = new List<MapLandFormSO>();
-        if (_balance != null && _balance.EnabledLandForms.Count > 0)
+        foreach (var b in RequireBalanceDb().EnabledLandForms)
         {
-            foreach (var b in _balance.EnabledLandForms)
-            {
-                var form = FindResource(b.landFormId);
-                if (form != null) result.Add(form);
-            }
-        }
-        else if (_database != null && _database.landForms != null)
-        {
-            foreach (var f in _database.landForms)
-                if (f != null) result.Add(f);
+            var form = FindResource(b.landFormId);
+            if (form != null) result.Add(form);
         }
         return result;
     }
@@ -100,66 +95,61 @@ public class MapLandFormProvider
     /// <summary>按地貌 SO 查 Excel 数值；未命中返回 null。</summary>
     public MapLandFormBalanceData GetBalance(MapLandFormSO form)
     {
-        if (form == null || _balance == null) return null;
-        return _balance.TryGetLandForm(form.landFormId, out var b) ? b : null;
+        if (form == null) return null;
+        return RequireBalanceDb().TryGetLandForm(form.landFormId, out var b) ? b : null;
     }
 
-    /// <summary>是否为簇生成地貌（Excel 优先，缺失回退 Legacy）。</summary>
+    /// <summary>是否为簇生成地貌（Excel 唯一主源；无地貌返回 false，未命中抛异常）。</summary>
     public bool IsClusterSpawn(MapLandFormSO form)
     {
-        var b = GetBalance(form);
-        if (b != null) return b.clusterSpawn;
-        return form != null && form.clusterSpawn;
+        if (form == null) return false;
+        return RequireBalance(form).clusterSpawn;
     }
 
     public int GetClusterCount(MapLandFormSO form)
     {
-        var b = GetBalance(form);
-        if (b != null) return b.clusterCount;
-        return form != null ? form.clusterCount : 1;
+        if (form == null) return 1;
+        return RequireBalance(form).clusterCount;
     }
 
     public int GetClusterTargetSize(MapLandFormSO form)
     {
-        var b = GetBalance(form);
-        if (b != null) return b.clusterTargetSize;
-        return form != null ? form.clusterTargetSize : 8;
+        if (form == null) return 8;
+        return RequireBalance(form).clusterTargetSize;
     }
 
     public float GetClusterFillProbability(MapLandFormSO form)
     {
-        var b = GetBalance(form);
-        if (b != null) return b.clusterFillProbability;
-        return form != null ? form.clusterFillProbability : 0.8f;
+        if (form == null) return 0.8f;
+        return RequireBalance(form).clusterFillProbability;
     }
 
     public int GetClusterMinSpacing(MapLandFormSO form)
     {
-        var b = GetBalance(form);
-        if (b != null) return b.clusterMinSpacing;
-        return form != null ? form.clusterMinSpacing : 4;
+        if (form == null) return 4;
+        return RequireBalance(form).clusterMinSpacing;
     }
 
     public int GetClusterMaxRadius(MapLandFormSO form)
     {
-        var b = GetBalance(form);
-        if (b != null) return b.clusterMaxRadius;
-        return form != null ? form.clusterMaxRadius : 4;
+        if (form == null) return 4;
+        return RequireBalance(form).clusterMaxRadius;
+    }
+
+    private MapLandFormBalanceData RequireBalance(MapLandFormSO form)
+    {
+        var balance = GetBalance(form);
+        if (balance == null)
+            throw new System.InvalidOperationException(
+                $"[MapLandForm] 地貌 {form?.landFormId ?? "(null)"} 未在 Excel 地貌数值库命中，无法读取数值。");
+        return balance;
     }
 
     private int ComputeTotalWeight()
     {
         int total = EmptySpawnWeight;
-        if (_balance != null && _balance.EnabledLandForms.Count > 0)
-        {
-            foreach (var b in _balance.EnabledLandForms)
-                if (b.spawnWeight > 0) total += b.spawnWeight;
-        }
-        else if (_database != null && _database.landForms != null)
-        {
-            foreach (var f in _database.landForms)
-                if (f != null && f.spawnWeight > 0) total += f.spawnWeight;
-        }
+        foreach (var b in RequireBalanceDb().EnabledLandForms)
+            if (b.spawnWeight > 0) total += b.spawnWeight;
         return total;
     }
 }

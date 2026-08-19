@@ -62,7 +62,7 @@ public class PublicBuildingGenerator
         // 【待确认项3.2】暂定简单规则：随机选取 N 个陆地格作为根格，尝试放置
         // 后续讨论后补充：数量策略、避开出生点、最小间距、形状旋转等
         var validBuildingIds = GetValidBuildingIds(buildingCount);
-        int targetCount = Mathf.Min(3, validBuildingIds.Count); // 暂定生成3个公共建筑（或配置数量上限）
+        int targetCount = Mathf.Min(CoreGameplayConfigProvider.PublicBuildingMaxCount, validBuildingIds.Count); // 每局公共建筑数量上限（Excel 可配）
         if (targetCount == 0)
         {
             Debug.LogError("[PublicBuildingGenerator] No valid public building prefabs configured.");
@@ -156,13 +156,13 @@ public class PublicBuildingGenerator
                 if (n != null && n.HexType != Enums.HexType.LakeOrSea)
                     landNeighbors++;
             }
-            if (landNeighbors < 2) continue;
+            if (landNeighbors < CoreGameplayConfigProvider.PublicBuildingMinLandNeighbors) continue;
 
             // 限定中立区域
             if (!_config.neutralZone.Contains(cell.HexCoordinate.z)) continue;
 
             // 【竞技场-阶段二】公共建筑生成避开预留区（含外 1 环，玩法文档 §7.3）
-            if (_arenaEventManager != null && _arenaEventManager.IsNearReservedZone(cell, 1)) continue;
+            if (_arenaEventManager != null && _arenaEventManager.IsNearReservedZone(cell, CoreGameplayConfigProvider.PublicBuildingArenaReserveExtraRings)) continue;
 
             // 【待确认项3.2】后续补充：
             // - 避开玩家/AI出生点一定范围

@@ -13,10 +13,10 @@ public class GoldIncomeService : ITickable
     private readonly EconomyConfigProvider _economy;
     private float _accumulator;
 
-    public float IncomeInterval => _economy?.IncomeTickInterval ?? 1f;
+    public float IncomeInterval => _economy.IncomeTickInterval;
 
     /// <summary>AI 专属额外金币收入（每结算周期）。固定值、不参与天赋倍率放大，用于平滑增强 AI 竞争力。Excel 优先。</summary>
-    public int AIIncomeBonusPerTick => _economy?.AIIncomeBonusPerTick ?? 6;
+    public int AIIncomeBonusPerTick => _economy.AIIncomeBonusPerTick;
 
     public GoldIncomeService(
         GoldWallet wallet,

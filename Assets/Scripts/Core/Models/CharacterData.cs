@@ -27,6 +27,8 @@ public class CharacterData
     public float currentHp;
     //现在的攻击力
     public float currentAttackValue;
+    //战术卡「战斗号令」临时移速增益（1 = 无增益，>1 = 移速提升）
+    public float moveSpeedMultiplier = 1f;
     //现在的视野范围 - 判断效果如寻路
     public float currentViewPoints;
     //防御力

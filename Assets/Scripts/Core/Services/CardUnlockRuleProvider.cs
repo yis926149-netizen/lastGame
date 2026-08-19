@@ -2,10 +2,10 @@ using System.Collections.Generic;
 using GameConfig;
 
 //****************************************
-//功能说明：普通卡解锁规则提供者（对象化 + Excel 数值化）。
-//         卡池内容优先由 NormalCardPoolDatabaseSO（Excel 生成）决定；
+//功能说明：普通卡解锁规则提供者（对象化 + Excel 数值化，阶段6 唯一主源）。
+//         卡池内容仅由 NormalCardPoolDatabaseSO（Excel 生成）决定；
 //         通过 cardId（稳定字符串 ID）→ legacyId → 资源 SO 的链路解析出卡资源对象。
-//         Excel 卡池为空时回退 Legacy 手工列表 NormalCardPoolSO（双轨迁移期）。
+//         Excel 未加载时抛异常，暴露配置缺失。
 //****************************************
 public interface ICardUnlockRuleProvider
 {
@@ -18,7 +18,6 @@ public interface ICardUnlockRuleProvider
 
 public class CardUnlockRuleProvider : ICardUnlockRuleProvider
 {
-    private readonly NormalCardPoolSO _legacyPool;                // Legacy 手工卡池（过渡期兜底）
     private readonly NormalCardPoolDatabaseSO _pool;              // Excel 卡池（数值）
     private readonly UnitBalanceDatabaseSO _unitBalance;          // cardId → legacyId
     private readonly BuildingBalanceDatabaseSO _buildingBalance;  // cardId → legacyId
@@ -28,49 +27,47 @@ public class CardUnlockRuleProvider : ICardUnlockRuleProvider
     public CardUnlockRuleProvider(
         IUnitDataProvider unitDataProvider,
         IBuildingDataProvider buildingDataProvider,
-        NormalCardPoolSO legacyPool = null,
         NormalCardPoolDatabaseSO pool = null,
         UnitBalanceDatabaseSO unitBalance = null,
         BuildingBalanceDatabaseSO buildingBalance = null)
     {
         _unitDataProvider = unitDataProvider;
         _buildingDataProvider = buildingDataProvider;
-        _legacyPool = legacyPool;
         _pool = pool;
         _unitBalance = unitBalance;
         _buildingBalance = buildingBalance;
     }
 
+    private NormalCardPoolDatabaseSO RequirePool()
+    {
+        if (_pool == null)
+            throw new System.InvalidOperationException(
+                "[CardUnlock] Excel 普通卡池未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 NormalCardPoolDatabaseSO。");
+        return _pool;
+    }
+
     public IReadOnlyList<NormalCardConfigSO> GetUnlockedCards()
     {
-        if (_pool != null && _pool.EnabledCards.Count > 0)
+        var result = new List<NormalCardConfigSO>();
+        foreach (var entry in RequirePool().EnabledCards)
         {
-            var result = new List<NormalCardConfigSO>();
-            foreach (var entry in _pool.EnabledCards)
-            {
-                var config = Resolve(entry);
-                if (config != null)
-                    result.Add(config);
-            }
-            return result;
+            var config = Resolve(entry);
+            if (config != null)
+                result.Add(config);
         }
-
-        // 过渡期回退：Excel 卡池未生成时用 Legacy 手工列表
-        return _legacyPool != null && _legacyPool.cards != null
-            ? _legacyPool.cards
-            : new List<NormalCardConfigSO>();
+        return result;
     }
 
     public NormalCardConfigSO GetGuaranteedFirstCard()
     {
-        if (_pool != null && !string.IsNullOrEmpty(_pool.GuaranteedFirstCardId)
-            && _pool.TryGetCard(_pool.GuaranteedFirstCardId, out var entry))
-        {
-            return Resolve(entry);
-        }
+        var pool = RequirePool();
+        if (string.IsNullOrEmpty(pool.GuaranteedFirstCardId))
+            return null;
 
-        // 过渡期回退
-        return _legacyPool != null ? _legacyPool.guaranteedFirstCard : null;
+        if (!pool.TryGetCard(pool.GuaranteedFirstCardId, out var entry))
+            throw new System.InvalidOperationException(
+                $"[CardUnlock] 保底卡 {pool.GuaranteedFirstCardId} 未在 Excel 普通卡池命中。");
+        return Resolve(entry);
     }
 
     private NormalCardConfigSO Resolve(NormalCardPoolEntry entry)

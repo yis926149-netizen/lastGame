@@ -9,6 +9,9 @@ public interface ICardDropHandler
 
     /// <summary>拖拽被取消/失败且未走 HandleCardDragEnd 时通知（归还借出）。</summary>
     void OnCardDragCancel(ICardView view);
+
+    /// <summary>查询该卡牌能否部署到指定格（放置预览高亮与确认路径共用同一规则）。</summary>
+    bool CanDeployTo(CardData data, HexCellData cell);
 }
 
 public interface ICardView

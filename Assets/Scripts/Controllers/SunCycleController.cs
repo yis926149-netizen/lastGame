@@ -20,11 +20,11 @@ public class SunCycleController : ITickable
         _gameFlow = gameFlow;
     }
 
-    // 昼夜周期与光照强度优先读 Excel，缺失回退 Legacy（双轨迁移期）
-    private float CycleDuration => _gameFlow?.DayNightCycleSeconds ?? 300f;
+    // 昼夜周期与光照强度仅读 Excel（阶段6 唯一主源）
+    private float CycleDuration => _gameFlow.DayNightCycleSeconds;
     private float HalfCycle => CycleDuration * 0.5f;
-    private float NoonIntensity => _gameFlow?.NoonLightIntensity ?? 1.2f;
-    private float SunsetIntensity => _gameFlow?.SunsetLightIntensity ?? 0.4f;
+    private float NoonIntensity => _gameFlow.NoonLightIntensity;
+    private float SunsetIntensity => _gameFlow.SunsetLightIntensity;
 
     public void Tick()
     {

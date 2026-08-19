@@ -26,9 +26,9 @@ public class AICardTicker : ITickable
     {
         if (_gameLoop != null && _gameLoop.IsPaused) return;
         if (_aiManager.AIDisabled) return;
-        if (UnityEngine.Time.time - _aiState.LastActionTime < (_aiConfig?.GlobalActionMinInterval ?? 1f)) return;
+        if (UnityEngine.Time.time - _aiState.LastActionTime < _aiConfig.GlobalActionMinInterval) return;
         _timer += UnityEngine.Time.deltaTime;
-        if (_timer < (_aiConfig?.CardPlayInterval ?? 1.5f)) return;
+        if (_timer < _aiConfig.CardPlayInterval) return;
         _timer = 0f;
         if (_cardBrain.RunCardPipeline())
             _aiState.LastActionTime = UnityEngine.Time.time;

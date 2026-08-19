@@ -42,7 +42,7 @@ public class GlobalTimerUI : MonoBehaviour
 
         _label.text = total.ToString();
 
-        float urgent = _gameFlow?.CountdownUrgentThreshold ?? 60f;
+        float urgent = _gameFlow.CountdownUrgentThreshold;
         if (_timer.IsRunning && _timer.Remaining <= urgent && !_urgentActive)
         {
             _urgentActive = true;

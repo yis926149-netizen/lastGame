@@ -31,8 +31,7 @@ public abstract class UnitBrainBase : MonoBehaviour
 
     // ── 回血计时器（批次 C）──────────────────────────────
     // 【地图地貌配置化】农田回血参数来自当前格 MapLandFormSO（LandFormEffectRule.TryGetPeriodicHeal），
-    // 不再使用硬编码常量；以下常量仅作为祭坛回血的兜底间隔。
-    private const float BuildingHealIntervalFallback = 5f; // 秒
+    // 不再使用硬编码常量；祭坛回血兜底间隔已迁移至 CoreGameplayConfigProvider。
     private float _landHealTimer = 0f;
     private float _buildingHealTimer = 0f;
     private MapLandFormSO _landHealSource;
@@ -116,7 +115,7 @@ public abstract class UnitBrainBase : MonoBehaviour
         var ctrl = h.BulidingTypeOnHex_Building.Value.GetComponent<BuildingController>();
         if (ctrl?.buildingData == null) return;
 
-        float interval = ctrl.buildingData.HealInterval > 0 ? ctrl.buildingData.HealInterval : BuildingHealIntervalFallback;
+        float interval = ctrl.buildingData.HealInterval > 0 ? ctrl.buildingData.HealInterval : CoreGameplayConfigProvider.BuildingHealIntervalFallback;
         _buildingHealTimer += dt;
         if (_buildingHealTimer < interval) return;
 
@@ -128,7 +127,7 @@ public abstract class UnitBrainBase : MonoBehaviour
     // 节流仅在“上一次寻路失败（被困/无可达目标）”后生效，防止每帧重复空跑 Dijkstra。
     // 正常沿缓存路径逐格前进、以及路径耗尽后的立即重算都不节流，实现平滑移动。
     private int _idleSearchCounter;
-    private const int SearchInterval = 20;
+    private int SearchInterval => CoreGameplayConfigProvider.UnitPathSearchThrottle;
     // 上一次 ChooseNextPath 是否失败（无路可走）。只有在此状态下才对重算节流。
     private bool _pathfindFailed;
 

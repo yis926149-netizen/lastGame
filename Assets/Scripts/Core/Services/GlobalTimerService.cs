@@ -4,7 +4,7 @@ using UnityEngine;
 /// <summary>
 /// 全局倒计时服务。不依赖 GameLoop（由外层在非暂停时调用 Tick）。
 /// 超时结束通过 Event 通知，不包含自动判胜负逻辑。
-/// 【Excel 数值化】总时长优先读 GameFlowConfigProvider，缺失回退 300（双轨迁移期）。
+/// 【Excel 数值化】总时长仅读 GameFlowConfigProvider（阶段6 唯一主源）。
 /// </summary>
 public class GlobalTimerService
 {
@@ -20,8 +20,8 @@ public class GlobalTimerService
         _remaining = DefaultDuration;
     }
 
-    /// <summary>默认倒计时总时长（秒）。启动前 Remaining 即为此值，使 HUD 显示满时长。Excel 优先，缺失回退 300。</summary>
-    public float DefaultDuration => _gameFlow?.GameDurationSeconds ?? 300f;
+    /// <summary>默认倒计时总时长（秒）。启动前 Remaining 即为此值，使 HUD 显示满时长。Excel 唯一主源。</summary>
+    public float DefaultDuration => _gameFlow.GameDurationSeconds;
 
     public float Remaining => _remaining;
     public bool IsRunning => _running;

@@ -245,7 +245,7 @@ public class TerrainGenerator : MonoBehaviour
     /// <param name="persistence">持续性：控制高频细节的贡献度（值越小，地形越平滑）- 0.4~0.6 </param>
     /// <param name="minHeight">最低高度</param>
     /// <param name="maxHeight">最高高度</param>
-    public static int[,] GenerateTerrainHeight(int xNumber, int zNumber, System.Random random, float frequency = 0.05f, int octaves = 3, float persistence = 0.5f, int minHeight = 0, int maxHeight = 2)
+    public static int[,] GenerateTerrainHeight(int xNumber, int zNumber, System.Random random, float frequency = 0.05f, int octaves = 3, float persistence = 0.6f, int minHeight = 0, int maxHeight = 2)
     {
         int[,] terrainMap = new int[xNumber, zNumber];
         float offsetX = random.Next(-100000, 100001);
@@ -377,7 +377,7 @@ public class TerrainGenerator : MonoBehaviour
         if (paletteMap == null || !paletteMap.isReadable || worldCenters == null || worldCenters.Count != xNumber * zNumber)
         {
             Debug.LogWarning("颜色图为空/不可读或世界坐标数量不匹配，回退到 Perlin 噪声生成");
-            return GenerateTerrainHeight(xNumber, zNumber, random, 0.05f, 3, 0.5f, (int)minHeight, (int)maxHeight);
+            return GenerateTerrainHeight(xNumber, zNumber, random, 0.05f, 3, 0.6f, (int)minHeight, (int)maxHeight);
         }
 
         int[,] terrainMap = new int[xNumber, zNumber];

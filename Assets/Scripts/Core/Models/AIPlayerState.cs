@@ -10,7 +10,8 @@ public class AIPlayerState
 
 public class AICardState
 {
-    public const int MaxHandCards = 5;
+    // 【Excel 数值化】AI 手牌上限与玩家共享，迁移至 CoreGameplayConfigProvider。
+    public static int MaxHandCards => CoreGameplayConfigProvider.HandCardLimit;
 
     /// <summary>AI 手牌（普通卡配置引用；允许同一配置多张，等价有放回抽取）。</summary>
     public List<NormalCardConfigSO> HandCards = new List<NormalCardConfigSO>();

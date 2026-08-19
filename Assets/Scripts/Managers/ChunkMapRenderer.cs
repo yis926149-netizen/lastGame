@@ -116,7 +116,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     // Chunk 后端负责盖章重建（RebuildFogMask）。
     private readonly FogTransitionManager _fogTransition = new FogTransitionManager();
     private float _fogRefreshTimer;
-    private const float FogRefreshInterval = 1f / 20f;
+    // 【Excel 数值化】迷雾刷新间隔迁移至 FeelConfigProvider（原 const FogRefreshInterval = 1/20）。
     private bool _fogInitialized;
     private bool _isSubscribed;
     /// <summary>【迷雾修复-2026-08-04】后勤连通性事件订阅状态（开局主城迷雾刷新的关键路径）。</summary>
@@ -144,7 +144,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         if (_fogTransition.IsDirty)
         {
             _fogRefreshTimer += Time.deltaTime;
-            if (_fogRefreshTimer >= FogRefreshInterval)
+            if (_fogRefreshTimer >= FeelConfigProvider.FogRefreshInterval)
             {
                 _fogRefreshTimer = 0f;
                 RebuildFogMask();
@@ -2625,11 +2625,12 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
         material.SetColor("_ColorHigh", mountainConfig.tierColorHigh);
         material.SetTexture("_RockTexture", mountainConfig.rockTexture);
         material.SetFloat("_RockTextureEnabled", mountainConfig.rockTexture != null ? 1f : 0f);
-        material.SetFloat("_TriplanarWorldScale", mountainConfig.triplanarWorldScale);
-        material.SetFloat("_TriplanarBlendSharpness", mountainConfig.triplanarBlendSharpness);
-        material.SetFloat("_Roughness", mountainConfig.roughness);
-        material.SetFloat("_Metallic", mountainConfig.metallic);
-        material.SetFloat("_ShadowStrength", mountainConfig.shadowStrength);
+        // 【Excel 数值化】Triplanar/粗糙度/金属度/阴影走山体配置表（资源引用与色阶仍在 SO）。
+        material.SetFloat("_TriplanarWorldScale", MountainConfigProvider.TriplanarWorldScale);
+        material.SetFloat("_TriplanarBlendSharpness", MountainConfigProvider.TriplanarBlendSharpness);
+        material.SetFloat("_Roughness", MountainConfigProvider.Roughness);
+        material.SetFloat("_Metallic", MountainConfigProvider.Metallic);
+        material.SetFloat("_ShadowStrength", MountainConfigProvider.ShadowStrength);
 
         bool textureEnabled = mountainConfig.rockTexture != null;
         if (textureEnabled)

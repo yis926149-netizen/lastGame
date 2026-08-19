@@ -21,7 +21,8 @@ public interface ICardService
 
 public class CardService : ICardService
 {
-    private const int MaxCardsCount = 5;
+    // 【Excel 数值化】手牌上限迁移至 CoreGameplayConfigProvider。
+    private static int MaxCardsCount => CoreGameplayConfigProvider.HandCardLimit;
     private ICardView[] _slots = new ICardView[MaxCardsCount];
     private bool _hasDrawnThisTurn = false;
     private bool _hasDealtThisTurn = false;     // ?? ????

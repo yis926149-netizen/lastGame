@@ -135,23 +135,23 @@ public class AICardBrain
         if (card is UnitConfigSO unitConfig)
         {
             return _unitDataProvider.GetUnitStrategyType(unitConfig.Id) == UnitStrategyType.Settler
-                ? (_aiConfig?.SettlerCardPriority ?? 100)
-                : (_aiConfig?.UnitCardPriority ?? 70);
+                ? _aiConfig.SettlerCardPriority
+                : _aiConfig.UnitCardPriority;
         }
 
         if (card is BuildingConfigSO buildingConfig)
         {
             return _buildingDataProvider.GetBuildingType(buildingConfig.buildingId) == Enums.BulidingType.TechnologyAndCultural
-                ? (_aiConfig?.TechnologyCardPriority ?? 90)
-                : (_aiConfig?.BuildingCardPriority ?? 60);
+                ? _aiConfig.TechnologyCardPriority
+                : _aiConfig.BuildingCardPriority;
         }
 
-        return _aiConfig?.BuildingCardPriority ?? 60;
+        return _aiConfig.BuildingCardPriority;
     }
 
     private int GetCardCost(NormalCardConfigSO card)
     {
-        // 卡费数值优先取 Excel 平衡库，缺失时回退 Legacy SO（Provider 内部处理）。
+        // 卡费数值仅取 Excel 平衡库（阶段6 唯一主源，Provider 内部处理）。
         if (card is UnitConfigSO unitConfig)
             return _unitDataProvider.GetUnitCardCost(unitConfig.Id);
         if (card is BuildingConfigSO buildingConfig)

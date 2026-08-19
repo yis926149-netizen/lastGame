@@ -19,12 +19,18 @@ public class EndGame : MonoBehaviour
     [Inject] private ArenaEventManager _arenaEventManager;
     [Inject] private GameFlowConfigProvider _gameFlow;
 
-    public bool isEndThisGame = false;
+    public bool forceVictory = false;   // 强制胜利开关：Play 模式下勾选，下一帧强制触发胜利结算（触发后自动复位）
+    public bool forceDefeat = false;    // 强制失败开关：Play 模式下勾选，下一帧强制触发失败结算（触发后自动复位）
     public bool neverWin;
+    private bool _ended;                  // 内部“已结算”锁，防止重复触发/重复结算
     public Transform VictoryAnimation;
     public Transform DefeatAnimation;
     public Transform VictoryUI;
     public Transform DefeatUI;
+
+    [Tooltip("胜利界面的缩放入场动画播放器（ScaleInEffectPlayer 组件），仅在胜利时播放列表第 0-6 个动画")]
+    public ScaleInEffectPlayer victoryScaleIn;
+
     public EndGameResult Result { get; private set; }
 
     public bool IsVictory =>
@@ -49,7 +55,7 @@ public class EndGame : MonoBehaviour
 
     private void HandleTimeout()
     {
-        if (!_initializationComplete || isEndThisGame) return;
+        if (!_initializationComplete || _ended) return;
 
         int playerCells = 0;
         int aiCells = 0;
@@ -78,7 +84,21 @@ public class EndGame : MonoBehaviour
 
     void Update()
     {
-        if (!_initializationComplete || isEndThisGame) return;
+        if (!_initializationComplete || _ended) return;
+
+        if (forceVictory)
+        {
+            forceVictory = false;
+            BeginEndGame(EndGameResult.Victory, force: true);
+            return;
+        }
+
+        if (forceDefeat)
+        {
+            forceDefeat = false;
+            BeginEndGame(EndGameResult.Defeat, force: true);
+            return;
+        }
 
         if (_playerMainCity != null && _aiMainCity != null)
         {
@@ -124,7 +144,7 @@ public class EndGame : MonoBehaviour
 
     public bool TryEndFromMainCity(BuildingController controller)
     {
-        if (!_initializationComplete || isEndThisGame || controller == null)
+        if (!_initializationComplete || _ended || controller == null)
             return false;
         if (controller != _playerMainCity && controller != _aiMainCity)
             return false;
@@ -149,14 +169,14 @@ public class EndGame : MonoBehaviour
         return EndGameResult.None;
     }
 
-    private void BeginEndGame(EndGameResult result)
+    private void BeginEndGame(EndGameResult result, bool force = false)
     {
-        if (isEndThisGame || result == EndGameResult.None) return;
-        if (neverWin && result == EndGameResult.Victory) return;
+        if (_ended || result == EndGameResult.None) return;
+        if (!force && neverWin && result == EndGameResult.Victory) return;
 
         Result = result;
-        isEndThisGame = true;
-        Invoke(nameof(EndThisGame), _gameFlow?.SettlementDelaySeconds ?? 1.5f);
+        _ended = true;
+        Invoke(nameof(EndThisGame), _gameFlow.SettlementDelaySeconds);
     }
 
     public void MarkInitializationComplete()
@@ -189,6 +209,28 @@ public class EndGame : MonoBehaviour
         return AICityCount;
     }
 
+    [ContextMenu("Debug/Force Victory")]
+    private void DebugForceVictory()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("[EndGame] 请在 Play 模式下使用 Force Victory。", this);
+            return;
+        }
+        BeginEndGame(EndGameResult.Victory, force: true);
+    }
+
+    [ContextMenu("Debug/Force Defeat")]
+    private void DebugForceDefeat()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("[EndGame] 请在 Play 模式下使用 Force Defeat。", this);
+            return;
+        }
+        BeginEndGame(EndGameResult.Defeat);
+    }
+
     public void EndThisGame()
     {
         _gameLoop.SetPaused(true);
@@ -207,7 +249,7 @@ public class EndGame : MonoBehaviour
 
         animation.gameObject.SetActive(true);
         animation.SetAsLastSibling();
-        Invoke(nameof(DisplayEndGameUI), _gameFlow?.EndGameUiDelaySeconds ?? 6.5f);
+        Invoke(nameof(DisplayEndGameUI), _gameFlow.EndGameUiDelaySeconds);
     }
 
     private void DisplayEndGameUI()
@@ -222,6 +264,9 @@ public class EndGame : MonoBehaviour
         ui.gameObject.SetActive(true);
         ui.SetAsLastSibling();
 
+        // 缩放入场动画：胜利 UI 激活后同时播放列表第 0-6 个动画（仅胜利界面独有）
+        if (IsVictory) victoryScaleIn?.Play(0, 1, 2, 3, 4, 5, 6);
+
         var animation = CurrentEndAnimation;
         if (animation != null)
         {
@@ -232,6 +277,9 @@ public class EndGame : MonoBehaviour
     public void HideEndUI()
     {
         _gameLoop.SetPaused(false);
+
+        // 取消尚未触发的延迟缩放入场动画，避免玩家继续游戏后 A 节点被意外激活
+        victoryScaleIn?.Stop(0, 1, 2, 3, 4, 5, 6);
 
         var animation = CurrentEndAnimation;
         if (animation != null)
