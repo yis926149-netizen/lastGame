@@ -2,7 +2,7 @@
   "schemaVersion": "1.0.0",
   "exporterVersion": "0.1.0",
   "workbook": "游戏数值配置.xlsx",
-  "workbookSha256": "5d6d8bc5ae047712edb4f08f24b0edfd9f962d29fdd52eba16311382f25d3840",
+  "workbookSha256": "e6b0c584dd2602c433f147d5dedbac29c21bf96be07d3c5e4fac45243949cf1e",
   "tables": [
     {
       "sheetName": "单位",
@@ -115,7 +115,7 @@
       "sha256": "4ad15f497d18a5d87d41a759e54770db9922b34a466ab33c7590fc3716c48fd7"
     },
     "Csv/天赋卡.csv": {
-      "sha256": "b62f0803acc373011e3324d389efb2627036f2277a123fe7aa067d7dfb521007"
+      "sha256": "91424462c45c5e7a5967e6bca5aeba9dacedf64d3ea03e4d08a427fe14348ef3"
     },
     "Csv/天赋抽卡规则.csv": {
       "sha256": "0d301c7eb25831c4512c4b7b549acfa68620a803d633f6e021ffe14f86864809"
@@ -139,7 +139,7 @@
       "sha256": "a515a4f86fd1e93bcc1eded6faa5ce36a98808a56f03559907b58302807d479d"
     },
     "Csv/普通卡池.csv": {
-      "sha256": "bf14af2c2f56c202376ab31071fafc4d0844a7e85bd3cc683d9db2d7423a7ad6"
+      "sha256": "90e2c49378d0beddf10d0f66e0ae2846fc10792f84d62dab7ff15e21c692ba86"
     },
     "Csv/核心玩法配置.csv": {
       "sha256": "1fd2eb3b2dbc917400609a0f260fe71e5e5274689ddd3c7288b7ddab8a591452"
@@ -154,7 +154,7 @@
       "sha256": "866bd0992b7db62c8f55fc61a08ca2545953f5d7130e64db5080b8bd921ff09e"
     },
     "game-config.json": {
-      "sha256": "aa0a8a597cfae8db853a7d16576e0f88ff46941fa681b4384a09f56fc63caf0d"
+      "sha256": "cd5ee624fbbda8f298257a08c63f9d923ce8d5e7f94f0bbfb8e9946ee1975bbe"
     }
   }
 }

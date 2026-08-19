@@ -559,15 +559,18 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
 
     private void TryExecuteRepair(HexCellData cell, TacticalCardSO config)
     {
-        // 【群体回血】范围：落点格及其周围一环（6 个相邻格）内的己方建筑。
+        // 【群体回血】范围：落点格及其周围一环（6 个相邻格）内的己方建筑与单位。
         List<BuildingBase> ownBuildings = FindOwnBuildingsInOneRing(cell);
-        if (ownBuildings.Count == 0)
+        List<CharacterData> ownUnits = FindOwnUnitsInOneRing(cell);
+        if (ownBuildings.Count == 0 && ownUnits.Count == 0)
         {
-            Debug.Log("[TacticalCardPresenter] Repair: no own building found in drop cell and its ring, card consumed without effect.");
+            Debug.Log("[TacticalCardPresenter] Repair: no own building or unit found in drop cell and its ring, card consumed without effect.");
             return;
         }
 
-        float healRatio = GetEffect(config).healRatio;
+        TacticalCardEffect effect = GetEffect(config);
+        float healRatio = effect.healRatio;
+        float unitHealRatio = effect.unitHealRatio > 0f ? effect.unitHealRatio : effect.healRatio;
         int healedCount = 0;
 
         foreach (BuildingBase building in ownBuildings)
@@ -584,7 +587,17 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
             healedCount++;
         }
 
-        Debug.Log($"[TacticalCardPresenter] Repair: group-healed {healedCount} own building(s) in drop ring, {healRatio * 100:F0}% each.");
+        foreach (CharacterData unit in ownUnits)
+        {
+            if (unit == null || unit.unitData == null) continue;
+            if (unit.currentHp >= unit.unitData.hp) continue; // 满血单位跳过
+
+            float healAmount = unit.unitData.hp * unitHealRatio;
+            unit.Heal(healAmount);
+            healedCount++;
+        }
+
+        Debug.Log($"[TacticalCardPresenter] Repair: group-healed {healedCount} own target(s) in drop ring (building {healRatio * 100:F0}%, unit {unitHealRatio * 100:F0}%).");
     }
 
     private bool TryExecuteBattleOrder(HexCellData cell, TacticalCardSO config)
@@ -639,6 +652,7 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
         return new TacticalCardEffect
         {
             healRatio = b.healRatio,
+            unitHealRatio = b.unitHealRatio,
             attackMultiplier = b.attackMultiplier,
             speedMultiplier = b.speedMultiplier,
             duration = b.duration,

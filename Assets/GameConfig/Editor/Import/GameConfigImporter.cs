@@ -250,6 +250,7 @@ namespace GameConfig.Editor
                     enabled = GetBool(v, col, "enabled", false),
                     effectType = Get(v, col, "effectType"),
                     healRatio = GetFloat(v, col, "healRatio", 0f),
+                    unitHealRatio = GetFloat(v, col, "unitHealRatio", 0f),
                     attackMultiplier = GetFloat(v, col, "attackMultiplier", 0f),
                     speedMultiplier = GetFloat(v, col, "speedMultiplier", 0f),
                     duration = GetFloat(v, col, "duration", 0f),

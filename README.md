@@ -12,13 +12,16 @@
 - **金矿与收入规则**：新增金矿建筑类型（`BulidingType.GoldMine`，产出由 `BuildingConfigSO.goldIncomePerSecond` 配置化）；`IncomeEligibilityRule` 统一"归属 + 后勤畅通"收入资格（断供暂停产金），`BuildingIncomeRule` 汇总金矿建筑产出，`GoldIncomeService` 每秒收入 =（基础 + 金矿地貌 + 金矿建筑）× 天赋乘数。
 - **实时游戏循环**：`GameLoop` 每帧驱动所有单位自动决策，玩家随时可通过卡牌部署单位，并可暂停/继续游戏。
 - **单位自动化**：每种单位有独立的兵种策略——近战、远程——由 `UnitBrainBase` 统一调度，逐格移动、探测敌人、自动攻击。
-- **卡牌系统**：拖拽卡牌向地图放置单位或建筑，是玩家唯一的交互方式。普通卡池由 `NormalCardPoolSO` 配置化驱动（单位/建筑卡均为 ScriptableObject 引用，开局纯随机抽卡 + 首张保底卡 `guaranteedFirstCard` 可配置），增删卡只需编辑资产，无需改代码，详见 [普通卡池对象化改造方案.md](普通卡池对象化改造方案.md)。
+- **卡牌系统**：拖拽卡牌向地图放置单位或建筑，是玩家唯一的交互方式。普通卡池数值由 Excel 数值库 `NormalCardPoolDatabaseSO` 驱动（当前 4 张：`unit.archer`、`unit.swordsman`、`building.arrow_tower`、`building.barracks`，`unit.archer` 为首张保底卡），资源引用（Prefab/Sprite/音效）仍走 `NormalCardPoolSO` / `UnitConfigSO` / `BuildingConfigSO` 等 ScriptableObject，详见 [普通卡池对象化改造方案.md](历史归档/普通卡池对象化改造方案.md) 与 [Excel配置表混合架构修改计划.md](Excel配置表混合架构修改计划.md)。
 - **城市与建筑**：玩家开局拥有一个主城及周围一环势力范围。通过探索地块或占领公共建筑扩张势力范围。可部署祭坛、攻防雕像等建筑。不再支持建新城。势力范围边界渲染为实体城墙/城墩（玩家与 AI 各一套预制体，由 `SphereOfInfluenceRenderer` 按边界折线摆放）。
 - **断供与吞并**：断供地块上的建筑全部失能（箭塔停火、兵营暂停生产），不再被自动索敌；敌方单位踩上失能建筑格可随格占领（建筑易主、不摧毁）；断供区域与敌方后勤网络共边相邻时整区域吞并（含建筑与公共建筑外一环）。详见 [断供迷雾与建筑失能吞并设计方案.md](游戏系统/断供迷雾与建筑失能吞并设计方案.md)。
 - **公共建筑**：地图中立区域随机生成多格公共建筑，双方争夺——首次击破归属攻击方，之后易主不回中立。占领后势力范围自动扩张并收割资源。开局隐藏，通过浮标示意位置；任意单位进入建筑占位格外一环后全局发现，触发石柱/飞盘特效揭示建筑模型和相关地块。
 - **战斗**：`CombatResolver` 瞬间结算伤害，`PlayAttackAnim` 负责外观表现；攻速由 `UnitData.AttackInterval` 控制，移动速度由 `UnitData.MovementPoints` 控制；攻击音效由 `UnitConfigSO.attackSfx` 配置驱动。
 - **AI 对手**：AI 单位由 `AIUnitBrain` 持续驱动，全知索敌。
-- **天赋卡牌系统**：游戏开始时和占领公共建筑后，玩家从 3 张随机天赋卡中选择 1 张，获得整局永久 Buff（攻击力 / 防御力 / 金币获取）。AI 达到同样条件时后台自动随机选卡。选卡时游戏自动暂停并伴有入场动画、选中特效和屏幕震动。
+- **天赋卡牌系统**：游戏开始时和占领公共建筑后，玩家从 3 张随机天赋卡中选择 1 张，获得整局永久乘数型 Buff（伤害 `talent.damage`、城墙 `talent.building_hp`、财富 `talent.gold`，数值由 Excel 天赋卡表维护）。AI 达到同样条件时后台自动随机选卡。选卡时游戏自动暂停并伴有入场动画、选中特效和屏幕震动。
+- **战术卡牌系统**：开局固定发放 2 张战术牌（战斗号令 `tactical.battle_order`、维修 `tactical.repair`），拖拽释放到目标格，作用于落点及其周围一环内的己方单位/建筑——维修群体回血、战斗号令临时提升攻击与移速，同名牌叠放显示数量、耗尽不自动补充，详见 [战术牌系统SO设计.md](游戏系统/战术牌系统SO设计.md)。
+- **地图道具/资源系统**：地图随机生成可拾取资源（动物/宝箱/矿物/植物；回血包历史保留未启用），按拾取效果类型（攻击提升/防御提升/回血/金币）由 `MapResourceProvider` + `MapResourceCollectionService` 统一消费，详见 [地图道具系统总结.md](地图与地形/地图道具系统总结.md)。
+- **Excel 数据驱动配置系统**：平衡数值统一由 `Config/Excel/游戏数值配置.xlsx` 维护，经 `Tools/ConfigExporter`（独立 .NET 8 工具）导出为 CSV/JSON，再由 Unity 菜单 `Tools/游戏配置/导入并校验` 生成 `Assets/GameConfig/Generated` 下只读数值库 SO，运行时通过各 `*ConfigProvider` 读取（阶段 6 起 Excel 为唯一数值源），详见 [Excel配置表混合架构修改计划.md](Excel配置表混合架构修改计划.md)。
 
 ## 开发环境
 
@@ -28,7 +31,7 @@
 | 语言 | C# |
 | 依赖注入 | [Zenject](Assets/Plugins/Zenject/) |
 | 动画与缓动 | [DOTween](Assets/DOTween_1_2_765/) |
-| 主要 Unity 包 | Cinemachine 2.10.3、Post Processing 3.4.0、Shader Graph 14.1.0、TextMeshPro 3.0.9、Timeline 1.7.7 |
+| 主要 Unity 包 | Cinemachine 2.10.7、Post Processing 3.4.0、Shader Graph 14.1.0、TextMeshPro 3.0.9、Timeline 1.7.7、Mathematics 1.2.6、UGUI 1.0.0 |
 | 测试 | Unity Test Framework、NUnit、NSubstitute 5.1.0 |
 
 完整的 UPM 依赖及版本见 [Packages/manifest.json](Packages/manifest.json)，编辑器版本见 [ProjectSettings/ProjectVersion.txt](ProjectSettings/ProjectVersion.txt)。
@@ -86,31 +89,41 @@ GameLoop.Tick（每帧，暂停时跳过）
 Assets/
 ├── Scenes/                         # 开始场景与主游戏场景
 ├── Shader/                         # 地形/水/河流/迷雾/网格/势力范围/探索特效等 Shader
+├── GameConfig/                     # Excel 数值化运行库（Editor 导入器 + Runtime 只读 SO，阶段6 唯一数值源）
+│   ├── Editor/                     # 导入器与校验（Import/Validation/Windows）
+│   ├── Runtime/                    # Data（数值 DTO）与 Database（数值库 SO）、IGameBalanceDatabase
+│   └── Generated/                  # 自动生成的只读数值库 SO（禁止手改）
 ├── Scripts/
-│   ├── AI/                         # AI 管理器、实体工厂、卡牌脑、自动探索器、卡牌定时器
-│   ├── Controllers/                # 单位、建筑（普通与公共建筑）、镜头等表现与控制组件
+│   ├── AI/                         # AI 管理器、实体工厂、卡牌脑、自动探索器、卡牌定时器、配置提供者
+│   ├── Controllers/                # 单位、建筑（普通与公共建筑）、镜头、昼夜循环等表现与控制组件
 │   ├── Core/
 │   │   ├── Interfaces/             # 核心服务接口
 │   │   ├── Models/                 # 地块、单位、建筑、卡牌等领域数据
 │   │   └── Services/               # 地图、单位、卡牌、战斗、游戏循环等实现
-│   │       ├── DataProviders/      # SO 数据提供者
+│   │       ├── DataProviders/      # SO 数据提供者（数值读 Excel、资源引用读 SO）
 │   │       ├── Exploration/        # 探索系统服务与接口
-│   │       ├── Resource/           # 金币钱包与被动收入
-│   │       └── Territory/          # 势力范围与后勤服务（TerritoryService/LogisticsService/AnnexationService）
+│   │       ├── MapMutation/        # 动态地图变化（事务/分帧提交/动画/交互锁）
+│   │       ├── Resource/           # 金币钱包、被动收入与经济配置
+│   │       ├── Territory/          # 势力范围与后勤服务（TerritoryService/LogisticsService/AnnexationService）
+│   │       └── Visibility/         # 临时可见性服务（VisibilityLease）
 │   ├── Data/                       # 六边形地块数据（地形、地貌、资源、建筑）映射
 │   ├── Infrastructure/Installers/  # Zenject 依赖绑定入口
-│   ├── Managers/                   # 地图生成/渲染、阵营管理、公共建筑生成、迷雾、势力范围渲染、探索特效
+│   ├── Managers/                   # 地图生成/渲染、阵营管理、公共建筑生成、迷雾、势力范围渲染、探索特效、昼夜循环
 │   ├── Scenes/StartScene/          # 开始场景 UI 控制器与场景管理
-│   ├── ScriptableObjects/          # 单位/建筑配置、普通卡池、公共建筑、地图、UI、地貌回血、天赋卡池配置
-│   │   ├── UnitConfigs/            # 单位卡配置资产（UnitConfig-0~11、archer、swordsman）
-│   │   ├── BuildingConfigs/        # 建筑卡配置资产（BuildingConfig-0~3、barracks、arrow_tower、gold_mine）
+│   ├── ScriptableObjects/          # 单位/建筑配置、普通卡池、公共建筑、地图、UI、地貌、天赋卡、战术卡、地图资源配置
+│   │   ├── UnitConfigS/            # 单位卡配置资产（UnitConfig-0~11、archer、swordsman）
+│   │   ├── BuildingConfigS/        # 建筑卡配置资产（BuildingConfig-0~3、barracks、arrow_tower、gold_mine）
 │   │   ├── MapLandForm/            # 地貌数据库与配置（含 Mountain/MountainConfig 程序化山脉配置）
-│   │   ├── NormalCardPool.asset    # 普通卡池（cards 配置列表 + 首张保底卡）
+│   │   ├── MapResource/            # 地图资源数据库与拾取效果（Animals/Chest/HealthPack/Minerals/Plants）
+│   │   ├── TacticalCard/           # 战术牌 SO 实例（Repair/BattleOrder + Database）
+│   │   ├── NormalCardPool.asset    # 普通卡池资源（cards 配置列表 + 首张保底卡）
 │   │   └── TalentCard/             # 天赋卡 SO 实例
+│   ├── TacticalCard/               # 战术卡牌系统：SO 数据、运行时实例、Presenter、战斗号令 Buff
+│   │   └── Data/                   # 战术卡 SO 脚本
 │   ├── TalentCard/                 # 天赋卡牌系统：Buff、数据、触发、UI、AI 自动选卡
 │   │   ├── Buffs/                  # Buff 基类与实现
 │   │   └── Data/                   # 天赋卡 SO 脚本
-│   ├── Turn/                       # 回合制组件（CommandQueue、MoveCommand、EndGame）
+│   ├── Turn/                       # 回合制遗留组件（CommandQueue、MoveCommand、EndGame）
 │   ├── Units/                      # 单位行为基类、玩家/AI Brain、兵种策略与工厂
 │   ├── UI/                         # 卡牌、信息面板及界面视图
 │   └── Utilities/                  # 六边形、网格、种子服务、枚举等通用工具
@@ -124,8 +137,16 @@ Assets/
 ├── Resources/                      # 运行时加载资源
 ├── Texture/                        # 贴图
 ├── UI/                             # UI 资源（预制体、图片等）
+├── DOTween_1_2_765/                # DOTween 动画与缓动插件
 └── _Quarantine/                    # 隔离/待清理资源
+（另含第三方/历史资源目录：KayKit、Lana Studio、Toon_RTS、unity-chan!、VFXPACK_IMPACT_WALLCOEUR_FreeVersion、noise、Standard Assets、Video，是否仍被引用需单独确认）
 
+Config/                             # Excel 数值配置：Excel 源、Schema、自动生成中间数据（CSV/JSON）
+├── Excel/游戏数值配置.xlsx         # 策划唯一数值源
+├── Schema/配置表结构.json          # 表结构 Schema
+└── Generated/                      # 自动生成（Csv/、game-config.json、manifest，禁止手改）
+
+Tools/ConfigExporter/               # 独立 .NET 8 Excel 导出工具（含单元测试）
 Docs/                               # DocFX 文档及服务说明
 Packages/                           # Unity 包配置
 ProjectSettings/                    # 编辑器、场景与项目设置
@@ -149,7 +170,7 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `IMapDataService` | 六边形坐标、地块数据和邻接查询 |
 | `IUnitService` / `IUnitRepository` | 单位查询、管理与存储 |
 | `IUnitMovement` | 移动和路径查询 |
-| `ICardService` | 手牌、卡槽和卡牌生成（`GenerateNextCard()` 返回普通卡配置对象） |
+| `ICardService` | 手牌、卡槽和卡牌生成（`GenerateNextCard()` 经 `CardGenerationRule` 从 Excel 卡池数值库解析为普通卡配置对象） |
 | `GameLoop` | 实时主循环：驱动单位决策、公共建筑死亡检测、管理暂停、积累游戏时间 |
 | `CombatResolver` | 瞬间伤害结算（单位对单位 / 单位对建筑 / 多格公共建筑攻击转发） |
 | `UnitMovementSystem` | 逐格移动动画与预留管理 |
@@ -165,7 +186,7 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `IExplorationRule` | 探索合法性判断 |
 | `IExplorationCostProvider` | 探索费用提供者 |
 | `IPlayerResourceWallet` | 玩家资源钱包接口 |
-| `ExplorationRewardSystem` | 探索奖励系统：监听探索完成事件，掷骰发放金币和单位奖励（单位奖励由 `UnitConfigSO[]` 配置） |
+| `ExplorationRewardSystem` | 探索奖励系统：监听探索完成事件，按地块预生成快照结算金币/单位/战术牌/建筑奖励（奖励池与档位由 Excel 驱动，`ExplorationRewardProvider` 解析） |
 | `ITerritoryService` | 势力范围占领与查询 |
 | `ILogisticsService` | 后勤服务：主城注册、按阵营 BFS 供应缓存（`IsLogisticsConnected`）、迷雾判定（`IsVisibleToFaction`）、重算事件与领地字典重建 |
 | `AnnexationService` | 区域吞并：断供区与敌方后勤网络相邻即整体易主（批量归属写入、主城/中立公共建筑豁免、单次 `LogisticsChanged`） |
@@ -192,7 +213,8 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `AITalentCardAutoSelector` | AI 天赋卡后台自动随机选择 |
 | `TalentCardBootstrap` | 天赋卡系统启动器：订阅公共建筑占领事件、触发开局选卡 |
 | `TalentCardEffectApplier` | 天赋卡效果应用器 |
-| `TalentCardPoolResolver` | 天赋卡池随机抽卡 |
+| `TalentCardPoolResolver` | 天赋卡池随机抽卡（遗留辅助，抽卡已由 `TalentCardProvider.DrawRandom` 接管） |
+| `TalentCardProvider` | 天赋卡提供者：启用卡列表与 `DrawRandom` 抽卡、按 `talentId` 查 Excel 数值（数值唯一主源） |
 | `TalentCardSlotVisual` | 天赋卡槽视觉显示 |
 | `AIAutoExplorer` | AI 自动探索器：定时搜索邻接己方领地的未探索地块并自动探索（免费），按地块奖励类型做预算预筛、消费预生成奖励快照（`ITickable`） |
 | `AICardTicker` | AI 卡牌定时器：每 5 秒驱动一次 AI 抽卡管线 |
@@ -215,6 +237,50 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 | `BuildingIncomeRule` | 金矿建筑收入汇总：按 `BuildingConfigSO.goldIncomePerSecond` 对合格金矿格求和 |
 | `SimpleStartButton` | 开局按钮简化系统：场景启动延迟激活 + 呼吸缩放动效，点击直接加载 GameScene |
 | `GlobalTimerService` / `GlobalTimerUI` | 全局倒计时服务与 HUD（默认 300 秒，≤60 秒红色脉冲紧急样式） |
+| `EconomyConfigProvider` | 经济配置提供者：起始金币/基础收入/AI 补贴/收入间隔/探索与卡费回退（Excel 唯一主源） |
+| `GameFlowConfigProvider` | 游戏流程配置提供者：时长/昼夜周期/结算延迟/迷雾过渡速度/吞并重算深度（Excel 唯一主源） |
+| `MapGenConfigProvider` | 地图生成参数提供者：Perlin 频率与八度/竞技场半径/突起时长（Excel 唯一主源） |
+| `CoreGameplayConfigProvider` | 核心玩法静态配置（`Configure()` 静态注入）：单位手感/兵营/箭塔/宝箱/手牌上限/公共建筑/战术卡槽位 |
+| `FeelConfigProvider` | 表现静态配置（`Configure()` 静态注入）：相机震动频率/迷雾刷新间隔/卡牌暗淡/天赋震屏 |
+| `MountainConfigProvider` | 山体静态配置（`Configure()` 静态注入）：脊线/高度场/材质参数（资源引用仍在 `MapGenerationConfigSO`） |
+| `BattleFormulaRule` | 战斗公式系数（静态注入）：河流防御惩罚/攻击雕像加成/高地攻击与射程加成/近战警戒范围 |
+| `LandFormEffectRule` | 地貌效果规则（静态注入）：防御加成/回血/金币加成/禁建（数值读 Excel） |
+| `MapResourceProvider` | 地图资源提供者：生成权重/拾取效果/探索收割数值（Excel 唯一主源 + 资源 SO 引用） |
+| `MapResourceCollectionService` | 地图资源统一消费服务：拾取后按效果类型结算（攻击提升/防御提升/回血/金币） |
+| `MapLandFormProvider` | 地图地貌提供者：散落/簇生成权重与参数（Excel 唯一主源） |
+| `LandFormSpawnRule` / `LandFormClusterSpawnRule` | 地貌散落与簇生成规则（参数读 Excel） |
+| `ResourceSpawnRule` / `ResourceRewardRule` / `RewardBuildingRule` | 资源生成、探索收割奖励与奖励建筑放置规则 |
+| `TacticalCardPresenter` | 战术牌 UI 与释放：固定锚点、同名牌叠放、拖拽到目标格执行群体回血/战斗号令、探索奖励发放入口 |
+| `BattleOrderBuffService` | 「战斗号令」临时增益：ITickable 计时（暂停冻结），攻击/移速乘数 |
+| `SunCycleController` | 昼夜循环：ITickable 驱动太阳角度/光照强度（参数读 Excel） |
+| `HexHighlightRenderer` | 单格高亮渲染器（不依赖逐格 GridMesh） |
+| `MapPresentationBootstrap` | 地图表现启动器（保留场景序列化 CostLabelPrefab，不再实现渲染后端） |
+| `LandFormMarkerManager` | 地貌提示浮标管理（复用公共建筑浮标视图，金矿提示图标） |
+| `IUIConfigProvider` / `UIConfigProvider` | UI 配置提供者：图标/预制体/卡面等资源引用 |
+| `UIManagerPresenter` | UIManager Presenter |
+
+## 数据驱动配置系统（Excel 数值化）
+
+平衡数值已从零散 ScriptableObject / Inspector 字段 / C# 常量收口为「Excel 唯一数值源 + 自动生成只读 SO + Provider」的混合架构，方案与分阶段实施见 [Excel配置表混合架构修改计划.md](Excel配置表混合架构修改计划.md)（阶段 1~6 已全部完成）：
+
+```text
+Config/Excel/游戏数值配置.xlsx（策划唯一数值源）
+   ↓ Tools/ConfigExporter（独立 .NET 8 工具，dotnet run）
+Config/Generated/（规范化 CSV + game-config.json + manifest，禁止手改）
+   ↓ Unity 菜单 Tools/游戏配置/导入并校验（GameConfigImporter）
+Assets/GameConfig/Generated/*.asset（自动生成只读数值库 SO）
+   ↓ GameInstaller 绑定 + *ConfigProvider / *Rule 静态注入
+运行时逻辑（不再回退 Legacy 数值，缺失即抛异常）
+```
+
+要点：
+
+- **职责边界**：Excel 只管平衡数值与玩法规则（HP/攻击/卡费/权重/费用/间隔/时长等）；Unity 资源 SO（Prefab/Sprite/音效/特效）仍人工维护，通过稳定字符串 ID（`unit.archer`、`building.gold_mine`、`tactical.repair`、`talent.damage`、`resource.animals`…）关联；旧整数 ID 仅以 `legacyId` 兼容。
+- **工作表（21 张）**：单位、建筑、普通卡池、战术卡、天赋卡、天赋抽卡规则、探索奖励配置、探索奖励池、地图资源、地图资源全局、地图地貌、地图地貌全局、公共建筑、经济配置、游戏流程配置、AI 配置、战斗公式、地图生成参数、核心玩法配置、表现配置、山体配置。
+- **生成目录**：`Assets/GameConfig/Generated/` 下每张表一个 `*Database.asset`（如 `UnitBalanceDatabase.asset`、`NormalCardPoolDatabase.asset`、`ExplorationRewardPoolDatabase.asset`），由导入器全量重建，Inspector 标注「自动生成，禁止手改」。
+- **校验**：`Tools/游戏配置/仅校验` 输出校验报告；导出器 `--strict` 与 Unity 导入器做跨表引用/必填/枚举/主键唯一/总权重>0 等校验；运行时缺失配置抛 `InvalidOperationException`，不再静默回退。
+- **确定性**：相同 Excel 输入生成字节级一致的 CSV/JSON/SO；`game-config.manifest.json` 记录 schema 版本、工作簿 SHA-256 与各表行数。
+- **运行时不读 Excel/CSV/JSON**：Player 只读场景绑定的生成 SO。
 
 ## 探索与后勤系统
 
@@ -255,6 +321,25 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 - **不可探索**：公共建筑占位格及其周围一环在生成时标记为不可探索——不显示探索费用标签，玩家和 AI 均无法主动探索。这些地块只能通过发现后占领公共建筑获取。发现前资源模型同步隐藏。
 - **与后勤/吞并**：公共建筑区域断供时失能停摆；区域吞并时整体易主（含外一环，走 `OnCaptured` 全量）。中立公共建筑格（伪阵营 Key ≥ 2）豁免逐格占领与区域吞并；可见性按观察方永久发现状态判断（发现后对双方可见）。
 
+## 战术卡牌系统
+
+战术牌是区别于普通卡（部署单位/建筑）与天赋卡（永久 Buff）的第三种卡牌——开局固定发放、拖拽释放到目标格的即时效果卡，设计见 [战术牌系统SO设计.md](游戏系统/战术牌系统SO设计.md)：
+
+- **卡牌**：战斗号令（`tactical.battle_order`，落点及周围一环内己方单位临时 +30% 攻击、+30% 移速，持续 5 秒）与维修（`tactical.repair`，落点及周围一环内己方建筑/单位群体回血 30%），开局各 ×1。
+- **运行时**：`TacticalCardPresenter` 维护 `List<TacticalCardInstance>`（SO 模板 + 叠放数量），同名牌叠放显示数量徽标、耗尽后视图销毁、不自动补充；探索奖励「战术卡」类型经 `AddCard()` 补发（新类型占用空闲锚点槽位，最多 `CoreGameplayConfigProvider.TacticalCardSlotCount` 槽）。
+- **效果**：`BattleOrderBuffService`（`ITickable` 计时，暂停冻结）维护战斗号令临时增益；维修在 `TryExecuteRepair()` 内对落点及周围一环己方建筑/单位回血。
+- **数值来源**：启用卡列表与效果数值仅读 Excel `TacticalCardBalanceDatabaseSO`（阶段 6 唯一主源），资源（卡面/预制体）走 `TacticalCardSO` / `TacticalCardDatabaseSO`。
+- **UI**：复用普通卡牌 `Card.prefab` 外观，两个固定锚点由 `GameInstaller` 注入；拖拽复用 `CardController` 逻辑，不做 hex 高亮，目标为落点格。
+
+## 地图道具与资源系统
+
+地图在生成时按权重随机散落可拾取资源，设计见 [地图道具系统总结.md](地图与地形/地图道具系统总结.md) 与 [地图资源配置设计案.md](地图与地形/地图资源配置设计案.md)：
+
+- **资源类型（Excel `地图资源` 表）**：动物（下一次攻击提升）、宝箱（金币）、矿物（下一次防御提升）、植物（立即回血）；回血包（`resource.health_pack`）历史保留但 `enabled=false`，不参与生成。
+- **拾取与收割**：`MapResourceCollectionService` 是单位拾取与探索/占领收割的唯一入口，基于 `HexCellData.TakeResource()` 原子消费防重复结算；拾取后按 `ResourcePickupEffectType`（攻击提升/防御提升/回血/金币）结算，宝箱金币仅玩家有效。
+- **数据**：`MapResourceProvider` 从 Excel `MapResourceBalanceDatabaseSO` 取生成权重/拾取效果/探索收割数值，资源引用（模型/特效）走 `MapResourceDatabaseSO` / `MapResourceSO`；`ResourceSpawnRule` / `ResourceRewardRule` / `RewardBuildingRule` 分别负责散落生成、探索收割奖励与奖励建筑放置。
+- **配置**：`地图资源全局` 表维护空地块权重与基础探索金币；金矿产出另见「金矿与收入规则」。
+
 ## AI 模块
 
 AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](Assets/Scripts/AI/AIManager.cs) 编排初始化，实际运行时由 `AIUnitBrain` + `AIAutoExplorer` + `AICardTicker` + `GameLoop` 持续驱动：
@@ -268,6 +353,7 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 | `AIAutoExplorer` | AI 自动探索器：定时免费探索邻接己方领地的未探索地块（`ITickable`） |
 | `AIUnitBrain` | AI 单位的实时行为 Brain：全知索敌、逐格决策（位于 `Assets/Scripts/Units/`） |
 | `AIRandomProvider` | AI 各服务共享的随机源 |
+| `AIConfigProvider` | AI 配置提供者：出牌/探索节奏、全局操作间隔、出牌优先级与军事奖励溢出环数（Excel 唯一主源） |
 
 玩家与 AI 共享的规则（抽卡生成、生成时的 UI 拼接）已收敛到 [CardGenerationRule](Assets/Scripts/Core/Services/CardGenerationRule.cs) 与 [SpawnUIWiring](Assets/Scripts/Core/Services/SpawnUIWiring.cs)。
 
@@ -275,7 +361,7 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 
 测试程序集仅面向 Unity Editor，现有测试位于 [Assets/Tests/](Assets/Tests/)，覆盖：
 
-- 卡牌服务（`CardServiceTests`：首张保底移民、后续抽卡属于卡池、卡槽占用与释放）
+- 卡牌服务（`CardServiceTests`：首张保底卡（当前 `unit.archer`）、后续抽卡属于卡池、卡槽占用与释放）
 - 卡牌解锁规则（`CardUnlockRuleProviderTests`：卡池内容即解锁内容、保底卡配置）
 - 六边形地图服务（`HexMapServiceTests`）
 - 单位移动系统（`UnitMovementSystemTests`）
@@ -290,6 +376,11 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 - 程序化山脉（`RidgeGeneratorTests`：脊线行走/宽度化/确定性；`MountainGeometryTests`：Low-poly 几何构造；`MountainTopologyTests`/`MountainTopologyRouteTests`：拓扑签名与动画路由；`MountainCellRuleTests`：山格玩法规则；`MountainVisibilityRuleTests`/`MountainVisibilityResolverTests`：永久可见与迷雾合成；`MountainHighlightGateTests`：山格高亮门禁；`MountainMaterialContractTests`：材质契约；`MountainStage6/7*Tests`：源码契约、性能与视觉验收）
 - 探索奖励预生成（`ExplorationRewardGenerationTests`：同种子确定性序列、快照一次性消费）
 - 视觉过渡服务（`MapVisualTransitionServiceTests`：错峰/生命周期/Wave 行窗口脉冲回归）
+- 卡牌生成规则（`CardGenerationRuleTests`：Excel 卡池 → 普通卡配置解析）
+- Chunk 渲染后端（`ChunkRendererTests`）、迷雾连接面片（`FogConnectorMeshTests`）
+- 地貌簇生成规则（`LandFormClusterSpawnRuleTests`）
+- 临时可见性服务（`TemporaryVisibilityServiceTests`）
+- 单位移动弹射（`UnitMovementEjectionTests`）
 - Console 日志工具（`ConsoleLogFormatterTests`、`ConsoleLogEntriesReflectorTests`、`ConsoleToolbarInjectorTests`）
 
 运行方式：
@@ -374,7 +465,7 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 - 区域吞并：`AnnexationService` 在每次后勤重算后扫描断供区，与敌方网络相邻即整体易主（批量写入、主城豁免、公共建筑含外一环、单次 `LogisticsChanged`）
 - 数据前置：领地字典一律从地块归属重建（`RebuildSphereOfInfluence`），公共建筑不再伪装城市条目；中立公共建筑可见性按观察方发现状态修复
 
-2026-08-03 普通卡池对象化改造（详见 [普通卡池对象化改造方案.md](普通卡池对象化改造方案.md)）：
+2026-08-03 普通卡池对象化改造（详见 [普通卡池对象化改造方案.md](历史归档/普通卡池对象化改造方案.md)）：
 
 - 卡池配置化：普通卡池由 `NormalCardPoolSO` 驱动（12 张单位卡 + 6 张建筑卡引用 + 首张移民卡保底），删除 `CardUnlockRuleProvider` 硬编码 ID 数组与科技/文化参数
 - 数据库对象化：`UnitDatabaseSO`/`BuildingDatabaseSO` 平行列表重构为 `UnitConfigSO`/`BuildingConfigSO` 对象列表（资产已原地迁移，GUID 不变），Provider 按显式 ID 查配置，列表顺序不再影响运行结果
@@ -394,7 +485,7 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 - 变化动画：CPU 顶点动画（2026-08-05 起：UV2/UV3 缓存 startY/targetY/delay、逐帧写 `mesh.vertices`）+ 三套 `*_Transition` Shader（keep-below clip 顶出、TerrainGhost、手写 ShadowCaster）；错峰模式 Simultaneous/CenterToOuter/Wave；动画期间交互锁、水面河流淡出、单位与地貌模型跟随、并行动画与冲突强制完成；动画管线七次实机修订史见 [动态地图/地图动画实机问题与修改总结.md](动态地图/地图动画实机问题与修改总结.md)
 - 迷雾修复：`_FogMaskTex` 重建迁入 Chunk 后端 + 订阅 `LogisticsChanged`（2026-08-04）
 - 竞技场：`ArenaEventManager` 37 格状态机（Inactive→Reserved→Activated→Destroyed），预留区初始化、突起动画、宝箱摧毁恢复、对局结束动画兜底
-- 能力测试：V 键全图波浪（纯视觉脉冲、自动回落）；R/F 键指格永久 ±1 微调（2026-08-05 已屏蔽保留，方案见 [鼠标指格地形高度微调测试-RF键实现方案.md](鼠标指格地形高度微调测试-RF键实现方案.md)）
+- 能力测试：V 键全图波浪（纯视觉脉冲、自动回落）；R/F 键指格永久 ±1 微调（2026-08-05 已屏蔽保留，方案见 [鼠标指格地形高度微调测试-RF键实现方案.md](历史归档/鼠标指格地形高度微调测试-RF键实现方案.md)）
 - 规划文档：[程序化山脉实现方式讨论.md](程序化山脉实现方式讨论.md)（地貌型程序化山脉构思，2026-08-06 起已实现，见下文）
 
 2026-08-06 ~ 2026-08-12 程序化山脉系统与多项玩法/表现更新：
@@ -413,11 +504,22 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 - **势力范围实体城墙**：`SphereOfInfluenceRenderer` 改为纯实体模型渲染（玩家/AI 各一套城墙/城墩预制体 `wall-player`/`wall-AI`，部件独立判定），删除旧描边面片回退渲染
 - **其他**：镜头新增鼠标左键拖拽平移（`CameraController.HandleMouseDrag`，UI 上不触发）；开局界面新增 `SimpleStartButton`（延迟激活 + 呼吸动效直接进游戏）；`GlobalTimerService`/`GlobalTimerUI` 全局倒计时 HUD（默认 300 秒、≤60 秒紧急脉冲，选卡面板触发启动）；天赋卡选卡面板背景图 shuffle 不重复；`EndGame` 平局（Draw）按胜利结算；`UnitMovementController` 死亡流程防护与 Animator 诊断、`CombatResolver` 死亡单位不再结算伤害；`MountainConfigSO` 新增 `debugSingleCellAndStraightRidge` 对照模式；地图生成配置更新（20×24、种子 20260811、`visualPerturbFrequency` 噪声采样频率配置化、主城按地图中列 + 边缘前一行定位）；建筑配置资产重命名（`BuildingConfig-4`→`barracks`、`BuildingConfig-5`→`arrow_tower`）
 
+Excel 配置表混合架构改造（阶段 1~6 已完成，详见 [Excel配置表混合架构修改计划.md](Excel配置表混合架构修改计划.md)，各阶段完成说明见 `历史归档/阶段2~5运行时接入-完成说明与验证清单.md`）：
+
+- 数据通路：`Config/Excel/游戏数值配置.xlsx` → `Tools/ConfigExporter`（独立 .NET 8 工具，含单元测试）导出 CSV/JSON → Unity 菜单 `Tools/游戏配置/导入并校验` 生成 `Assets/GameConfig/Generated` 只读 SO → `GameInstaller` 绑定 + `*ConfigProvider` 运行时读取
+- 阶段 2：单位/建筑/普通卡池数值迁移（14 单位、7 建筑、4 张普通卡，`unit.archer` 首张保底；修正 `AttackInterval=0` 等异常值）
+- 阶段 3：战术卡/天赋卡/天赋抽卡规则迁移（3 天赋卡 `talent.damage`/`talent.building_hp`/`talent.gold`、2 战术卡 `tactical.repair`/`tactical.battle_order`）
+- 阶段 4：探索奖励、地图资源、地图地貌、公共建筑迁移（`ExplorationRewardProvider`/`MapResourceProvider`/`MapLandFormProvider`/`PublicBuildingDataProvider`）
+- 阶段 5：经济、游戏流程、AI 节奏、地图生成、战斗公式、手感/表现、山体参数迁移（`EconomyConfigProvider`/`GameFlowConfigProvider`/`AIConfigProvider`/`MapGenConfigProvider` 等）
+- 阶段 6：删除 `?? legacy` 回退，确立 Excel 唯一数值源（Provider/Rule 缺失即抛异常）；`TalentCardPoolResolver` 抽卡等死代码收口；旧 SO 仅保留资源引用
+- 新增目录：`Assets/GameConfig`、`Config/`、`Tools/ConfigExporter`；[需配表数值统计.md](历史归档/需配表数值统计.md) 收口硬编码与重复定义
+
 ## 当前说明
 
 - 性能已针对六边形地图完成全项目优化（P0 + P1 全部落地，当前地图配置 20×24 = 480 格），详见 [视觉与渲染/性能优化方案讨论.md](视觉与渲染/性能优化方案讨论.md)。
+- 平衡数值已收口到 Excel 配置表（`Config/Excel/游戏数值配置.xlsx`，阶段 1~6 完成），运行时数值由 `Assets/GameConfig/Generated` 生成的只读 SO 提供。改数值流程：编辑 Excel → 运行 `Tools/ConfigExporter` → Unity 菜单 `Tools/游戏配置/导入并校验`，详见 [Excel配置表混合架构修改计划.md](Excel配置表混合架构修改计划.md)。
 - 项目当前仍使用默认工程名称，尚未在仓库中确定正式游戏名称。
-- 仓库中包含部分历史资源和第三方资源目录，其是否仍被场景或脚本引用需要单独确认后再清理。
-- 仓库暂未提供明确的发布平台说明、CI 配置或自动化构建脚本。
-- 当前工作区包含未提交的探索奖励预生成改动（地块奖励快照、按奖励类型费用与标签图标，见改造历史）。
-- 项目配套的设计文档分散在多个专题目录中：`游戏系统/`、`探索系统重构/`、`视觉与渲染/`、`地图与地形/`、`动态地图/`、`AI设计/`、`审计与规划/`、`历史归档/`；根目录另有近期方案/讨论文档（`鼠标指格地形高度微调测试-RF键实现方案.md`、`程序化山脉实现方式讨论.md`（含山脉决策 ①~㉛ 记录）等）。
+- 仓库中包含部分历史资源和第三方资源目录（KayKit、Lana Studio、Toon_RTS、unity-chan!、VFXPACK_IMPACT_WALLCOEUR_FreeVersion 等），其是否仍被场景或脚本引用需要单独确认后再清理。
+- 仓库暂未提供明确的发布平台说明、CI 配置或自动化构建脚本；`Tools/ConfigExporter` 支持命令行/CI 无界面导出，但尚未接入 CI 门禁。
+- 当前工作区可能包含未提交的配置生成物与探索奖励预生成改动（地块奖励快照、按奖励类型费用与标签图标，见改造历史）。
+- 项目配套的设计文档分散在多个专题目录中：`游戏系统/`、`探索系统重构/`、`视觉与渲染/`、`地图与地形/`、`动态地图/`、`AI设计/`、`审计与规划/`、`历史归档/`；根目录保留活跃方案/讨论文档（`Excel配置表混合架构修改计划.md`、`程序化山脉实现方式讨论.md`（含山脉决策 ①~㉛ 记录）、`六边形网格覆盖层实现计划.md`），过时文档已归档至 `历史归档/`（阶段2~5运行时接入完成说明、需配表数值统计、策划案差异审计报告、普通卡池对象化改造方案、中间代码清理名单、鼠标指格地形高度微调测试-RF键实现方案等）。

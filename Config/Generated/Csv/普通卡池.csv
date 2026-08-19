@@ -1,5 +1,5 @@
 cardId,cardType,weight,enabled,guaranteedFirst
-building.arrow_tower,Building,1,true,true
+building.arrow_tower,Building,1,true,false
 building.barracks,Building,1,true,false
-unit.archer,Unit,1,true,false
+unit.archer,Unit,1,true,true
 unit.swordsman,Unit,1,true,false

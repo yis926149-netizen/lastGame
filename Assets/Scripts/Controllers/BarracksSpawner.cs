@@ -27,7 +27,8 @@ public class BarracksSpawner : MonoBehaviour
     private UnitConfigSO _producedUnit;   // 由建筑配置注入（BuildingConfigSO.producedUnit），优先于 _spawnUnitID
     private float _timer;
     private bool _isPlayer;
-    private Slider _productionProgressBar;
+    // 生产进度改由 ProductionProgressImages 帧动画驱动（挂载在兵营预制体上），替代旧 Slider 倒计时条
+    private ProductionProgressImages _progressImages;
 
     /// <summary>由建筑生成器显式注入产出单位配置（动态 AddComponent 后调用，不能依赖 Inspector）。</summary>
     public void Initialize(UnitConfigSO producedUnit) => _producedUnit = producedUnit;
@@ -40,8 +41,9 @@ public class BarracksSpawner : MonoBehaviour
 
     private void Start()
     {
-        CreateProductionProgressBar();
-        UpdateProductionProgressBar();
+        // 兵营预制体上挂载 ProductionProgressImages，此处仅查找并初始化为第一帧
+        _progressImages = GetComponentInChildren<ProductionProgressImages>(true);
+        _progressImages?.SetProgress(0f);
     }
 
     void Update()
@@ -58,14 +60,14 @@ public class BarracksSpawner : MonoBehaviour
         if (_timer < _spawnInterval)
         {
             _timer = Mathf.Min(_spawnInterval, _timer + Time.deltaTime);
-            UpdateProductionProgressBar();
+            UpdateProgressDisplay();
         }
 
         if (_timer < _spawnInterval) return;
         if (!TrySpawnUnit()) return;
 
         _timer = 0f;
-        UpdateProductionProgressBar();
+        UpdateProgressDisplay();
     }
 
     private bool TrySpawnUnit()
@@ -202,40 +204,10 @@ public class BarracksSpawner : MonoBehaviour
         return true;
     }
 
-    private void CreateProductionProgressBar()
+    private void UpdateProgressDisplay()
     {
-        var building = GetComponent<BuildingBase>();
-        Slider healthBar = building != null ? building.uiHealthBar : null;
-        if (healthBar == null) return;
-
-        GameObject progressObject = Object.Instantiate(healthBar.gameObject, healthBar.transform.parent);
-        progressObject.name = "ProductionProgressBar";
-        progressObject.transform.SetSiblingIndex(healthBar.transform.GetSiblingIndex() + 1);
-
-        RectTransform rect = progressObject.GetComponent<RectTransform>();
-        if (rect != null)
-            rect.anchoredPosition += new Vector2(0f, -12f);
-
-        UIController inheritedController = progressObject.GetComponent<UIController>();
-        if (inheritedController != null)
-            Object.Destroy(inheritedController);
-
-        _productionProgressBar = progressObject.GetComponent<Slider>();
-        if (_productionProgressBar == null)
-        {
-            Object.Destroy(progressObject);
-            return;
-        }
-
-        _productionProgressBar.interactable = false;
-        UITool.TrySetSliderFillColor(_productionProgressBar, new Color(1f, 0.75f, 0.2f));
-    }
-
-    private void UpdateProductionProgressBar()
-    {
-        if (_productionProgressBar == null) return;
-        _productionProgressBar.value = _spawnInterval > 0f
-            ? Mathf.Clamp01(_timer / _spawnInterval)
-            : 1f;
+        if (_progressImages == null) return;
+        float progress = _spawnInterval > 0f ? _timer / _spawnInterval : 1f;
+        _progressImages.SetProgress(progress);
     }
 }

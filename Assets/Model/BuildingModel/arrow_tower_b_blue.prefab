@@ -133,11 +133,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 37963055b05ffbc48a533cbdd0dd32a8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _attackRange: 3
-  _attackInterval: 1.5
-  _damage: 5
-  _arcHeight: 2
-  _arrowFlightDuration: 0.3
   _arrowPrefab: {fileID: 4366918423177009332, guid: 2b4b9deedcf97024a9824a94da40115d, type: 3}
   _shootPoint: {fileID: 7075954135055303156}
 --- !u!1 &2681353783311100813
@@ -668,8 +663,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.25}
   m_AnchorMax: {x: 1, y: 0.75}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_AnchoredPosition: {x: -14.75, y: -5.47}
+  m_SizeDelta: {x: 60.07, y: 204.94}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &6658145861969667004
 CanvasRenderer:
@@ -699,8 +694,8 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 10907, guid: 0000000000000000f000000000000000, type: 0}
-  m_Type: 1
+  m_Sprite: {fileID: 21300000, guid: 008e97679510e8c4f93d051834b18e79, type: 3}
+  m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
   m_FillMethod: 4

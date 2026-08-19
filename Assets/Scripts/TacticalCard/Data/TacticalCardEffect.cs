@@ -7,6 +7,9 @@ public struct TacticalCardEffect
     [Tooltip("回复比例（维修用）：0.3 = 恢复 30% 最大 HP")]
     public float healRatio;
 
+    [Tooltip("单位回复比例（维修用）：0.6 = 恢复 60% 最大 HP；<=0 时回落到 healRatio")]
+    public float unitHealRatio;
+
     [Tooltip("攻击力提升乘数（战斗号令用）：1.3 = +30%")]
     public float attackMultiplier;
 

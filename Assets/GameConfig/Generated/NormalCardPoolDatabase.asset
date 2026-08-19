@@ -17,7 +17,7 @@ MonoBehaviour:
     cardType: Building
     weight: 1
     enabled: 1
-    guaranteedFirst: 1
+    guaranteedFirst: 0
   - cardId: building.barracks
     cardType: Building
     weight: 1
@@ -27,10 +27,10 @@ MonoBehaviour:
     cardType: Unit
     weight: 1
     enabled: 1
-    guaranteedFirst: 0
+    guaranteedFirst: 1
   - cardId: unit.swordsman
     cardType: Unit
     weight: 1
     enabled: 1
     guaranteedFirst: 0
-  guaranteedFirstCardId: building.arrow_tower
+  guaranteedFirstCardId: unit.archer

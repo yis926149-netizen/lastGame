@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   talentId: talent.gold
   typeIcon: {fileID: 21300000, guid: f4c38285ec72c764da3197f89ba8142c, type: 3}
-  mainIcon: {fileID: 21300000, guid: 5f06bdc0ee1b11c43918b64ab8ea6698, type: 3}
+  mainIcon: {fileID: 21300000, guid: 336074170046f944e8f84dcc17ea9ae6, type: 3}
   talentName: gold
   description: "\u63D0\u5347\u91D1\u5E01\u83B7\u53D6\u901F\u5EA6"
   effect:

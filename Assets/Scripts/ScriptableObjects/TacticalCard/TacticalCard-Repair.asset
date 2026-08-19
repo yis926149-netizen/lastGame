@@ -15,7 +15,7 @@ MonoBehaviour:
   cardId: tactical.repair
   cardName: Repair
   description: "\u7FA4\u4F53\u56DE\u8840"
-  cardSprite: {fileID: 21300000, guid: 9527d4b7abeda8f41b6ef035c1e0bf3b, type: 3}
+  cardSprite: {fileID: 21300000, guid: 216c4410031b5164f8721df79a269372, type: 3}
   effectType: 0
   effect:
     healRatio: 0.3

@@ -226,15 +226,12 @@ public class TalentCardSelectionUI : MonoBehaviour
                 _slots[i].Root.SetActive(true);
                 if (_slots[i].TypeIcon != null) _slots[i].TypeIcon.sprite = card.typeIcon;
                 if (_slots[i].MainIcon != null) _slots[i].MainIcon.sprite = card.mainIcon;
-                if (_slots[i].NameText != null) _slots[i].NameText.text  = card.talentName;
-                if (_slots[i].DescText != null)
-                {
-                    // 描述：仅由 Excel 数值生成精确文案（阶段6 唯一主源，未命中抛异常）。
-                    if (_balance == null || !_balance.TryGetTalent(card.talentId, out var balance))
-                        throw new System.InvalidOperationException(
-                            $"[TalentCardUI] 天赋 {card.talentId} 未在 Excel 天赋数值库命中，无法生成描述。");
-                    _slots[i].DescText.text = TalentDescriptionFormatter.Format(balance);
-                }
+                // 名字与描述均取自 Excel 天赋数值库（阶段6 唯一主源，未命中抛异常）。
+                if (_balance == null || !_balance.TryGetTalent(card.talentId, out var balance))
+                    throw new System.InvalidOperationException(
+                        $"[TalentCardUI] 天赋 {card.talentId} 未在 Excel 天赋数值库命中，无法读取名字/描述。");
+                if (_slots[i].NameText != null) _slots[i].NameText.text = balance.talentName;
+                if (_slots[i].DescText != null) _slots[i].DescText.text = balance.description;
             }
             else
             {

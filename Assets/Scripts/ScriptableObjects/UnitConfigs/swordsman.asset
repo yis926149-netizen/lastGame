@@ -26,7 +26,7 @@ MonoBehaviour:
     AttackInterval: 0
   unitModel: {fileID: 177841905923460461, guid: 0ca82c05359f720498e3262bf9fd82d4, type: 3}
   enemyUnitModel: {fileID: 2477262918593569086, guid: fdc4efefc5c2a3d4baca5b43abbff4b0, type: 3}
-  unitIcon: {fileID: 21300000, guid: 2c261ef62acd6d441b57e84505154079, type: 3}
+  unitIcon: {fileID: 21300000, guid: 12b33b610f3eae6428b4137fc1b236e2, type: 3}
   skillIcon: {fileID: 21300000, guid: 9affb0abb983c3e47b044a3e2ea0eb30, type: 3}
   strategyType: 0
   attackSfx:

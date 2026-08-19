@@ -17,4 +17,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 45980904a474fe545b1f459945a38858, type: 2}
   - {fileID: 11400000, guid: 02cac065de3147a49afecc5ae529ea3d, type: 2}
   - {fileID: 11400000, guid: 5a30204254541f74d8075aa94faed401, type: 2}
-  guaranteedFirstCard: {fileID: 11400000, guid: 02cac065de3147a49afecc5ae529ea3d, type: 2}
+  guaranteedFirstCard: {fileID: 11400000, guid: 757ff58052be4a34f8d53b606333c1ff, type: 2}

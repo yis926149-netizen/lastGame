@@ -16,6 +16,7 @@ namespace GameConfig
         public bool enabled;
         public string effectType;
         public float healRatio;
+        public float unitHealRatio;
         public float attackMultiplier;
         public float speedMultiplier;
         public float duration;

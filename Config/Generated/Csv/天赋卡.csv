@@ -1,4 +1,4 @@
 talentId,legacyId,talentName,description,enabled,effectType,statId,value,weight,repeatable
-talent.building_hp,1,buildingHp,建筑生命值提升,true,StatMultiplier,buildingHp,4,1,true
-talent.damage,0,damage,提升整体攻击力,true,StatMultiplier,damage,2,1,true
-talent.gold,2,gold,提升金币获取速度,true,StatMultiplier,gold,2,1,true
+talent.building_hp,1,城墙！,建筑生命值提升,true,StatMultiplier,buildingHp,4,1,true
+talent.damage,0,伤害！,提升整体攻击力,true,StatMultiplier,damage,2,1,true
+talent.gold,2,财富！,提升金币获取速度,true,StatMultiplier,gold,2,1,true
