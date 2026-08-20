@@ -83,6 +83,16 @@ public class Enums
         PaletteMap
     }
 
+    // 地块实心顶面轮廓（网格渲染细分）：
+    // EighteenGon = 每条边 2 个等分点落在内切圆上（圆滑十八边形，默认/现状）；
+    // Hexagon     = 等分点落在角点连线上（直边六边形）。
+    // 两种模式顶点数/索引顺序/三角扇拓扑一致，仅轮廓不同，下游契约不受影响。
+    public enum SolidAreaTopology
+    {
+        EighteenGon,
+        Hexagon
+    }
+
     //资源类型（【地图资源配置化】已移除：改由 MapResourceSO 配置，见 ScriptableObjects/MapResource）
 
     //移动目的

@@ -107,7 +107,30 @@ public class MeshGeneratorService : IMeshGenerator
         Vector3[] withoutPerturb = arrSolidAreaVerticesWithoutPerturb;
 
         //比例值(不知道为什么算错了，但总而言之先让比例值减半吧) - (减半之后好像是对的，但原因先不管了)
+        // 注意：ratio 固定按“十八边形(内切圆)参考点”计算，与轮廓模式无关，
+        // 保证六边形/十八边形两种模式下河道内环半径一致，A/B 对比不被河道差异污染。
         float ratio = ((withoutPerturb[7] - withoutPerturb[1]).magnitude / ((withoutPerturb[2] - withoutPerturb[1]) / 2).magnitude) / 2;
+
+        // 【网格渲染细分-六边形】把 12 个边点(7..18)从内切圆挪到角点连线上，
+        // 每条边 1/3、2/3 处各一个等分点。顶点数/索引顺序/三角扇拓扑完全不变，
+        // 仅改变顶面轮廓(圆滑十八边形 → 直边六边形)，下游山脉/河道/过渡面契约不受影响。
+        if (_config != null && _config.solidAreaTopology == Enums.SolidAreaTopology.Hexagon)
+        {
+            Vector3 c1 = withoutPerturb[1], c2 = withoutPerturb[2], c3 = withoutPerturb[3];
+            Vector3 c4 = withoutPerturb[4], c5 = withoutPerturb[5], c6 = withoutPerturb[6];
+            withoutPerturb[7]  = Vector3.Lerp(c1, c2, 1f / 3f);
+            withoutPerturb[8]  = Vector3.Lerp(c1, c2, 2f / 3f);
+            withoutPerturb[9]  = Vector3.Lerp(c2, c3, 1f / 3f);
+            withoutPerturb[10] = Vector3.Lerp(c2, c3, 2f / 3f);
+            withoutPerturb[11] = Vector3.Lerp(c3, c4, 1f / 3f);
+            withoutPerturb[12] = Vector3.Lerp(c3, c4, 2f / 3f);
+            withoutPerturb[13] = Vector3.Lerp(c4, c5, 1f / 3f);
+            withoutPerturb[14] = Vector3.Lerp(c4, c5, 2f / 3f);
+            withoutPerturb[15] = Vector3.Lerp(c5, c6, 1f / 3f);
+            withoutPerturb[16] = Vector3.Lerp(c5, c6, 2f / 3f);
+            withoutPerturb[17] = Vector3.Lerp(c6, c1, 1f / 3f);
+            withoutPerturb[18] = Vector3.Lerp(c6, c1, 2f / 3f);
+        }
         //全扰动 + 地块整体高程扰动       
         Vector3 Y_Perturb = HexMetrics.PerturbY2(zero);
         //位移向量
@@ -252,6 +275,24 @@ public class MeshGeneratorService : IMeshGenerator
             new Vector2(0.5f, 0.5f),
             new Vector2(0.5f, 0.5f),
         };
+        // 【网格渲染细分-六边形】边点 UV 同步落到角点 UV 连线上（与顶点位置一致）
+        if (_config != null && _config.solidAreaTopology == Enums.SolidAreaTopology.Hexagon)
+        {
+            Vector2 uv1 = arrUV[1], uv2 = arrUV[2], uv3 = arrUV[3], uv4 = arrUV[4], uv5 = arrUV[5], uv6 = arrUV[6];
+            arrUV[7]  = Vector2.Lerp(uv1, uv2, 1f / 3f);
+            arrUV[8]  = Vector2.Lerp(uv1, uv2, 2f / 3f);
+            arrUV[9]  = Vector2.Lerp(uv2, uv3, 1f / 3f);
+            arrUV[10] = Vector2.Lerp(uv2, uv3, 2f / 3f);
+            arrUV[11] = Vector2.Lerp(uv3, uv4, 1f / 3f);
+            arrUV[12] = Vector2.Lerp(uv3, uv4, 2f / 3f);
+            arrUV[13] = Vector2.Lerp(uv4, uv5, 1f / 3f);
+            arrUV[14] = Vector2.Lerp(uv4, uv5, 2f / 3f);
+            arrUV[15] = Vector2.Lerp(uv5, uv6, 1f / 3f);
+            arrUV[16] = Vector2.Lerp(uv5, uv6, 2f / 3f);
+            arrUV[17] = Vector2.Lerp(uv6, uv1, 1f / 3f);
+            arrUV[18] = Vector2.Lerp(uv6, uv1, 2f / 3f);
+        }
+
         return arrUV.ToList();
     }
 

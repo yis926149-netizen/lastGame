@@ -35,6 +35,10 @@ public class MapGenerationConfigSO : ScriptableObject
     [Range(0.2f, 1f)]
     public float SolidAreaRatio = 0.7f;
 
+    [Header("地块顶面轮廓")]
+    [Tooltip("实心顶面的边界轮廓：EighteenGon = 每条边 2 个等分点落在内切圆上（圆滑十八边形，默认）；Hexagon = 等分点落在角点连线上（直边六边形）。两种模式顶点数/拓扑一致，仅轮廓不同")]
+    public Enums.SolidAreaTopology solidAreaTopology = Enums.SolidAreaTopology.EighteenGon;
+
     [Header("地图尺寸")]
     [Tooltip("水平方向（X轴）格子数量")]
     public int xNumber;

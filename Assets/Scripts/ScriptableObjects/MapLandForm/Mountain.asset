@@ -25,7 +25,7 @@ MonoBehaviour:
     goldIncomePerSecond: 0
   blockBuildingSpawn: 1
   mountainForm: 1
-  spawnWeight: 0
+  spawnWeight: 1
   markerPrefab: {fileID: 0}
   markerIcon: {fileID: 0}
   clusterSpawn: 1

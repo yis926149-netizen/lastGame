@@ -23,10 +23,11 @@ MonoBehaviour:
     zMax: 24
   OuterRadius: 3
   SolidAreaRatio: 0.7
+  solidAreaTopology: 0
   xNumber: 20
   zNumber: 24
   useFixedSeed: 1
-  randomSeed: 20260819
+  randomSeed: 20260820
   generatorVersion: 2
   noiseSource: {fileID: 2800000, guid: 7efb954bf2db8fb44b4d9fb0ce9458f2, type: 3}
   visualPerturbFrequency: 0.001
@@ -34,7 +35,7 @@ MonoBehaviour:
   - {fileID: 2100000, guid: f8e590430e4af3542a45e7eaa017cd4b, type: 2}
   - {fileID: 2100000, guid: 9c4b6d3952de6594cb92614744a08616, type: 2}
   - {fileID: 2100000, guid: 68a655e9895fc74458cf1ab29e06acea, type: 2}
-  showHexGrid: 1
+  showHexGrid: 0
   gridMaterial: {fileID: 0}
   gridColor: {r: 0.3018868, g: 0.3018868, b: 0.3018868, a: 1}
   gridAlpha: 0.5
@@ -59,7 +60,7 @@ MonoBehaviour:
   waterSurfaceOffset: 0.45
   elevationStep: 1.8
   verticalPerturbRatio: 0.4
-  heightGenerationMode: 1
+  heightGenerationMode: 0
   heightPaletteMap: {fileID: 2800000, guid: fa5b064a043ce944789d6fe8e66879c3, type: 3}
   heightNoiseAmplitude: 0.5
   heightNoiseFrequency: 0.01
@@ -69,7 +70,7 @@ MonoBehaviour:
   fogMaterial: {fileID: 2100000, guid: 7c0c32e927d412345a7e325cfc9b0756, type: 2}
   fogCoverWidth: 27.5
   fogConnectorSlopeWidth: 1
-  shadingStyle: 1
+  shadingStyle: 0
   fogPixelSize: 0
   fogJaggedAmount: 1
   fogNoiseWavelength: 2

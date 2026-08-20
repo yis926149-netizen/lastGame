@@ -2,7 +2,7 @@
   "schemaVersion": "1.0.0",
   "exporterVersion": "0.1.0",
   "workbook": "游戏数值配置.xlsx",
-  "workbookSha256": "e6b0c584dd2602c433f147d5dedbac29c21bf96be07d3c5e4fac45243949cf1e",
+  "workbookSha256": "6b493e3f2b0f02112c9b5c2cc7252199c895d53d792ebb02ad1b940f3015de12",
   "tables": [
     {
       "sheetName": "单位",

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: MountainConfig
   m_EditorClassIdentifier: 
   mountainLandForm: {fileID: 11400000, guid: 0b47c459e919a954d8f91d6070458184, type: 2}
-  ridgeCount: 0
+  ridgeCount: 3
   minRidgeLength: 5
   maxRidgeLength: 12
   widthRadius: 1
