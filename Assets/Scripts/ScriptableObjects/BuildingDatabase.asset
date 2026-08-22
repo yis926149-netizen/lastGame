@@ -13,10 +13,6 @@ MonoBehaviour:
   m_Name: BuildingDatabase
   m_EditorClassIdentifier: 
   buildings:
-  - {fileID: 11400000, guid: 4742d4e0f6d85c24ea156ce28653aef7, type: 2}
-  - {fileID: 11400000, guid: f927694f061845644bf21c6d7fe0b0a8, type: 2}
-  - {fileID: 11400000, guid: 6da231cfbc4a3f149aea367d9f3e9f6d, type: 2}
-  - {fileID: 11400000, guid: a9de7c76d554f394ea52629675ecc8b7, type: 2}
   - {fileID: 11400000, guid: 45980904a474fe545b1f459945a38858, type: 2}
   - {fileID: 11400000, guid: 02cac065de3147a49afecc5ae529ea3d, type: 2}
   - {fileID: 11400000, guid: 78d405b375b14d13bdc015c7eac27aaa, type: 2}
