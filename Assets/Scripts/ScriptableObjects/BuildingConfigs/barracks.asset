@@ -20,5 +20,5 @@ MonoBehaviour:
   enemyBuildingModel: {fileID: 724498627514443560, guid: cfaf0d2459764734586d36414ef5ff5b, type: 3}
   baseHP: 100
   blocksMovement: 0
-  producedUnit: {fileID: 11400000, guid: b4188906433971a48b15099bd93f5b5a, type: 2}
+  producedUnit: {fileID: 11400000, guid: 5a30204254541f74d8075aa94faed401, type: 2}
   goldIncomePerSecond: 0

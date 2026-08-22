@@ -20,8 +20,8 @@ MonoBehaviour:
   goldTiers: 05000000050000000a0000000f0000001400000019000000
   unitCountTiers: 000000000000000000000000010000000100000002000000
   rewardUnits:
-  - {fileID: 11400000, guid: 035520bc5ead6ef47b285e744299ad1f, type: 2}
-  - {fileID: 11400000, guid: 0fcdc9842d793b14a87c0d0539786001, type: 2}
+  - {fileID: 11400000, guid: 757ff58052be4a34f8d53b606333c1ff, type: 2}
+  - {fileID: 11400000, guid: 5a30204254541f74d8075aa94faed401, type: 2}
   rewardTacticalCards:
   - {fileID: 11400000, guid: a4f19fff29b73df4ea1b30cdc3737774, type: 2}
   - {fileID: 11400000, guid: 3d870ff69e8b0034eaa6894a1377235c, type: 2}

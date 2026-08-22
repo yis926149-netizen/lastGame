@@ -627,18 +627,18 @@
         },
         {
           "values": [
-            "reward_pool.unit_cactus",
+            "unit.archer",
             "MilitaryUnit",
-            "unit.cactus",
+            "unit.archer",
             "1",
             "true"
           ]
         },
         {
           "values": [
-            "reward_pool.unit_ranged_iii",
+            "unit.swordsman",
             "MilitaryUnit",
-            "unit.ranged_iii",
+            "unit.swordsman",
             "1",
             "true"
           ]
@@ -1098,7 +1098,7 @@
             "5",
             "20",
             "15",
-            "1",
+            "13",
             "2",
             "1",
             "15",

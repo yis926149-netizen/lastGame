@@ -28,13 +28,13 @@ MonoBehaviour:
     configId: tactical.repair
     weight: 1
     enabled: 1
-  - poolId: reward_pool.unit_cactus
+  - poolId: unit.archer
     rewardType: MilitaryUnit
-    configId: unit.cactus
+    configId: unit.archer
     weight: 1
     enabled: 1
-  - poolId: reward_pool.unit_ranged_iii
+  - poolId: unit.swordsman
     rewardType: MilitaryUnit
-    configId: unit.ranged_iii
+    configId: unit.swordsman
     weight: 1
     enabled: 1

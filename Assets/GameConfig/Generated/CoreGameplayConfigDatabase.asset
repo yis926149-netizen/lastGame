@@ -24,7 +24,7 @@ MonoBehaviour:
     buildingHealIntervalFallback: 5
     unitPathSearchThrottle: 20
     barracksSpawnInterval: 15
-    barracksFallbackUnitLegacyId: 1
+    barracksFallbackUnitLegacyId: 13
     arrowTowerRange: 2
     arrowTowerAttackInterval: 1
     arrowTowerDamage: 15
