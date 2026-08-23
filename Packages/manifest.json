@@ -1,15 +1,12 @@
 {
   "dependencies": {
-    "com.coplaydev.coplay": "https://github.com/CoplayDev/coplay-unity-plugin.git#beta",
     "com.unity.cinemachine": "2.10.7",
     "com.unity.feature.development": "1.0.1",
+    "com.unity.inputsystem": "1.14.0",
     "com.unity.mathematics": "1.2.6",
-    "com.unity.postprocessing": "3.4.0",
-    "com.unity.shadergraph": "14.1.0",
     "com.unity.textmeshpro": "3.0.9",
     "com.unity.timeline": "1.7.7",
     "com.unity.ugui": "1.0.0",
-    "com.unity.visualscripting": "1.9.4",
     "net.tnrd.nsubstitute": "5.1.0",
     "com.unity.modules.ai": "1.0.0",
     "com.unity.modules.androidjni": "1.0.0",

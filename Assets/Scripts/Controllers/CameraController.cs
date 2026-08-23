@@ -223,6 +223,13 @@ public class CameraController : MonoBehaviour, ITickable
 
     private void HandleMouseDrag()
     {
+        // 卡牌拖拽由 EventSystem/UI 独占指针；否则指针离开卡牌进入地图后会被误判为相机拖拽。
+        if (CardController.IsAnyCardDragging)
+        {
+            _isDragging = false;
+            return;
+        }
+
         if (_input.IsMultiTouch)
         {
             _isDragging = false;

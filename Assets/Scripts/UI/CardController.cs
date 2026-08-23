@@ -50,6 +50,9 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     private bool _isDragging;
     private bool _isNextCard;
+    private static CardController _activeDraggingCard;
+
+    public static bool IsAnyCardDragging => _activeDraggingCard != null;
 
 
     private int originalSiblingIndex;  
@@ -265,6 +268,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         }
         _playerInputHandler.Value.ForceDeselectUnit();
         _isDragging = true;
+        _activeDraggingCard = this;
         _dropHandler?.OnCardDragBegin(this);
     }
 
@@ -293,6 +297,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
         transform.SetSiblingIndex(originalSiblingIndex);   
         _isDragging = false;
+        ReleaseDragCapture();
 
         ClearHighlights();
 
@@ -342,12 +347,20 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     {
         if (_goldWallet != null) _goldWallet.OnGoldChanged -= OnGoldChanged;
         if (_isDragging) _dropHandler?.OnCardDragCancel(this);
+        ReleaseDragCapture();
         _rectTransform?.DOKill();
+    }
+
+    private void ReleaseDragCapture()
+    {
+        if (_activeDraggingCard == this)
+            _activeDraggingCard = null;
     }
 
     private void CancelDrag()
     {
         _isDragging = false;
+        ReleaseDragCapture();
         transform.SetSiblingIndex(originalSiblingIndex);
         ClearHighlights();
         _dropHandler?.OnCardDragCancel(this);
