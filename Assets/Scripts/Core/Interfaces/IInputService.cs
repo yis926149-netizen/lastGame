@@ -18,6 +18,8 @@ public interface IInputService
 
     // ������
     float MouseScrollDelta { get; }
+    float PinchDelta { get; }
+    bool IsMultiTouch { get; }
 
     // UI �ڵ���⣨��ָ��Ŀ�� Canvas��null �������� UI��
     bool IsPointerOverUI(Canvas targetCanvas = null);

@@ -3,7 +3,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Xml;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
@@ -519,6 +518,8 @@ public class UIControl : MonoBehaviour
     {
 #if UNITY_EDITOR
         Debug.Log("[UIControl] 退出游戏仅在 Player 中生效。");
+#elif UNITY_WEBGL && !UNITY_EDITOR
+        Debug.Log("[UIControl] 微信小游戏无法通过 Application.Quit 退出，请使用微信返回手势。");
 #else
         Application.Quit();
 #endif

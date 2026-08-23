@@ -30,6 +30,12 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     private CardData _draggingCardData;
     private ICardDropHandler _draggingDropHandler;
     private HexCellData _lastDraggingHighlightCell;
+    private bool _explorationPointerDown;
+    private Vector3 _explorationPointerStart;
+    private float _explorationPointerDownTime;
+    private const float ExplorationTapMaxDistance = 20f;
+    private const float ExplorationTapMaxDuration = 0.25f;
+
     [Inject] private HexHighlightRenderer _hexHighlightRenderer;
 
     [Inject]
@@ -212,26 +218,44 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     private void HandleTileClickForExploration()
     {
         if (_gameLoop != null && _gameLoop.IsPaused) return;
-        // 只在非拖卡状态下响应点击
-        if (_isDraggingCard) return;
-        if (!_input.GetMouseButtonDown(0)) return;
-        // 排除 UI 阻挡
-        if (_input.IsPointerOverUI(null)) return;
+        if (_isDraggingCard)
+        {
+            _explorationPointerDown = false;
+            return;
+        }
 
-        // 从屏幕位置射线拾取地图格
-        if (!_input.RaycastFromScreen(_input.MousePosition, out RaycastHit hit, 100f, LayerMask.GetMask("Map")))
+        if (_input.IsMultiTouch)
+        {
+            _explorationPointerDown = false;
+            return;
+        }
+
+        if (_input.GetMouseButtonDown(0))
+        {
+            _explorationPointerDown = !_input.IsPointerOverUI(null);
+            _explorationPointerStart = _input.MousePosition;
+            _explorationPointerDownTime = Time.unscaledTime;
+        }
+
+        if (!_input.GetMouseButtonUp(0)) return;
+        if (!_explorationPointerDown)
+        {
+            _explorationPointerDown = false;
+            return;
+        }
+
+        Vector3 releasePosition = _input.MousePosition;
+        bool isTap = (releasePosition - _explorationPointerStart).sqrMagnitude <= ExplorationTapMaxDistance * ExplorationTapMaxDistance
+            && Time.unscaledTime - _explorationPointerDownTime <= ExplorationTapMaxDuration;
+        _explorationPointerDown = false;
+        if (!isTap) return;
+
+        if (!_input.RaycastFromScreen(releasePosition, out RaycastHit hit, 100f, LayerMask.GetMask("Map")))
             return;
 
         var cell = _mapData.GetCellByWorldPosition(hit.point);
-        if (cell == null) return;
+        if (cell == null || cell.IsExplored || !HasExploredPlayerNeighbor(cell)) return;
 
-        // 未探索格才尝试探索
-        if (cell.IsExplored) return;
-
-        // 必须有花费标签才能点击：邻接玩家已占领的已探索格（与 CostLabelRenderer 门控条件一致）
-        if (!HasExploredPlayerNeighbor(cell)) return;
-
-        // 尝试探索（玩家阵营 0）
         _explorationService.TryExplore(cell, 0);
     }
 

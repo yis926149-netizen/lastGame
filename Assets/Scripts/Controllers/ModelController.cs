@@ -5,8 +5,6 @@ using UnityEngine;
 public class ModelController : MonoBehaviour
 {
     private Camera mainCamera;
-    bool test = false;
-
     void Start()
     {
         // 获取主摄像头

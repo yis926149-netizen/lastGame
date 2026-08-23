@@ -1,4 +1,3 @@
-using System.Linq;
 using UnityEngine;
 using Zenject;
 
@@ -7,7 +6,6 @@ public class CameraController : MonoBehaviour, ITickable
     private IInputService _input;
     private IMapDataService _mapData;
     private MapGenerationConfigSO _config;
-    private IUIConfigProvider _uiConfig;
     private MapGenerator _mapGenerator;
 
     private Camera _mainCamera;
@@ -40,44 +38,18 @@ public class CameraController : MonoBehaviour, ITickable
     [Tooltip("相机缩放平滑时间（秒）")]
     public float smoothZoomTime = 0.1f;
 
-    [Header("相机旋转范围")]
-    [Tooltip("相机绕屏幕中心旋转速度（度/秒），按住 Ctrl + A / Ctrl + D 触发")]
-    public float rotateSpeed = 30f;
-    [Tooltip("相机旋转平滑时间（秒）")]
-    public float smoothRotateTime = 0.1f;
-    [Tooltip("相机回正旋转速度（度/秒）")]
-    public float returnRotateSpeed = 60f;
-    [Tooltip("屏幕中心未命中地图时，默认旋转中心与相机的距离")]
-    public float defaultRotationDistance = 50f;
-    [Tooltip("旋转中心检测图层：从屏幕中心发射射线命中的物体作为旋转中心")]
-    public LayerMask rotationRaycastLayers;
-
     private Vector3 _targetCameraPosition;
     private Quaternion _targetCameraRotation;
-
-    [Tooltip("相机回正动画时长（秒），修改后需要重新测试")]
-    public float returnDuration = 0.2f;   // 回移动画时间（秒），修改后需要重新测试
-    private float _returnStartTime;       // 记录开始回正的时间
-
-    // 旋转状态记录
-    private Vector3 _rotationStartPosition;
-    private Quaternion _rotationStartRotation;
-    private bool _isReturningToStart = false;
-    private Vector3 _currentRotationCenter;
-    private float _returnTotalAngle;
-    private float _targetReturnAngle;
-    private float _currentReturnAngle;
-    private bool _isRotating = false;
-    private float _rotationYVelocity;
-
     private Vector3 _zoomVelocity;
-
     private bool _boundsInitialized = false;
 
     [Header("鼠标拖拽移动")]
     [Tooltip("鼠标右键拖拽灵敏度（值越大拖动越快）")]
     public float dragSensitivity = 0.012f;
+    [Tooltip("拖拽启动阈值（屏幕像素）")]
+    public float dragStartThreshold = 10f;
     private bool _isDragging = false;
+    private Vector3 _dragStartPosition;
     private Vector3 _lastMousePosition;
 
     // ── 屏幕震动 ──────────────────────────────────────
@@ -100,13 +72,11 @@ public class CameraController : MonoBehaviour, ITickable
         IInputService input,
         IMapDataService mapData,
         MapGenerationConfigSO config,
-        IUIConfigProvider uiConfig,
         MapGenerator mapGenerator)
     {
         _input = input;
         _mapData = mapData;
         _config = config;
-        _uiConfig = uiConfig;
         _mapGenerator = mapGenerator;
     }
 
@@ -155,14 +125,8 @@ public class CameraController : MonoBehaviour, ITickable
         zoomSpeed = 35f;
         smoothZoomTime = 0.1f;
 
-        rotateSpeed = 30f;
-        smoothRotateTime = 0.1f;
-        returnRotateSpeed = 60f;
-        defaultRotationDistance = 50f;
-
-        returnDuration = 0.2f;
-
         dragSensitivity = 0.012f;
+        dragStartThreshold = 10f;
     }
 
     public void Tick()
@@ -180,15 +144,8 @@ public class CameraController : MonoBehaviour, ITickable
             }
         }
 
-        if (_isReturningToStart)
-        {
-            HandleReturnToStart();
-            return;
-        }
-
         HandleKeyboardInput();
         HandleMouseScroll();
-        HandleRotationInput();
         HandleMouseDrag();
         ApplySmoothTransform();
     }
@@ -230,29 +187,26 @@ public class CameraController : MonoBehaviour, ITickable
 
     private void HandleKeyboardInput()
     {
-        if (_isRotating || _isReturningToStart || _isDragging) return;
+        if (_isDragging) return;
 
         float horizontal = _input.GetAxis("Horizontal");
         float vertical = _input.GetAxis("Vertical");
 
         if (Mathf.Abs(horizontal) > 0.1f || Mathf.Abs(vertical) > 0.1f)
         {
-            if (!_input.GetKey(KeyCode.LeftControl) && !_input.GetKey(KeyCode.RightControl))
-            {
-                Vector3 forward = transform.forward; forward.y = 0; forward.Normalize();
-                Vector3 right = transform.right; right.y = 0; right.Normalize();
+            Vector3 forward = transform.forward; forward.y = 0; forward.Normalize();
+            Vector3 right = transform.right; right.y = 0; right.Normalize();
 
-                Vector3 moveDirection = (forward * vertical + right * horizontal).normalized;
-                _targetCameraPosition += moveDirection * moveSpeed * Time.deltaTime;
-                ClampTargetToBounds(ref _targetCameraPosition);
-            }
+            Vector3 moveDirection = (forward * vertical + right * horizontal).normalized;
+            _targetCameraPosition += moveDirection * moveSpeed * Time.deltaTime;
+            ClampTargetToBounds(ref _targetCameraPosition);
         }
     }
 
     private void HandleMouseScroll()
     {
-        float scrollDelta = _input.MouseScrollDelta;
-        if (scrollDelta == 0) return;
+        float scrollDelta = _input.IsMultiTouch ? _input.PinchDelta : _input.MouseScrollDelta;
+        if (Mathf.Abs(scrollDelta) < 0.01f) return;
 
         Vector3 zoomMove = scrollDelta * _mainCamera.transform.forward * (zoomSpeed / 60f);
         float targetY = Mathf.Clamp(
@@ -267,150 +221,21 @@ public class CameraController : MonoBehaviour, ITickable
         ClampTargetToBounds(ref _targetCameraPosition);
     }
 
-    // ====================== 旋转逻辑与详细日志 ======================
-    private void HandleRotationInput()
-    {
-        if (_mainCamera == null || _isDragging) return;
-
-        //Debug.Log($"[Camera Rotation Debug] HandleRotationInput 被调用 | Ctrl: {_input.GetKey(KeyCode.LeftControl) || _input.GetKey(KeyCode.RightControl)} | _isRotating: {_isRotating}");
-
-        var canvasList = _uiConfig.RuntimeCanvases;
-        bool isCtrlPressed = _input.GetKey(KeyCode.LeftControl) || _input.GetKey(KeyCode.RightControl);
-
-        if (!isCtrlPressed)
-        {
-            if (_isRotating)
-            {
-                StartReturnRotation();
-                _isRotating = false;
-            }
-            return;
-        }
-
-        float rotateAmount = 0f;
-        if (_input.GetKey(KeyCode.A))
-        {
-            rotateAmount = rotateSpeed * Time.deltaTime;
-            //Debug.Log($"[Camera Rotation Debug] 按 Ctrl + A 按下，rotateAmount = {rotateAmount:F3}");
-            HideAllCanvases();
-        }
-        else if (_input.GetKey(KeyCode.D))
-        {
-            rotateAmount = -rotateSpeed * Time.deltaTime;
-            //Debug.Log($"[Camera Rotation Debug] 按 Ctrl + D 按下，rotateAmount = {rotateAmount:F3}");
-            HideAllCanvases();
-        }
-        else
-        {
-            if (_isRotating)
-            {
-                StartReturnRotation();
-                _isRotating = false;
-            }
-            return;
-        }
-
-        if (rotateAmount != 0)
-        {
-            if (!_isRotating)
-            {
-                _currentRotationCenter = GetScreenCenterWorldPosition();
-                _rotationStartPosition = _targetCameraPosition;
-                _rotationStartRotation = _targetCameraRotation;
-                _isRotating = true;
-                //Debug.Log($"[Camera Rotation Debug] 首次旋转开始记录 | 旋转中心 = {_currentRotationCenter}");
-            }
-
-            Vector3 offsetFromCenter = _targetCameraPosition - _currentRotationCenter;
-            Vector3 oldPos = _targetCameraPosition;
-            float oldRotY = _targetCameraRotation.eulerAngles.y;
-
-            offsetFromCenter = Quaternion.Euler(0, rotateAmount, 0) * offsetFromCenter;
-            _targetCameraPosition = _currentRotationCenter + offsetFromCenter;
-            _targetCameraRotation = Quaternion.LookRotation(_currentRotationCenter - _targetCameraPosition);
-            ClampTargetToBounds(ref _targetCameraPosition);
-
-            //Debug.Log($"[Camera Rotation Debug] 旋转响应记录 | rotateAmount={rotateAmount:F3} | 位置变化 | Y轴旋转: {oldRotY:F1}度 → {_targetCameraRotation.eulerAngles.y:F1}度");
-        }
-    }
-
-    private void HideAllCanvases()
-    {
-        var canvasList = _uiConfig.RuntimeCanvases;
-        foreach (Canvas c in canvasList.ToList())
-        {
-            if (c == null)
-            {
-                canvasList.Remove(c);
-                continue;
-            }
-            c.gameObject.SetActive(false);
-        }
-    }
-
-    private void StartReturnRotation()
-    {
-        _isReturningToStart = true;
-        Vector3 startToCenter = _rotationStartPosition - _currentRotationCenter;
-        Vector3 currentToCenter = _targetCameraPosition - _currentRotationCenter;
-        _returnTotalAngle = Vector3.SignedAngle(currentToCenter, startToCenter, Vector3.up);
-
-        if (_returnTotalAngle > 180) _returnTotalAngle -= 360;
-        else if (_returnTotalAngle < -180) _returnTotalAngle += 360;
-
-        _targetReturnAngle = _returnTotalAngle;
-        _currentReturnAngle = 0;
-
-        _returnStartTime = Time.time;   // 记录开始回正的时间
-    }
-
-    private void HandleReturnToStart()
-    {
-        if (_mainCamera == null) return;
-
-        // 恢复画布
-        var canvasList = _uiConfig.RuntimeCanvases;
-        foreach (Canvas c in canvasList)
-        {
-            if (c == null || c.transform.parent == null) continue;
-
-            // 【探索重构-阶段1】无条件恢复 Canvas，不再按 IsExplored 过滤
-            c.gameObject.SetActive(true);
-        }
-
-        // ==================== 固定0.3秒内完成回正 ====================
-        float elapsed = Time.time - _returnStartTime;
-        float t = Mathf.Clamp01(elapsed / returnDuration);           // t 从 0 到 1，历时 0.3 秒
-        float targetAngle = Mathf.LerpAngle(0f, _targetReturnAngle, t);
-
-        float rotateAngle = targetAngle - _currentReturnAngle;
-        _currentReturnAngle = targetAngle;
-
-        Vector3 offsetFromCenter = _targetCameraPosition - _currentRotationCenter;
-        offsetFromCenter = Quaternion.Euler(0, rotateAngle, 0) * offsetFromCenter;
-        _targetCameraPosition = _currentRotationCenter + offsetFromCenter;
-        _targetCameraRotation = Quaternion.LookRotation(_currentRotationCenter - _targetCameraPosition);
-        ClampTargetToBounds(ref _targetCameraPosition);
-
-        if (t >= 1f || Mathf.Abs(_currentReturnAngle - _targetReturnAngle) < 0.1f)
-        {
-            _isReturningToStart = false;
-            _targetCameraPosition = _rotationStartPosition;
-            _targetCameraRotation = _rotationStartRotation;
-        }
-
-        ApplySmoothTransform();
-    }
-
     private void HandleMouseDrag()
     {
+        if (_input.IsMultiTouch)
+        {
+            _isDragging = false;
+            return;
+        }
+
         if (_input.GetMouseButtonDown(0))
         {
-            // 鼠标在 UI 上时不开始拖拽
             if (_input.IsPointerOverUI()) return;
 
-            _isDragging = true;
-            _lastMousePosition = _input.MousePosition;
+            _dragStartPosition = _input.MousePosition;
+            _lastMousePosition = _dragStartPosition;
+            _isDragging = false;
             return;
         }
 
@@ -420,10 +245,21 @@ public class CameraController : MonoBehaviour, ITickable
             return;
         }
 
-        if (!_isDragging || !_input.GetMouseButton(0)) return;
+        if (!_input.GetMouseButton(0)) return;
 
-        Vector3 mouseDelta = _input.MousePosition - _lastMousePosition;
-        _lastMousePosition = _input.MousePosition;
+        Vector3 currentPosition = _input.MousePosition;
+        if (!_isDragging)
+        {
+            if ((currentPosition - _dragStartPosition).sqrMagnitude < dragStartThreshold * dragStartThreshold)
+                return;
+
+            _isDragging = true;
+            _lastMousePosition = currentPosition;
+            return;
+        }
+
+        Vector3 mouseDelta = currentPosition - _lastMousePosition;
+        _lastMousePosition = currentPosition;
 
         if (mouseDelta.sqrMagnitude < 0.01f) return;
 
@@ -447,17 +283,6 @@ public class CameraController : MonoBehaviour, ITickable
         return (cameraRight * screenDelta.x + cameraForward * screenDelta.y) * heightFactor;
     }
 
-    private Vector3 GetScreenCenterWorldPosition()
-    {
-        if (_mainCamera == null) return Vector3.zero;
-
-        Ray centerRay = _mainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
-        if (Physics.Raycast(centerRay, out RaycastHit hit, Mathf.Infinity, rotationRaycastLayers))
-            return hit.point;
-
-        return _mainCamera.transform.position + _mainCamera.transform.forward * defaultRotationDistance;
-    }
-
     private void ApplySmoothTransform()
     {
         if (_mainCamera == null) return;
@@ -467,15 +292,7 @@ public class CameraController : MonoBehaviour, ITickable
         UpdateShakeOffset();
 
         _mainCamera.transform.position = smoothed + _shakeOffset;
-
-        float targetY = _targetCameraRotation.eulerAngles.y;
-        float currentY = _mainCamera.transform.rotation.eulerAngles.y;
-        float smoothY = Mathf.SmoothDampAngle(currentY, targetY, ref _rotationYVelocity, smoothRotateTime);
-
-        Vector3 newEuler = _mainCamera.transform.rotation.eulerAngles;
-        newEuler.y = smoothY;
-        _mainCamera.transform.rotation = Quaternion.Euler(newEuler);
-
+        _mainCamera.transform.rotation = _targetCameraRotation;
         transform.position = smoothed;
     }
 

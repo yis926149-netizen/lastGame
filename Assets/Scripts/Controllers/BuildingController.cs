@@ -15,8 +15,6 @@ public class BuildingController : BuildingBase
 {
     [Inject] private GameLoop _gameLoop;
     [Inject] private EndGame _endGame;
-    [Inject(Optional = true)] private ILogisticsService _logisticsService;
-
     //城市易主锁（防止重复触发）
     public bool isCityChangeOwner = false;
 

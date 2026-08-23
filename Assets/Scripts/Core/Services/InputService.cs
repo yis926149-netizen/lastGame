@@ -26,6 +26,23 @@ public class InputService : IInputService
 
     public float GetAxis(string axisName) => Input.GetAxis(axisName);
     public float MouseScrollDelta => Input.mouseScrollDelta.y;
+    public bool IsMultiTouch => Input.touchCount >= 2;
+
+    public float PinchDelta
+    {
+        get
+        {
+            if (Input.touchCount < 2) return 0f;
+
+            Touch first = Input.GetTouch(0);
+            Touch second = Input.GetTouch(1);
+            Vector2 previousFirst = first.position - first.deltaPosition;
+            Vector2 previousSecond = second.position - second.deltaPosition;
+            float previousDistance = Vector2.Distance(previousFirst, previousSecond);
+            float currentDistance = Vector2.Distance(first.position, second.position);
+            return currentDistance - previousDistance;
+        }
+    }
 
     public bool IsPointerOverUI()
     {

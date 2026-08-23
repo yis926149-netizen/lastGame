@@ -118,9 +118,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     private bool _animOnly = false;
     private GameObject _hitParticles;
 
-    // ---------- IUnitMovement 接口实现 ----------
-    public GameObject gameObject => base.gameObject;
-
+    // ---------- 单位坐标缓存 ----------
     private Vector3 _cachedHexCoord;
     private bool _hexCoordCached;
 

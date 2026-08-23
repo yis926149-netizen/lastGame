@@ -48,6 +48,7 @@ public class MapHeightEditTestController : ITickable
 
     public void Tick()
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
         // UI 阻挡：指针在 UI 上时既不取格也不响应（清高亮，防隔着面板改地形）
         if (_input.IsPointerOverUI())
         {
@@ -70,6 +71,7 @@ public class MapHeightEditTestController : ITickable
         ApplyHeight(_hoveredCell, holdingR ? +Step : -Step);
         _nextCommitTime = Time.realtimeSinceStartup + CommitIntervalSeconds;
     }
+#endif
 
     /// <summary>屏幕射线取指针格（与 PlayerInputHandler.HighlightGridOnMouseHover 同范式）。</summary>
     private HexCellData ResolveHoveredCell()

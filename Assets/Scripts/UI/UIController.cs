@@ -19,8 +19,6 @@ public class UIController : MonoBehaviour
     [Inject] private MapVisualEventSO _mapVisualEvent;
     [Inject] private GameLoop _gameLoop;
     [Inject] private UnitMovementSystem _movementSystem;
-    [Inject] private IInputService _input;
-    [Inject] private PlayerInputHandler _playerInputHandler;
     [Inject] private UIManagerPresenter _uiPresenter;
     [Inject] private IUnitRepository _unitRepository;
     [Inject] private UnitRemovalService _unitRemovalService;
@@ -214,16 +212,7 @@ public class UIController : MonoBehaviour
                 return;
             }
 
-            // 检测右键点击选择目标
-            if (_input.GetMouseButtonDown(1) && !_input.IsPointerOverUI())
-            {
-                GameObject target = GetEnemyUnderMouse();
-                if (target == null)
-                {
-                    CancelRangedAttackMode();
-                    _playerInputHandler.ForceDeselectUnit();
-                }
-            }
+            // 远程攻击由 RangedStrategy 自动索敌，不再监听桌面右键。
         }
     }
 
@@ -370,23 +359,6 @@ public class UIController : MonoBehaviour
     private static float HexDistance(Vector3 a, Vector3 b)
     {
         return (Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y) + Mathf.Abs(a.z - b.z)) * 0.5f;
-    }
-
-    // ---------- 获取鼠标下的敌人 ----------
-    private GameObject GetEnemyUnderMouse()
-    {
-        RaycastHit[] hits = _input.RaycastAllFromScreen(_input.MousePosition, 100f, Physics.DefaultRaycastLayers);
-        foreach (RaycastHit hit in hits)
-        {
-            Transform current = hit.transform;
-            while (current != null)
-            {
-                if (current.CompareTag("EnemyUnit") || current.CompareTag("EnemyBuilding"))
-                    return current.gameObject;
-                current = current.parent;
-            }
-        }
-        return null;
     }
 
     // ---------- 高亮指定六边形列表 ----------

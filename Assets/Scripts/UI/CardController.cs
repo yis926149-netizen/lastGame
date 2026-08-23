@@ -303,13 +303,13 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
             return;
         }
 
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        Ray ray = Camera.main.ScreenPointToRay(eventData.position);
         RaycastHit hit;
         bool isMapHit;
         if (_mapRaycastService != null)
         {
             // 统一射线服务：命中 Chunk 的 MapChunkView 后代。
-            isMapHit = _mapRaycastService.RaycastMap(Input.mousePosition, out hit);
+            isMapHit = _mapRaycastService.RaycastMap(eventData.position, out hit);
         }
         else
         {

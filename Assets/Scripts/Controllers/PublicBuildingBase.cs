@@ -16,7 +16,6 @@ public abstract class PublicBuildingBase : BuildingBase
     [Inject] private GameLoop _gameLoop;
     [Inject] private PublicBuildingMarkerManager _markerManager;
     [Inject] private ExplorationPillarPool _explorationEffectPool;
-    [Inject] private ILogisticsService _logisticsService;
     // 【地图资源配置化】资源统一消费服务（替代原本地收割 switch + _goldWallet 直接发币）
     [Inject] private MapResourceCollectionService _collectionService;
 
@@ -426,7 +425,7 @@ public abstract class PublicBuildingBase : BuildingBase
     }
 
     // ── MonoBehaviour 生命周期 ────────────────────────
-    protected virtual void OnDestroy()
+    protected override void OnDestroy()
     {
         base.OnDestroy(); // 【断供方案-阶段5】退订血条可见性事件
 

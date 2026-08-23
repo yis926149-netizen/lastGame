@@ -63,8 +63,10 @@ public class MapWaveTestController : ITickable
 
     public void Tick()
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
         if (Input.GetKeyDown(KeyCode.V) && State == WaveTestState.Idle)
             BeginRise();
+#endif
     }
 
     /// <summary>强制结束测试并复位开关（对局结束/调试兜底）。幂等。</summary>
