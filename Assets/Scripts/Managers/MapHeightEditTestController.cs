@@ -70,8 +70,8 @@ public class MapHeightEditTestController : ITickable
 
         ApplyHeight(_hoveredCell, holdingR ? +Step : -Step);
         _nextCommitTime = Time.realtimeSinceStartup + CommitIntervalSeconds;
-    }
 #endif
+    }
 
     /// <summary>屏幕射线取指针格（与 PlayerInputHandler.HighlightGridOnMouseHover 同范式）。</summary>
     private HexCellData ResolveHoveredCell()
