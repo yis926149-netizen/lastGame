@@ -43,6 +43,9 @@ public class CameraController : MonoBehaviour, ITickable
     private Vector3 _zoomVelocity;
     private bool _boundsInitialized = false;
 
+    private bool _wasPinching;
+    private float _pinchStartHeight;
+
     [Header("鼠标拖拽移动")]
     [Tooltip("鼠标右键拖拽灵敏度（值越大拖动越快）")]
     public float dragSensitivity = 0.012f;
@@ -205,8 +208,16 @@ public class CameraController : MonoBehaviour, ITickable
 
     private void HandleMouseScroll()
     {
-        float scrollDelta = _input.IsMultiTouch ? _input.PinchDelta : _input.MouseScrollDelta;
-        if (Mathf.Abs(scrollDelta) < 0.01f) return;
+        if (_input.IsMultiTouch)
+        {
+            HandlePinchZoom();
+            return;
+        }
+
+        _wasPinching = false;
+
+        float scrollDelta = _input.MouseScrollDelta;
+        if (scrollDelta == 0) return;
 
         Vector3 zoomMove = scrollDelta * _mainCamera.transform.forward * (zoomSpeed / 60f);
         float targetY = Mathf.Clamp(
@@ -217,6 +228,31 @@ public class CameraController : MonoBehaviour, ITickable
         if (Mathf.Approximately(zoomMove.y, 0f)) return;
 
         zoomMove *= (targetY - _targetCameraPosition.y) / zoomMove.y;
+        _targetCameraPosition += zoomMove;
+        ClampTargetToBounds(ref _targetCameraPosition);
+    }
+
+    // 双指捏合缩放：不依赖 deltaPosition（微信 WebGL 触摸符号不可靠），
+    // 改用「相对捏合起点的间距比值」：ratio > 1 张开 = 拉近（地图放大），ratio < 1 合拢 = 拉远。
+    private void HandlePinchZoom()
+    {
+        if (!_wasPinching)
+        {
+            _wasPinching = true;
+            _pinchStartHeight = _targetCameraPosition.y;
+        }
+
+        float ratio = _input.PinchRatio;
+        if (Mathf.Abs(ratio - 1f) < 0.001f) return;
+
+        float targetY = Mathf.Clamp(_pinchStartHeight / ratio, minZoomDistance, maxZoomDistance);
+        float deltaY = targetY - _targetCameraPosition.y;
+        if (Mathf.Approximately(deltaY, 0f)) return;
+
+        float forwardY = _mainCamera.transform.forward.y;
+        if (Mathf.Approximately(forwardY, 0f)) return;
+
+        Vector3 zoomMove = _mainCamera.transform.forward * (deltaY / forwardY);
         _targetCameraPosition += zoomMove;
         ClampTargetToBounds(ref _targetCameraPosition);
     }

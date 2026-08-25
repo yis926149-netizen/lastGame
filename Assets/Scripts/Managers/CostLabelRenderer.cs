@@ -24,6 +24,7 @@ public class CostLabelRenderer : MonoBehaviour
     private readonly Dictionary<Vector3, GameObject> _activeLabels = new Dictionary<Vector3, GameObject>();
     private readonly Dictionary<Vector3, Vector3> _labelWorldPositions = new Dictionary<Vector3, Vector3>();
     private readonly Stack<GameObject> _pool = new Stack<GameObject>();
+    private bool _refreshRequested;
 
     private ILogisticsService _logisticsService;
     private IExplorationCostProvider _costProvider;
@@ -59,7 +60,7 @@ public class CostLabelRenderer : MonoBehaviour
         _camera = Camera.main;
 
         if (_mapVisualEvent != null)
-            _mapVisualEvent.OnMapVisualChanged.AddListener(RefreshLabels);
+            _mapVisualEvent.OnMapVisualChanged.AddListener(RequestRefresh);
         if (_goldWallet != null)
             _goldWallet.OnGoldChanged += OnGoldChanged;
         if (_explorationService != null)
@@ -74,7 +75,7 @@ public class CostLabelRenderer : MonoBehaviour
     private void OnDestroy()
     {
         if (_mapVisualEvent != null)
-            _mapVisualEvent.OnMapVisualChanged.RemoveListener(RefreshLabels);
+            _mapVisualEvent.OnMapVisualChanged.RemoveListener(RequestRefresh);
         if (_goldWallet != null)
             _goldWallet.OnGoldChanged -= OnGoldChanged;
         if (_explorationService != null)
@@ -110,16 +111,27 @@ public class CostLabelRenderer : MonoBehaviour
 
     private void OnCellExplored(HexCellData cell)
     {
-        RefreshLabels();
+        RequestRefresh();
     }
 
     private void OnLogisticsChanged()
     {
-        RefreshLabels();
+        RequestRefresh();
+    }
+
+    private void RequestRefresh()
+    {
+        _refreshRequested = true;
     }
 
     private void LateUpdate()
     {
+        if (_refreshRequested)
+        {
+            _refreshRequested = false;
+            RefreshLabels();
+        }
+
         if (_camera == null) _camera = Camera.main;
         if (_camera == null || _parentCanvas == null || _containerRect == null) return;
 
@@ -224,7 +236,6 @@ public class CostLabelRenderer : MonoBehaviour
                 button.onClick.AddListener(() =>
                 {
                     _explorationService.TryExplore(capturedCell, 0);
-                    RefreshLabels();
                 });
             }
         }

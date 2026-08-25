@@ -227,7 +227,7 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
         float flyTime = 0.25f;      // 阶段② 从最高点加速收入槽位
         float totalTime = appearTime + flyTime;
 
-        float arcBump = Mathf.Min(Screen.height * 0.12f, 120f);
+        float arcBump = Mathf.Min(UIScreenHelper.ReferenceHeight * 0.12f, 120f);
         Vector2 liftPos = revealLocal + new Vector2(0f, arcBump);                 // 阶段①顶点（最高点）
         Vector2 dashControl = liftPos * 0.5f + new Vector2(0f, -arcBump * 0.25f); // 阶段②俯冲弧线控制点
 

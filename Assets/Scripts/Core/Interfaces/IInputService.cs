@@ -18,7 +18,7 @@ public interface IInputService
 
     // ������
     float MouseScrollDelta { get; }
-    float PinchDelta { get; }
+    float PinchRatio { get; }
     bool IsMultiTouch { get; }
 
     // UI �ڵ���⣨��ָ��Ŀ�� Canvas��null �������� UI��

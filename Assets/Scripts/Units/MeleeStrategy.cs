@@ -9,7 +9,7 @@ using UnityEngine;
 //   ChooseNextPath：
 //     1. 警戒范围（3格）内有敌方单位 → 追击
 //     2. 无近敌 → 向最近敌方建筑（主城优先）行军
-//     3. 无法到达任何建筑 → 随机前沿游走（兜底）
+//     3. 无法到达任何建筑 → 原地待机（停止移动）
 //
 // 【批次 D】DoCombat 改用 CombatResolver + PlayAttackAnim，移除旧 MoveToAttack 路径。
 //****************************************
@@ -114,11 +114,7 @@ public class MeleeStrategy : IUnitStrategy
             }
         }
 
-        // 5. 无法到达任何目标 → 随机前沿游走（兜底）
-        Vector3? frontierStep = ChooseFrontierStep(brain, allPoints, startHex);
-        if (frontierStep.HasValue)
-            return new List<Vector3> { frontierStep.Value };
-
+        // 5. 无法到达任何目标 → 原地待机（停止移动，不再随机游走打转）
         return null;
     }
 
@@ -219,26 +215,5 @@ public class MeleeStrategy : IUnitStrategy
         }
 
         return (null, null);
-    }
-
-    private Vector3? ChooseFrontierStep(UnitBrainBase brain, List<Vector3> allPoints, Vector3 startHex)
-    {
-        // 【探索重构】无索敌目标时随机移动到临近可达格
-        float budget = brain.Owner?.unitMovementController?.currentMovementPoints ?? 1f;
-        if (budget <= 0) budget = 1f;
-
-        var reachable = brain.Movement.GetAllReachableHexesFromStartHex(allPoints, startHex, budget);
-        reachable.RemoveAll(v => v == startHex);
-        if (reachable.Count == 0) return null;
-
-        var chosen = reachable[Random.Range(0, reachable.Count)];
-        if (brain.Movement.CalculateMinMovementCostBetweenTwoHexes(
-                allPoints, startHex, chosen,
-                Enums.MovementPurpose.MoveToDestination, out _, out var path)
-            && path != null && path.Count > 0)
-        {
-            return path[0];
-        }
-        return null;
     }
 }

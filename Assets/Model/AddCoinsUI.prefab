@@ -66,9 +66,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   m_FontData:
-    m_Font: {fileID: 12800000, guid: d45bc23e3b5ab9a40b99d657a158a451, type: 3}
+    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
     m_FontSize: 100
-    m_FontStyle: 0
+    m_FontStyle: 1
     m_BestFit: 0
     m_MinSize: 0
     m_MaxSize: 150
@@ -218,6 +218,7 @@ MonoBehaviour:
   nextTurnButton: {fileID: 0}
   _runSprite: {fileID: 0}
   _stopSprite: {fileID: 0}
+  rewardTypeIcons: []
 --- !u!114 &2409686014058299716
 MonoBehaviour:
   m_ObjectHideFlags: 0

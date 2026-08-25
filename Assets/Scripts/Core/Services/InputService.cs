@@ -28,19 +28,30 @@ public class InputService : IInputService
     public float MouseScrollDelta => Input.mouseScrollDelta.y;
     public bool IsMultiTouch => Input.touchCount >= 2;
 
-    public float PinchDelta
+    private bool _pinching;
+    private float _pinchStartDistance = 1f;
+
+    public float PinchRatio
     {
         get
         {
-            if (Input.touchCount < 2) return 0f;
+            if (Input.touchCount < 2)
+            {
+                _pinching = false;
+                return 1f;
+            }
 
-            Touch first = Input.GetTouch(0);
-            Touch second = Input.GetTouch(1);
-            Vector2 previousFirst = first.position - first.deltaPosition;
-            Vector2 previousSecond = second.position - second.deltaPosition;
-            float previousDistance = Vector2.Distance(previousFirst, previousSecond);
-            float currentDistance = Vector2.Distance(first.position, second.position);
-            return currentDistance - previousDistance;
+            float currentDistance = Vector2.Distance(Input.GetTouch(0).position, Input.GetTouch(1).position);
+            if (currentDistance < 0.0001f) return 1f;
+
+            if (!_pinching)
+            {
+                _pinching = true;
+                _pinchStartDistance = currentDistance;
+                return 1f;
+            }
+
+            return currentDistance / _pinchStartDistance;
         }
     }
 

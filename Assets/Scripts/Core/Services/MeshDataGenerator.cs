@@ -43,23 +43,44 @@ public class MeshGeneratorService : IMeshGenerator
     }
 
     /// <summary>
+    /// 【P0-1 地图初始化分帧】只算 0 号点（地块中心）的最终世界坐标，恒等于
+    /// <see cref="BuildSolidArea"/> 的 <c>Center</c>：都是「未扰动中心 → Perturb + PerturbY2」。
+    /// 只做 2 次噪声采样，不构建 44 点数组，可在骨架帧对全图跑一遍。
+    /// </summary>
+    public Vector3 ComputeSolidAreaCenter(HexCellData hexCellData)
+    {
+        Vector3 zero = SolidAreaCenterWithoutPerturb(hexCellData);
+        return HexMetrics.Perturb(zero) + HexMetrics.PerturbY2(zero);
+    }
+
+    /// <summary>
+    /// 地块中心的未扰动世界坐标。唯一的地表 Height→世界Y 换算点：
+    /// 乘 elevationStep 把整数高度映射到世界坐标。
+    /// </summary>
+    private Vector3 SolidAreaCenterWithoutPerturb(HexCellData hexCellData)
+    {
+        return new Vector3(
+            hexCellData.CenterWorldCoordinate.x,
+            hexCellData.CenterWorldCoordinate.y + hexCellData.Height * _config.elevationStep,
+            hexCellData.CenterWorldCoordinate.z);
+    }
+
+    /// <summary>
     /// 计算地块实心区域 44 顶点（含河道）。纯函数：只读 hexCellData 逻辑字段与配置。
     /// </summary>
     private Vector3[] ComputeSolidAreaVertices(HexCellData hexCellData)
     {
-        //实心区域顶点坐标 
+        //实心区域顶点坐标
         //根据每个地块的中心点世界坐标生成 - 对应地块的其他6个坐标
-        float x = hexCellData.CenterWorldCoordinate.x;
-        // 唯一的地表 Height→世界Y 换算点：乘 elevationStep 把整数高度映射到世界坐标
-        float y = hexCellData.CenterWorldCoordinate.y + hexCellData.Height * _config.elevationStep;
-        //float y = hexCellData.Height;
-        float z = hexCellData.CenterWorldCoordinate.z;
+        //本体六边形的7个点 + 12个分割点(无扰动)
+        //中心点(无扰动)
+        Vector3 zero = SolidAreaCenterWithoutPerturb(hexCellData);
+        float x = zero.x;
+        float y = zero.y;
+        float z = zero.z;
         float o = _config.OuterRadius;
         float i = _config.InnerRadius;
         float s = _config.SolidAreaRatio;
-        //本体六边形的7个点 + 12个分割点(无扰动)
-        //中心点(无扰动) 
-        Vector3 zero = new Vector3(x, y, z);
         Vector3[] arrSolidAreaVerticesWithoutPerturb = new Vector3[]
         {
             //0点(地块中心点)
@@ -157,7 +178,9 @@ public class MeshGeneratorService : IMeshGenerator
         {
             ///*
             //本体六边形的7个点
-            HexMetrics.Perturb(withoutPerturb[0]) + Y_Perturb,
+            // 0 号点即地块中心：走 ComputeSolidAreaCenter，保证「轻量中心公式」与 44 点构建
+            // 永远是同一个值（分帧初始化的骨架帧靠前者预置 RealCenterWorldCoordinate）。
+            ComputeSolidAreaCenter(hexCellData),
             HexMetrics.Perturb(withoutPerturb[1]) + Y_Perturb,
             HexMetrics.Perturb(withoutPerturb[2]) + Y_Perturb,
             HexMetrics.Perturb(withoutPerturb[3]) + Y_Perturb,

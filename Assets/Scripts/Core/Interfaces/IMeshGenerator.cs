@@ -14,6 +14,17 @@ public interface IMeshGenerator
     SolidAreaMeshData BuildSolidArea(HexCellData hexCellData, IReadOnlyMapView view);
 
     /// <summary>
+    /// 【P0-1 地图初始化分帧】只算地块中心的最终世界坐标，恒等于
+    /// <see cref="BuildSolidArea"/> 返回值的 <c>Center</c>（44 点中的 0 号点），
+    /// 但只做 2 次噪声采样、不分配顶点数组。
+    ///
+    /// 存在理由：<c>RealCenterWorldCoordinate</c> 原本只在逐 Chunk 的 mesh 构建里被写入，
+    /// 而分帧初始化的骨架帧就必须为**全图**备好这个值（主城、公共建筑、地貌浮标的定位都读它，
+    /// 见 <c>GameFlowManager.GeneratePlayerMainCity</c>）。
+    /// </summary>
+    Vector3 ComputeSolidAreaCenter(HexCellData hexCellData);
+
+    /// <summary>
     /// 实心区域 UV（44 个，含河道）。
     /// </summary>
     List<Vector2> BuildSolidAreaUV(HexCellData hexCellData);

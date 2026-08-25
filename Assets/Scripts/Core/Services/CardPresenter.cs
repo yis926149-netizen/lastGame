@@ -35,7 +35,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
 
     public void Initialize()
     {
-        _handRoot = GameObject.Find("Canvas/card")?.transform;
+        _handRoot = GameObject.Find("card")?.transform;
         if (_handRoot == null)
         {
             throw new System.InvalidOperationException("[CardPresenter] Initialization failed: Canvas/card was not found.");

@@ -61,9 +61,9 @@ public class UIConfigProvider : IUIConfigProvider
         {
             var rect = placeholder.GetComponent<RectTransform>();
             //Debug.Log($"[UIConfig] Placeholder localScale: {rect.localScale}"); 
-            _nextCardSize = rect.localScale + new Vector3(0.6f, 0.6f, 0.6f);
+            _nextCardSize = rect.localScale;
             //_nextCardSize = rect.localScale;
-            _cardSize = rect.localScale + new Vector3(0.3f, 0.3f, 0.3f);
+            _cardSize = rect.localScale + new Vector3(0.5f, 0.5f, 0.5f);
             //_cardSize = rect.localScale;
             //Debug.Log($"[UIConfig] NextCardSize: {_nextCardSize}, CardSize: {_cardSize}"); 
         }

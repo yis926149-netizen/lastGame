@@ -232,6 +232,9 @@ public class GameInstaller : MonoInstaller
         // 【动态地图-阶段五】分帧提交执行器（每帧驱动 CommitSliced 的脏 Chunk 几何构建，§阶段五-分帧提交）
         Container.BindInterfacesAndSelfTo<MapSlicedCommitExecutor>().AsSingle();
 
+        // 【P0-1 地图初始化分帧】开局表现层分帧初始化驱动器（每帧推进 Chunk 提交 + prefab 实例化）
+        Container.BindInterfacesAndSelfTo<MapPresentationSlicedInitExecutor>().AsSingle();
+
         // 【动态地图-阶段四】视觉过渡服务（Shader 顶点动画驱动，ITickable；§13.7/§20-10）
         Container.BindInterfacesAndSelfTo<MapVisualTransitionService>().AsSingle();
 

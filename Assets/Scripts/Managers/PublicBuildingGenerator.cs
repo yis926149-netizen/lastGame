@@ -273,11 +273,41 @@ public class PublicBuildingGenerator
         foreach (var hex in unexplorableArea)
         {
             hex.IsUnexplorable = true;
+            _resourceHiddenHexes.Add(hex);
             if (hex.resourceModel != null)
                 hex.resourceModel.SetActive(false);
         }
 
         Debug.Log($"[PublicBuildingGenerator] Marked {unexplorableArea.Count} hexes as unexplorable.");
+    }
+
+    // ── 【P0-1 地图初始化分帧】资源模型可见性重放 ─────────────
+
+    /// <summary>
+    /// 本生成器要求隐藏资源模型的格集合。
+    /// 注意不能用 <c>IsUnexplorable</c> 反推可见性：ArenaEventManager 对 37 个竞技场预留格
+    /// 也置 <c>IsUnexplorable = true</c> 但**不隐藏**资源模型，按 IsUnexplorable 统一 SetActive
+    /// 会把那些格的资源错误藏掉。故只记录本生成器自己的隐藏意图。
+    /// </summary>
+    private readonly HashSet<HexCellData> _resourceHiddenHexes = new HashSet<HexCellData>();
+
+    /// <summary>
+    /// 【P0-1 地图初始化分帧】把 <see cref="MarkUnexplorableArea"/> 的隐藏意图重放到资源模型上。
+    /// 分帧路径下 resourceModel 晚于 GenerateAll 才实例化，需在表现层就绪后补做一次；
+    /// 同步路径下调用是幂等空操作。<see cref="PublicBuildingBase.Reveal"/> 占领后单格恢复的路径不受影响
+    /// （已从本集合移除）。
+    /// </summary>
+    public void ApplyResourceVisibility()
+    {
+        if (_resourceHiddenHexes.Count == 0) return;
+
+        foreach (HexCellData hex in _resourceHiddenHexes)
+        {
+            // 已被 Reveal 恢复的格不再强制隐藏（Reveal 会置 IsUnexplorable = false）
+            if (hex == null || !hex.IsUnexplorable) continue;
+            if (hex.resourceModel != null)
+                hex.resourceModel.SetActive(false);
+        }
     }
 }
 

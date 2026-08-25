@@ -203,11 +203,53 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     {
         if (hexVertices == null || hexVertices.Length == 0) return;
 
+        // 【P0-1 分帧】前半段（NormalizeWaterState + 分组 + 建宿主 + 雾初值）与分帧路径共用同一实现，
+        // 保证同步路径与分帧路径的 Chunk 划分、水面归一化、雾初始状态完全一致。
+        IReadOnlyList<ChunkIndex> indices = PrepareChunkHosts(hexVertices);
+
+        var builtStaging = new List<ChunkStagingGeometry>(indices.Count);
+        foreach (ChunkIndex index in indices)
+        {
+            if (!_chunks.TryGetValue(index, out ChunkRenderData chunk)) continue;
+            ChunkStagingGeometry staging = BuildChunkStaging(chunk, chunk.Cells);
+            CommitChunkStaging(chunk, staging);
+            builtStaging.Add(staging);
+        }
+
+        // 【阶段五-法线同步】初始全量构建同样合并跨 Chunk 边界法线（非 FlatAll 风格）
+        FinishInitialChunkBuild(builtStaging);
+    }
+
+    // ── 【P0-1 地图初始化分帧】首帧骨架 + 逐帧提交 ──────────────
+
+    /// <summary>
+    /// 【P0-1 分帧】只做「不可分帧的前置」：建 <see cref="MapDataReadOnlyView"/>、归一化水面状态、
+    /// 按 <see cref="ChunkIndex.Of"/> 分组、创建 Chunk 宿主 GameObject，并复位雾过渡初值。
+    /// **不构建任何 mesh**。返回全部 Chunk 索引（调用方按帧分批喂给
+    /// <see cref="PrepareChunkGeometrySlice"/> + <see cref="CommitChunkGeometrySlice"/>）。
+    /// </summary>
+    public IReadOnlyList<ChunkIndex> PrepareChunkHosts(Vector3[] hexVertices)
+    {
+        var indices = new List<ChunkIndex>();
+        if (hexVertices == null || hexVertices.Length == 0) return indices;
+
         _view = new MapDataReadOnlyView(_mapDataService);
 
         // Water/coast profiles must not depend on Chunk traversal order. Normalize the
         // logical water fields before any Chunk builds a lake or coast dependency profile.
         NormalizeWaterState(_mapDataService.GetAllCells());
+
+        // 【P0-1 分帧-关键】全图预置 RealCenterWorldCoordinate。
+        // 它原本只在 PreBuildRectProfiles（逐 Chunk，属于 mesh 构建）里写入，
+        // 但 GameFlowManager 在**骨架帧同帧**就要读它定位主城/公共建筑/地貌浮标；
+        // 分帧后大多数 Chunk 尚未构建，不预置会让这些实体落在 (0,0,0) 或旧值上。
+        // ComputeSolidAreaCenter 与 BuildSolidArea().Center 是同一表达式（仅 2 次噪声采样），
+        // 因此后续逐 Chunk 构建时的覆写值与此处完全一致，同步/分帧两条路径结果相同。
+        foreach (HexCellData cell in _mapDataService.GetAllCells())
+        {
+            if (cell == null) continue;
+            cell.RealCenterWorldCoordinate = _meshGenerator.ComputeSolidAreaCenter(cell);
+        }
 
         // 按生成网格索引划分 Chunk（§二十-1）
         int xNumber = _config.xNumber;
@@ -224,22 +266,47 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             list.Add(cell);
         }
 
-        // 创建 Chunk 宿主
-        var builtStaging = new List<ChunkStagingGeometry>();
+        // 创建 Chunk 宿主（不构建 mesh）
         foreach (KeyValuePair<ChunkIndex, List<HexCellData>> pair in cellsByChunk)
         {
             ChunkRenderData chunk = GetOrCreateChunk(pair.Key, pair.Value);
-            ChunkStagingGeometry staging = BuildChunkStaging(chunk, pair.Value);
-            CommitChunkStaging(chunk, staging);
-            builtStaging.Add(staging);
+            // 已存在的 Chunk（重复初始化）刷新为本次分组结果，与原 ChunkMapRender
+            // 「用新分组列表构建」的语义一致，同时避免 chunk.Cells 持有过期引用。
+            chunk.Cells = pair.Value;
+            indices.Add(pair.Key);
         }
 
-        // 【阶段五-法线同步】初始全量构建同样合并跨 Chunk 边界法线（非 FlatAll 风格）
-        if (_config != null && _config.shadingStyle != Enums.ShadingStyle.FlatAll)
-            MergeChunkBoundaryNormals(builtStaging);
-
+        // 雾过渡初值与 mesh 无关，保持与同步路径同一时点（PlayerInit 的 Raise 之前）
         _fogInitialized = false;
         UpdateFogTransitionTargets();
+
+        return indices;
+    }
+
+    /// <summary>
+    /// 【P0-1 分帧】提交一批 staging，**不做**跨 Chunk 边界法线合并。
+    /// 边界法线合并读取「已提交」的 mesh，必须等全部 Chunk 提交完毕后由
+    /// <see cref="FinishInitialChunkBuild"/> 统一执行一次；逐帧合并既产生错误的中间法线又白做功。
+    /// </summary>
+    public void CommitChunkGeometrySlice(PreparedChunkGeometry geometry)
+    {
+        if (geometry == null) return;
+        foreach (ChunkStagingGeometry staging in geometry.Chunks)
+        {
+            if (!_chunks.TryGetValue(staging.Index, out ChunkRenderData chunk)) continue;
+            CommitChunkStaging(chunk, staging);
+        }
+    }
+
+    /// <summary>
+    /// 【P0-1 分帧】全量分帧构建收尾：一次性合并跨 Chunk 边界法线。
+    /// FlatAll 风格下为 no-op（面法线无接缝），本工程当前配置即 FlatAll。
+    /// </summary>
+    public void FinishInitialChunkBuild(IReadOnlyList<ChunkStagingGeometry> builtStaging)
+    {
+        if (builtStaging == null) return;
+        if (_config != null && _config.shadingStyle != Enums.ShadingStyle.FlatAll)
+            MergeChunkBoundaryNormals(builtStaging);
     }
 
     // ── IMapRenderBackend：脏 Chunk 路径 ─────────────────────
@@ -263,11 +330,7 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
     public void CommitChunkGeometry(PreparedChunkGeometry geometry)
     {
         if (geometry == null) return;
-        foreach (ChunkStagingGeometry staging in geometry.Chunks)
-        {
-            if (!_chunks.TryGetValue(staging.Index, out ChunkRenderData chunk)) continue;
-            CommitChunkStaging(chunk, staging);
-        }
+        CommitChunkGeometrySlice(geometry);
 
         // 【阶段五-法线同步】非 FlatAll 风格：跨 Chunk 边界法线合并（§二十-11，Chunk 拆分后各 mesh
         // 独立 RecalculateNormals 会在边界产生光照接缝）。已提交 mesh 上按世界位置聚合平均后回写。
@@ -1018,6 +1081,11 @@ public class ChunkMapRenderer : MonoBehaviour, IMapRenderBackend
             if (WaterLevelConfig.IsWater(cell))
             {
                 cell.waterLevel = _config.seaLevel;
+                // 【P0-1 修复】HexType=LakeOrSea 原本只在 BuildChunkWater（分帧逐 Chunk）里写，
+                // 但 GameFlowManager 在骨架帧同帧就要读 HexType 过滤水域选出生点（PlayerInit/AIInit），
+                // 分帧后该值尚未写入 → 水域被当成陆地进入候选、城市建在水里。
+                // 此处提前归一化，与 BuildChunkWater 的写入幂等（水域格不可能是河流格）。
+                cell.HexType = Enums.HexType.LakeOrSea;
             }
             else
             {

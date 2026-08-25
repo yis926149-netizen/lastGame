@@ -71,6 +71,10 @@ public class UIController : MonoBehaviour
     private List<GameObject> _tempEnemyIndicators = new List<GameObject>();
     private bool _isInfoPanelVisible;
 
+    // 【P3 对象池】敌方单位指示器池：替代每次刷新时的 Instantiate/Destroy。
+    private readonly PrefabPool _enemyIndicatorPool = new PrefabPool();
+    private GameObject _enemyIndicatorPrefab;
+
 
     void Start()
     {
@@ -195,7 +199,7 @@ public class UIController : MonoBehaviour
                 _isInfoPanelVisible = shouldBeVisible;
                 RectTransform panel = transform.GetComponent<RectTransform>();
                 panel.DOKill();
-                Vector2 target = InfoPanelOriginalRectPosition + (shouldBeVisible ? new Vector2(0, Screen.height * 0.29f) : Vector2.zero); // B3: 信息面板滑入改为屏幕高度比例
+                Vector2 target = InfoPanelOriginalRectPosition + (shouldBeVisible ? new Vector2(0, UIScreenHelper.ReferenceHeight * 0.29f) : Vector2.zero); // B3: 信息面板滑入改为 Canvas 参考高度比例
                 panel.DOAnchorPos(target, 0.5f).SetLink(gameObject);
             }
         }
@@ -265,6 +269,7 @@ public class UIController : MonoBehaviour
     private void OnDestroy()
     {
         // 【检查点 6】回合制 PhaseChanged 事件已移除，无取消订阅需要
+        _enemyIndicatorPool.Clear();
     }
 
     // ---------- 单位信息面板按钮 ----------
@@ -408,6 +413,7 @@ public class UIController : MonoBehaviour
         }
 
         GameObject prefab = uiConfigProvider.GetEnemyUnitIndicatorPrefab();
+        _enemyIndicatorPrefab = prefab;
         foreach (var group in _unitRepository.AllEnemyUnitGroups)
         {
             foreach (var kv in group)
@@ -419,7 +425,8 @@ public class UIController : MonoBehaviour
                 HexCellData cell = _mapDataService.GetCellByWorldPosition(enemy.transform.position);
                 if (cell == null) continue;
 
-                var indicator = Instantiate(prefab, indicatorParent);
+                var indicator = _enemyIndicatorPool.Get(prefab, indicatorParent);
+                if (indicator == null) continue;
                 indicator.transform.position = enemy.transform.position + Vector3.up * 0.2f;
                 _tempEnemyIndicators.Add(indicator);
             }
@@ -430,7 +437,7 @@ public class UIController : MonoBehaviour
     {
         foreach (var ind in _tempEnemyIndicators)
         {
-            if (ind != null) Destroy(ind);
+            if (ind != null) _enemyIndicatorPool.Release(_enemyIndicatorPrefab, ind);
         }
         _tempEnemyIndicators.Clear();
     }

@@ -6,7 +6,8 @@ using UnityEngine;
 //   攻击范围 range >= 1（BasicAttackRange）。
 //   CanAttack：射程环内有敌方单位/建筑时为 true。
 //   DoCombat：CombatResolver 瞬间结算 + PlayRangedAttackAnim（原地播放，无冲刺）+ MarkAttacked。
-//   ChooseNextPath：目标在射程内返回 null；否则返回完整路径（截至进入射程处）。
+//   ChooseNextPath：目标在射程内返回 null；否则返回完整路径（截至进入射程处）；
+//                   无目标/不可达时原地待机（停止移动，不再随机游走）。
 //
 // 【批次 D】DoCombat 改用 CombatResolver + PlayRangedAttackAnim。
 //****************************************
@@ -38,10 +39,7 @@ public class RangedStrategy : IUnitStrategy
         Vector3? targetHex = brain.FindNearestEnemy() ?? brain.FindNearestChest() ?? brain.FindNearestEnemyBuilding();
         if (!targetHex.HasValue)
         {
-            // 无目标时前沿游走：返回单步路径
-            Vector3? frontierStep = ChooseFrontierStep(brain, allPoints, startHex);
-            if (frontierStep.HasValue)
-                return new List<Vector3> { frontierStep.Value };
+            // 无目标时原地待机（停止移动，不再随机游走打转）
             return null;
         }
 
@@ -67,32 +65,7 @@ public class RangedStrategy : IUnitStrategy
             return path.GetRange(0, stopIdx + 1);
         }
 
-        {
-            Vector3? frontierStep = ChooseFrontierStep(brain, allPoints, startHex);
-            if (frontierStep.HasValue)
-                return new List<Vector3> { frontierStep.Value };
-            return null;
-        }
-    }
-
-    private static Vector3? ChooseFrontierStep(UnitBrainBase brain, List<Vector3> allPoints, Vector3 startHex)
-    {
-        // 【探索重构】无索敌目标时随机移动到临近可达格
-        float budget = brain.Owner?.unitMovementController?.currentMovementPoints ?? 1f;
-        if (budget <= 0) budget = 1f;
-
-        var reachable = brain.Movement.GetAllReachableHexesFromStartHex(allPoints, startHex, budget);
-        reachable.RemoveAll(v => v == startHex);
-        if (reachable.Count == 0) return null;
-
-        var chosen = reachable[Random.Range(0, reachable.Count)];
-        if (brain.Movement.CalculateMinMovementCostBetweenTwoHexes(
-                allPoints, startHex, chosen,
-                Enums.MovementPurpose.MoveToDestination, out _, out var path)
-            && path != null && path.Count > 0)
-        {
-            return path[0];
-        }
+        // 目标不可达（或已到位置）→ 原地待机
         return null;
     }
 

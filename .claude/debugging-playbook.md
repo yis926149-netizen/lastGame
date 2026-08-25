@@ -288,3 +288,19 @@
 - **根因**：Unity 生成的 `.csproj` 用**显式 `<Compile Include="...">` 逐文件清单**（非通配符 glob），只在 Unity 域重载/刷新时重新生成。新建的 .cs 在编辑器重新生成 csproj 之前**不在任何 csproj 里**，dotnet build 自然跳过它。
 - **做法**：新增文件后先确认它进了 csproj（`Select-String '<Compile Include="路径"' *.csproj`），没进就**临时手工插入 Compile 项**再 build 验证（csproj 被 gitignore，Unity 下次域重载会覆盖，临时改动无害）；不要依赖"build 全绿"作为新增文件的编译证据。
 - **可迁移判据**：`dotnet build` 通过但改的是"刚新建的文件" → 先查 csproj 清单；"我以为编译过了"的空欢喜通常来自这类生成物缓存。
+
+## 分帧化渲染前，先查"哪些逻辑字段是被 mesh 构建顺手写出来的"
+
+- **现象**：把 `MapPresentationBootstrap` 的地图初始化从单帧改成逐 Chunk 分帧（P0-1，消除 1588ms 长帧）后，开局的玩家主城/AI 主城/公共建筑/地貌浮标会落在错误位置（(0,0,0) 或上一局的旧值）——但地形本身看起来完全正常。
+- **根因**：`cell.RealCenterWorldCoordinate` 是**逻辑字段**，却只在 `ChunkMapRenderer.PreBuildRectProfiles`（逐 Chunk 的 mesh 构建步骤）里被写入：`cell.RealCenterWorldCoordinate = _meshGenerator.BuildSolidArea(cell, _view).Center;`。同步路径下"全图 mesh 构建"与"骨架就绪"是同一时刻，这个隐式依赖看不出来；一旦按帧切分，`GameFlowManager.Initialize()` 后半段（`GeneratePlayerMainCity` / `AIInit` / `TrySpawnPublicBuilding` / `CreateAllMarkers`）在同帧继续跑，而绝大多数 Chunk 还没构建，读到的就是默认值。
+- **做法**：给渲染器加一个只算中心点的轻量纯函数（`IMeshGenerator.ComputeSolidAreaCenter`，2 次噪声采样、不分配 44 点数组），在 `PrepareChunkHosts`（骨架帧）里对**全图**跑一遍预置；逐 Chunk 构建时的覆写值与它逐位相同，两条路径结果一致。
+- **坑中坑**：别照直觉写"中心 = `CenterWorldCoordinate` + `Height * elevationStep`"。44 点里的 0 号点其实是 `HexMetrics.Perturb(zero) + HexMetrics.PerturbY2(zero)`——**三个轴都被扰动过**。少算这两次扰动，实体会与地表差出可见的高度/水平偏移。必须读 `MeshDataGenerator` 的顶点数组确认真实表达式，而不是按"逻辑高度"推。
+- **防漂移**：两处公式并存必然随各自演进分叉。把未扰动中心抽成 `SolidAreaCenterWithoutPerturb`，再让 44 点数组的 0 号点**直接调用** `ComputeSolidAreaCenter`——变成结构上的同一份代码，另配一条 `ComputeSolidAreaCenter == BuildSolidArea().Center` 的数值测试守住这枚钉子（`Assets/Tests/MapPresentationSlicedInitTests.cs`）。
+- **可迁移判据**：把任何"构建/生成"步骤分帧或异步化之前，先 grep 这个步骤里所有对 `cell.` / 领域对象字段的**赋值**。凡是"顺手写出来的逻辑字段"，都是同帧下游消费者的隐式依赖；分帧会让它们静默变成默认值——症状出现在离改动很远的地方（实体位置），而不是被改的那个系统（地形）。
+
+## 布尔标记不等于"已执行过的副作用"——可见性要靠记录意图重放，不能靠标记反推
+
+- **现象**：同上次分帧改造。资源模型改成分帧实例化后，`PublicBuildingGenerator.MarkUnexplorableArea()` 在骨架帧执行 `hex.resourceModel.SetActive(false)`，但那些 `resourceModel` 还没被创建（`null`），于是不可探索区的资源全部照常显示。
+- **第一反应是错的**：在实例化时统一按 `SetActive(!cell.IsUnexplorable)` 处理——看着等价，实际会**多藏一批**。`ArenaEventManager.OnMapInitialized()` 也对 37 个竞技场预留格置 `IsUnexplorable = true`，但它**故意不隐藏**资源模型。两个生产者写同一个标记、期望的可见性却不同，所以标记根本不足以反推可见性。
+- **做法**：让施加副作用的那一方记录自己的意图（`HashSet<HexCellData> _resourceHiddenHexes`），并暴露一个幂等的重放入口（`ApplyResourceVisibility()`），由分帧完成回调（`GameFlowManager.OnMapPresentationReady`）调用一次。谁隐藏、谁记账、谁重放。
+- **可迁移判据**：见到"标记位 + 对应副作用"这种组合，先数**有几个生产者写这个标记**。只要多于一个，标记就只是标记，不是副作用的可靠代理；需要延迟/重放副作用时，重放的必须是**记录下来的意图集合**，绝不能拿标记现场重算。

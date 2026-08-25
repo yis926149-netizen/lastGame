@@ -1,3 +1,4 @@
 <linker>
   <assembly fullname="MainGame" preserve="all" />
+  <assembly fullname="Zenject" preserve="all" />
 </linker>

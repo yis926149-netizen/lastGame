@@ -46,7 +46,10 @@ public class GameFlowManager : MonoBehaviour, IInitializable
         mapGenerator.Generate();
 
         // 1.1 初始化唯一 Chunk 后端及后端无关地图视觉。
-        _mapPresentationBootstrap.InitializeMapPresentation();
+        // 【P0-1 地图初始化分帧】只同帧建骨架（雾全局属性 + Chunk 宿主 + LandForm/Resource 根节点），
+        // mesh 构建与 prefab 实例化交给 MapPresentationSlicedInitExecutor 分帧推进，
+        // 消除开局 1588ms 长帧。下方数据层步骤全部保持同帧原子，顺序契约不变。
+        _mapPresentationBootstrap.BeginInitializeMapPresentation(OnMapPresentationReady);
 
         // 1.2 【竞技场-阶段二】预留区标记（IsUnexplorable × 37）——
         // 必须在公共建筑生成与玩家出生点选择之前，供两者排除预留区
@@ -81,6 +84,19 @@ public class GameFlowManager : MonoBehaviour, IInitializable
         _logisticsService.RecalculateAll();
 
         _endGame.MarkInitializationComplete();
+    }
+
+    /// <summary>
+    /// 【P0-1 地图初始化分帧】表现层全部就绪后的回调（分帧路径下晚于 Initialize 若干帧；
+    /// 同步路径下由 BeginInitializeMapPresentation 立即同步调用）。
+    ///
+    /// 目前只需重放「资源模型可见性」：PublicBuildingGenerator.MarkUnexplorableArea 与
+    /// ArenaEventManager 在 Initialize 同帧标记 IsUnexplorable 并隐藏 resourceModel，
+    /// 而分帧路径下那些模型此刻尚未实例化，隐藏意图必须在模型诞生后补做一次。
+    /// </summary>
+    private void OnMapPresentationReady()
+    {
+        _publicBuildingGenerator.ApplyResourceVisibility();
     }
 
     public void PlayerInit()
