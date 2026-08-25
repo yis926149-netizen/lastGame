@@ -304,3 +304,11 @@
 - **第一反应是错的**：在实例化时统一按 `SetActive(!cell.IsUnexplorable)` 处理——看着等价，实际会**多藏一批**。`ArenaEventManager.OnMapInitialized()` 也对 37 个竞技场预留格置 `IsUnexplorable = true`，但它**故意不隐藏**资源模型。两个生产者写同一个标记、期望的可见性却不同，所以标记根本不足以反推可见性。
 - **做法**：让施加副作用的那一方记录自己的意图（`HashSet<HexCellData> _resourceHiddenHexes`），并暴露一个幂等的重放入口（`ApplyResourceVisibility()`），由分帧完成回调（`GameFlowManager.OnMapPresentationReady`）调用一次。谁隐藏、谁记账、谁重放。
 - **可迁移判据**：见到"标记位 + 对应副作用"这种组合，先数**有几个生产者写这个标记**。只要多于一个，标记就只是标记，不是副作用的可靠代理；需要延迟/重放副作用时，重放的必须是**记录下来的意图集合**，绝不能拿标记现场重算。
+
+## Animator 参数默认值与 C# 边沿同步不一致 → "原地不动 + 播放跑步动画"
+
+- **现象**：单位被海洋完全隔绝目标时，站在原处不动，但一直播放跑步动画（`isMoving` 在 C# 层看起来没问题，`GameLoop` 里 `if (brain.IsBusy) continue;` 也判不出异常——`isMoving` 是 `false`，单位确实没入队移动）。
+- **根因**：两个 Animator 控制器（`swordsman.controller`, `archer.controller`）文件里参数 `isMoving` 的 **`m_DefaultBool: 1`（默认 true）**；默认状态是 `IdleBattle`，`Run 0` 的进入条件就是 `isMoving == true`（`m_HasExitTime: 0`）。而 `UnitMovementController.Update()` 的动画同步是**边沿检测**——只在 `isMoving != lastIsMoving` 时才写 `animator.SetBool("isMoving", ...)`。单位一出生 `isMoving` 声明为 `false`，从未变过 `true` → 无任何边沿 → `SetBool` **从未被调用** → Animator 参数一直用控制器默认的 `true` → `Run 0` 从出生就常驻。只有真正移动过一次、触发过 `false→true` 边沿的单位，才会在停下时被 `SetBool(false)` 拉回 IdleBattle，所以"无目标"时看起来正常，而新生成、从未移动的单位必定卡跑步。
+- **修复（B 方案）**：`UnitMovementController.Start()` 里，在 animator 非空分支末尾**无条件初始化一次** `animator.SetBool("isMoving", isMoving);`（不依赖边沿，把参数拉回代码语义）。更治本是改控制器文件的 `m_DefaultBool: 1 → 0`。
+- **可迁移判据**：**Animator 布尔参数用边沿检测同步、且控制器文件默认值 ≠ 代码期望值时**，"从未变化"这个合法状态会让参数永远停在错误默认值。凡是"能预置 true 的进入条件状态"（跑步/攻击/受击），要么在 `Start()` 无条件 `SetBool` 一次，要么把 `.controller` 的默认值改对——两条等价，缺一不可防。
+- **排查顺序经验**：先 grep 出**所有** `isMoving`/`SetBool("isMoving",...)` 的写点，再打开 `.controller` 看 `m_DefaultBool` 与默认状态。别一开始就在 C# 标志生命周期里找"哪条路径漏复位"（这次全查过：只有 4 处清 `isMoving`，都各归其位）。

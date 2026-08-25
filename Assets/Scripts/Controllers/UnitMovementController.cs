@@ -282,6 +282,11 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
                 Debug.LogWarning($"[UnitMovementController] {gameObject.name} (PlayerIndex={PlayerIndex}): Animator 存在但 runtimeAnimatorController 为 null！请为预制体 Animator 挂载控制器。", gameObject);
             else
                 Debug.Log($"[UnitMovementController] {gameObject.name} (PlayerIndex={PlayerIndex}): Animator 初始化正常，控制器={ctrl.name}", gameObject);
+
+            // 一次性初始化动画参数，避免依赖边沿检测。
+            // 控制器文件默认 isMoving=true（swordsman/archer 均为 m_DefaultBool:1），
+            // 若从不触发 SetBool，Animator 会一直停在 Run 0（跑步），导致“原地不动 + 播放移动动画”。
+            animator.SetBool("isMoving", isMoving);
         }
 
         lastIsMoving = isMoving;
