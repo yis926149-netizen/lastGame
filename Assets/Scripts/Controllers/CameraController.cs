@@ -357,6 +357,9 @@ public class CameraController : MonoBehaviour, ITickable
         _shakeOffset = new Vector3(x * falloff, y * falloff, 0f);
     }
 
+    /// <summary>相机目标位置（平滑前），供射线检测等需要即时坐标的场景使用。</summary>
+    public Vector3 TargetCameraPosition => _targetCameraPosition;
+
     public void SetTargetPosition(Vector3 worldPosition)
     {
         _targetCameraPosition = worldPosition;

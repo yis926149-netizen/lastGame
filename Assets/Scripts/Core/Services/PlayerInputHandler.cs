@@ -25,6 +25,8 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     private readonly IExplorationService _explorationService;
     private readonly GameLoop _gameLoop;
     private readonly ILogisticsService _logisticsService;
+    private readonly IMapRaycastService _mapRaycastService;
+    private readonly CameraController _cameraController;
 
     private bool _isDraggingCard;
     private CardData _draggingCardData;
@@ -47,6 +49,8 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         [Inject(Id = "TargetUICanvas")] Canvas targetUICanvas,
         IExplorationService explorationService,
         GameLoop gameLoop,
+        IMapRaycastService mapRaycastService,
+        CameraController cameraController,
         [InjectOptional] ILogisticsService logisticsService
     )
     {
@@ -57,6 +61,8 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         _targetUICanvas = targetUICanvas;
         _explorationService = explorationService;
         _gameLoop = gameLoop;
+        _mapRaycastService = mapRaycastService;
+        _cameraController = cameraController;
         _logisticsService = logisticsService;
     }
 
@@ -103,7 +109,7 @@ public class PlayerInputHandler : ITickable, System.IDisposable
 
     private void HighlightGridOnMouseHover()
     {
-        if (_input.RaycastFromScreen(_input.MousePosition, out RaycastHit hit, 100f, LayerMask.GetMask("Map")))
+        if (_mapRaycastService.RaycastMap(_input.MousePosition, out RaycastHit hit))
         {
             var cell = _mapData.GetCellByWorldPosition(hit.point);
             if (cell != null && cell != _lastDraggingHighlightCell)
@@ -163,11 +169,50 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         foreach (var result in results)
         {
             if (result.gameObject == null) continue;
-            if (!IsWithinRuntimeUnitCanvas(result.gameObject.transform))
+            if (IsWithinRuntimeUnitCanvas(result.gameObject.transform)) continue;
+            if (IsBlockingUIObject(result.gameObject))
                 return true;
         }
 
         return false;
+    }
+
+    private bool IsBlockingUIObject(GameObject gameObject)
+    {
+        float effectiveAlpha = 1f;
+        Transform current = gameObject.transform;
+
+        while (current != null)
+        {
+            var canvasGroup = current.GetComponent<CanvasGroup>();
+            if (canvasGroup != null)
+            {
+                if (!canvasGroup.blocksRaycasts) return false;
+                effectiveAlpha *= canvasGroup.alpha;
+            }
+
+            current = current.parent;
+        }
+
+        if (effectiveAlpha <= 0.01f) return false;
+
+        current = gameObject.transform;
+        while (current != null)
+        {
+
+            var selectable = current.GetComponent<Selectable>();
+            if (selectable != null && selectable.enabled && selectable.interactable)
+                return true;
+
+            var cardController = current.GetComponent<CardController>();
+            if (cardController != null && cardController.enabled)
+                return true;
+
+            current = current.parent;
+        }
+
+        var graphic = gameObject.GetComponent<Graphic>();
+        return graphic != null && graphic.raycastTarget && effectiveAlpha * graphic.color.a > 0.01f;
     }
 
     private bool IsWithinRuntimeUnitCanvas(Transform uiTransform)
@@ -232,7 +277,7 @@ public class PlayerInputHandler : ITickable, System.IDisposable
 
         if (_input.GetMouseButtonDown(0))
         {
-            _explorationPointerDown = !_input.IsPointerOverUI(null);
+            _explorationPointerDown = !IsPointerOverBlockingUI();
             _explorationPointerStart = _input.MousePosition;
             _explorationPointerDownTime = Time.unscaledTime;
         }
@@ -250,13 +295,20 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         _explorationPointerDown = false;
         if (!isTap) return;
 
-        if (!_input.RaycastFromScreen(releasePosition, out RaycastHit hit, 100f, LayerMask.GetMask("Map")))
+        if (!_mapRaycastService.RaycastMap(
+                releasePosition,
+                _cameraController.TargetCameraPosition,
+                out RaycastHit hit))
             return;
 
         var cell = _mapData.GetCellByWorldPosition(hit.point);
         if (cell == null || cell.IsExplored || !HasExploredPlayerNeighbor(cell)) return;
 
-        _explorationService.TryExplore(cell, 0);
+        var result = _explorationService.TryExplore(cell, 0);
+        if (result != ExploreResult.Success)
+        {
+            Debug.Log($"[探索] 地块 {cell.HexCoordinate} 探索失败: {result}");
+        }
     }
 
     /// <summary>

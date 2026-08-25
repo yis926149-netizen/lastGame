@@ -132,6 +132,86 @@ public class AIUnitBrain : UnitBrainBase
         return best;
     }
 
+    // ── 隔绝目标查询（忽略可达性）────────────────────────
+    // 与上面两个查询的过滤条件完全一致，只把"可达且代价最小"换成"六边形距离最近"。
+    // 用于目标被海洋完全隔绝时仍能识别其方位，进而走到最接近的岸格。
+
+    public override Vector3? FindNearestEnemyIgnoringReachability()
+    {
+        if (Owner?.model == null || MapData == null) return null;
+
+        Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
+        if (startHex == default) return null;
+
+        Vector3? best = null;
+        float bestDist = float.MaxValue;
+
+        foreach (var cd in _unitRepository.AllPlayerUnits.Values)
+        {
+            if (cd?.model == null || cd.currentHp <= 0) continue;
+
+            var enemyMC = cd.unitMovementController;
+            if (enemyMC == null) continue;
+
+            float dist = HexDistance(startHex, enemyMC.CurrentHexCoordinate);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = enemyMC.CurrentHexCoordinate;
+            }
+        }
+
+        return best;
+    }
+
+    public override Vector3? FindNearestBuildingIgnoringReachability()
+    {
+        if (Owner?.model == null || MapData == null) return null;
+
+        Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
+        if (startHex == default) return null;
+
+        Vector3? best = null;
+        float bestDist = float.MaxValue;
+
+        foreach (var cell in MapData.GetAllCells())
+        {
+            if (cell == null) continue;
+
+            GameObject building = cell.BulidingTypeOnHex_Building.Value;
+            if (building == null) continue;
+
+            // 【断供方案-阶段2】失能建筑不是攻击目标（仅阵营 0/1；中立公共建筑豁免，决策#36）
+            BuildingSupplyGate supplyGate = building.GetComponent<BuildingSupplyGate>();
+            if (supplyGate != null && !supplyGate.IsFunctional)
+            {
+                BuildingBase targetBase = building.GetComponent<BuildingBase>();
+                int targetFaction = targetBase != null ? targetBase.Player_City_Index.Key : -1;
+                if (targetFaction == 0 || targetFaction == 1) continue;
+            }
+
+            var publicBuilding = building.GetComponent<PublicBuildingBase>();
+            if (publicBuilding != null &&
+                publicBuilding.CurrentDiscoveryState == PublicBuildingBase.DiscoveryState.Hidden)
+            {
+                continue;
+            }
+
+            bool isEnemy = building.CompareTag("PlayerBuilding");
+            bool isNeutral = building.CompareTag("NeutralBuilding");
+            if (!isEnemy && !isNeutral) continue;
+
+            float dist = HexDistance(startHex, cell.HexCoordinate);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = cell.HexCoordinate;
+            }
+        }
+
+        return best;
+    }
+
     // ── 移民建城（已移除）──────────────
 
     public override bool TryFoundCity()

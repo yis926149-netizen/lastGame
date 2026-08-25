@@ -255,6 +255,197 @@ public abstract class UnitBrainBase : MonoBehaviour
         return best;
     }
 
+    // ── 隔绝目标查询（忽略可达性）────────────────────────
+    // FindNearestEnemy/Chest/EnemyBuilding 三个查询都带可达性过滤（cost 有解才入选），
+    // 被海洋完全隔绝的目标因此对索敌链"隐形"，三查询齐返回 null → 策略落到兜底原地站桩。
+    // 下面这组同名镜像只按六边形距离选目标，专供"目标被隔开 → 走到最接近目标的地块"使用。
+
+    /// <summary>最近敌方单位（忽略可达性，纯六边形距离）。</summary>
+    public abstract Vector3? FindNearestEnemyIgnoringReachability();
+
+    /// <summary>最近敌方/中立建筑（忽略可达性）。阵营 tag 两边不同，由子类覆写。</summary>
+    public virtual Vector3? FindNearestBuildingIgnoringReachability() => null;
+
+    /// <summary>最近中央宝箱（忽略可达性，纯六边形距离）。</summary>
+    public virtual Vector3? FindNearestChestIgnoringReachability()
+    {
+        if (Owner?.model == null || MapData == null) return null;
+
+        Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
+        if (startHex == default) return null;
+
+        Vector3? best = null;
+        float bestDist = float.MaxValue;
+
+        foreach (var cell in MapData.GetAllCells())
+        {
+            GameObject building = cell.BulidingTypeOnHex_Building.Value;
+            if (building == null || building.GetComponent<CentralChest>() == null) continue;
+
+            float dist = HexDistance(startHex, cell.HexCoordinate);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = cell.HexCoordinate;
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// 在本单位所在的连通可达区域内，找到距 <paramref name="targetHex"/> 六边形距离最近的格。
+    /// 用于目标被水域/山体完全隔绝时"尽量走到最接近目标的地块"（远程可隔海射击，近战海边驻扎）。
+    /// 返回值等于 startHex 表示当前已是最优岸格，调用方据此驻守。
+    /// </summary>
+    public Vector3? FindClosestReachableCellToTarget(List<Vector3> allPoints, Vector3 startHex, Vector3 targetHex)
+    {
+        if (Movement == null || allPoints == null || allPoints.Count == 0) return null;
+
+        // 预算必须有限：GetAllReachableHexesFromStartHex 的收尾判据是 minCost <= totalCost，
+        // 而不可达格的 minCost 恰为 float.MaxValue —— 传 float.MaxValue 会因 MaxValue <= MaxValue
+        // 成立而把全图（含水域）一并返回。单格 cost 为 1，故任何可达格代价必 <= 总格数。
+        List<Vector3> reachable = Movement.GetAllReachableHexesFromStartHex(allPoints, startHex, allPoints.Count);
+        if (reachable == null || reachable.Count == 0) return null;
+
+        Vector3 best = startHex;
+        float bestDist = float.MaxValue;
+        float bestFromStart = float.MaxValue;
+
+        foreach (Vector3 hex in reachable)
+        {
+            float dist = HexDistance(hex, targetHex);
+            // 并列时取离出发点更近者：省去逐候选跑 Dijkstra 求真实代价，同时保证结果稳定。
+            float fromStart = HexDistance(hex, startHex);
+            if (dist < bestDist || (dist == bestDist && fromStart < bestFromStart))
+            {
+                bestDist = dist;
+                bestFromStart = fromStart;
+                best = hex;
+            }
+        }
+
+        return best;
+    }
+
+    // ── 随机游走（无目标兜底）────────────────────────────
+
+    /// <summary>
+    /// 游走半径（格）。所有可通行陆格 movementCost == 1，故此值等价于 Dijkstra 花费预算。
+    /// 刻意写成常量：currentMovementPoints 已改造为速度倍率（0.5/1.0），不再是移动力配额，
+    /// 不能当游走预算用。后续若需可配，再提升到 Excel（游戏数值配置.xlsx → 核心玩法配置）。
+    /// </summary>
+    public const float WanderRadiusHexes = 3f;
+
+    // 每单位独立的游走随机源。
+    // 不能用 SeedService.GetRandom("AI")：它每次都 new 新实例（见 AIRandomProvider 注释），
+    // 各单位自取会拿到完全相同的序列 → 全员同步游走；UnityEngine.Random 则是全局态，破坏可复现性。
+    // 静态计数器在确定的 spawn 顺序下保持可复现，同时保证每单位序列互异。
+    private static int _wanderSeedCounter;
+    private System.Random _wanderRandom;
+
+    // 上一次游走目标。作为候选排除项，防止在两格间来回横跳
+    //（旧 ChooseFrontierStep 被删就是因为"随机游走打转"，见 commit 40f63c8cc）。
+    private Vector3? _lastWanderTarget;
+
+    /// <summary>
+    /// 在 <see cref="WanderRadiusHexes"/> 半径内随机挑一个可达格作为游走目标。
+    /// 排除当前格与上一次游走目标（防打转）。无候选时返回 null。
+    /// </summary>
+    public Vector3? PickRandomWanderTarget(List<Vector3> allPoints, Vector3 startHex)
+    {
+        if (Movement == null || allPoints == null || allPoints.Count == 0) return null;
+
+        List<Vector3> reachable = Movement.GetAllReachableHexesFromStartHex(allPoints, startHex, WanderRadiusHexes);
+        if (reachable == null || reachable.Count == 0) return null;
+
+        reachable.RemoveAll(v => v == startHex ||
+                                 (_lastWanderTarget.HasValue && v == _lastWanderTarget.Value));
+        if (reachable.Count == 0) return null;
+
+        // & int.MaxValue 与 SeedService 一致：避免负种子（Random(int.MinValue) 会 Abs 溢出）。
+        _wanderRandom ??= new System.Random((SeedService.CurrentSeed * 31 + (++_wanderSeedCounter)) & int.MaxValue);
+
+        Vector3 chosen = reachable[_wanderRandom.Next(reachable.Count)];
+        _lastWanderTarget = chosen;
+        return chosen;
+    }
+
+    /// <summary>
+    /// 在索敌链（单位 > 宝箱 > 建筑）内取第一个"存在但不可达"的目标 —— 即被水域/山体完全隔绝。
+    /// 只挑忽略可达性查询有结果、而对应可达性查询无结果者。null 表示无任何被隔绝目标。
+    /// </summary>
+    private Vector3? FirstUnreachable(List<Vector3> allPoints, Vector3 startHex)
+    {
+        Vector3? enemy = FindNearestEnemyIgnoringReachability();
+        if (enemy.HasValue && !IsReachable(allPoints, startHex, enemy.Value))
+            return enemy;
+
+        Vector3? chest = FindNearestChestIgnoringReachability();
+        if (chest.HasValue && !IsReachable(allPoints, startHex, chest.Value))
+            return chest;
+
+        Vector3? building = FindNearestBuildingIgnoringReachability();
+        if (building.HasValue && !IsReachable(allPoints, startHex, building.Value))
+            return building;
+
+        return null;
+    }
+
+    private bool IsReachable(List<Vector3> allPoints, Vector3 startHex, Vector3 targetHex)
+    {
+        return Movement != null &&
+               Movement.CalculateMinMovementCostBetweenTwoHexes(
+                   allPoints, startHex, targetHex,
+                   Enums.MovementPurpose.MoveToAttack, out float cost, out _)
+               && cost < float.MaxValue;
+    }
+
+    /// <summary>
+    /// 两级空闲兜底（无目标可打/可到达时）：先隔海趋近，再随机游走。
+    /// 由 MeleeStrategy / RangedStrategy 在原先直接 return null 的兜底处调用。
+    /// </summary>
+    /// <returns>完整到达路径；已在最优岸格/游走无解时返回 null（由节流机制驻守）。</returns>
+    public List<Vector3> ChooseFallbackPath(List<Vector3> allPoints, Vector3 startHex)
+    {
+        // 5a. 隔海趋近：目标存在但被水/山隔绝，走到最接近目标的可达格。
+        //     必须校验"确实不可达"：近战 step 2 的警戒范围（3格）门槛会让一个**可达但较远**的敌人
+        //     也落到本兜底，若不校验就会变成无限追击，既越过 AlertRange 的设计意图，
+        //     也抢掉了"无目标 → 随机游走"。用户的语义是「目标被隔开」，即真正不可达。
+        Vector3? isolated = FirstUnreachable(allPoints, startHex);
+        if (isolated.HasValue)
+        {
+            Vector3? shore = FindClosestReachableCellToTarget(allPoints, startHex, isolated.Value);
+            if (!shore.HasValue)
+                return null;   // 连起点都在孤立区域外（理论上不会发生），驻守兜底
+
+            if (shore.Value == startHex)
+                return null;   // 已在最优岸格（近战海边驻扎 / 远程射程不够驻守），不再游走
+
+            if (Movement.CalculateMinMovementCostBetweenTwoHexes(
+                    allPoints, startHex, shore.Value,
+                    Enums.MovementPurpose.MoveToDestination, out _, out List<Vector3> shorePath)
+                && shorePath != null && shorePath.Count > 0)
+            {
+                return shorePath;
+            }
+            return null;   // 岸格路径求解失败，驻守；不落入游走，避免近战离开海岸
+        }
+
+        // 5b. 真无目标 → 随机游走。
+        Vector3? wanderTarget = PickRandomWanderTarget(allPoints, startHex);
+        if (!wanderTarget.HasValue) return null;
+
+        if (Movement.CalculateMinMovementCostBetweenTwoHexes(
+                allPoints, startHex, wanderTarget.Value,
+                Enums.MovementPurpose.MoveToDestination, out _, out List<Vector3> wanderPath)
+            && wanderPath != null && wanderPath.Count > 0)
+        {
+            return wanderPath;
+        }
+        return null;
+    }
+
     public Vector3? FindApproximateDirectionToHiddenBuilding()
     {
         if (_publicBuildingMarkerManager == null || Owner?.unitMovementController == null)

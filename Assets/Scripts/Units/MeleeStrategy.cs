@@ -9,7 +9,7 @@ using UnityEngine;
 //   ChooseNextPath：
 //     1. 警戒范围（3格）内有敌方单位 → 追击
 //     2. 无近敌 → 向最近敌方建筑（主城优先）行军
-//     3. 无法到达任何建筑 → 原地待机（停止移动）
+//     3. 无法到达任何建筑 → 隔海趋近最近岸格（海边驻扎）；完全无目标则随机游走
 //
 // 【批次 D】DoCombat 改用 CombatResolver + PlayAttackAnim，移除旧 MoveToAttack 路径。
 //****************************************
@@ -114,8 +114,10 @@ public class MeleeStrategy : IUnitStrategy
             }
         }
 
-        // 5. 无法到达任何目标 → 原地待机（停止移动，不再随机游走打转）
-        return null;
+        // 5. 兜底：先隔海趋近（目标被隔绝 → 走到最接近目标的地块，近战海边驻扎），
+        //    无任何目标 → 在可移动范围内随机游走（不再原地站桩）。
+        //    ChooseFallbackPath 内部已隔离这两级：有隔绝目标时绝不落入游走，避免近战离开海岸。
+        return brain.ChooseFallbackPath(allPoints, startHex);
     }
 
     public bool CanAttack(UnitBrainBase brain)

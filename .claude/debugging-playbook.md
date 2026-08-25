@@ -312,3 +312,18 @@
 - **修复（B 方案）**：`UnitMovementController.Start()` 里，在 animator 非空分支末尾**无条件初始化一次** `animator.SetBool("isMoving", isMoving);`（不依赖边沿，把参数拉回代码语义）。更治本是改控制器文件的 `m_DefaultBool: 1 → 0`。
 - **可迁移判据**：**Animator 布尔参数用边沿检测同步、且控制器文件默认值 ≠ 代码期望值时**，"从未变化"这个合法状态会让参数永远停在错误默认值。凡是"能预置 true 的进入条件状态"（跑步/攻击/受击），要么在 `Start()` 无条件 `SetBool` 一次，要么把 `.controller` 的默认值改对——两条等价，缺一不可防。
 - **排查顺序经验**：先 grep 出**所有** `isMoving`/`SetBool("isMoving",...)` 的写点，再打开 `.controller` 看 `m_DefaultBool` 与默认状态。别一开始就在 C# 标志生命周期里找"哪条路径漏复位"（这次全查过：只有 4 处清 `isMoving`，都各归其位）。
+
+## 哨兵值当预算传进"≤ 预算"的筛选里 → 筛出全集（`GetAllReachableHexesFromStartHex(…, float.MaxValue)` 返回含水域的全图）
+
+- **现象**：想用"无限预算"取整块连通可达区域（隔海趋近要在可达区里找最靠近目标的岸格），顺手传 `float.MaxValue` 作 `totalCost`。结果返回的不是连通区，而是**全图**——包括水域和被海隔开的对岸，趋近逻辑直接把单位往海里指。
+- **根因**：`UnitMovementSystem.GetAllReachableHexesFromStartHex` 的收尾判据是 `Point_minCostValuesList[i] <= totalCost`，而 Dijkstra 初始化时**不可达格的 minCost 恰好就是 `float.MaxValue`**（哨兵值）。`MaxValue <= MaxValue` 成立 → 每个不可达格都通过筛选。哨兵值和预算撞成同一个数，"过滤条件"退化成恒真。
+- **修复**：传**有限**预算。本项目每条边 cost 恒为 1（`HexCellData.movementCost` 只有 `1` 与 `float.MaxValue` 两种取值，且 `CanEnterCell` 在建边阶段就把 `MaxValue` 格剔除），故任何可达格代价必 `<= allPoints.Count` —— 用 `allPoints.Count` 作预算既覆盖全连通区又不触碰哨兵。
+- **可迁移判据**：**任何"用 `<=`/`<` 对比预算来筛选"的 API，都不能把该数据结构的『不可达/未初始化』哨兵值当预算传进去**。传之前先问：哨兵值代进这个比较式，结果是 true 吗？是就必须换成有限上界。症状是"放宽限制后结果反而从子集变成全集"——不是算法错，是哨兵与阈值撞号。
+
+## 带可达性过滤的索敌查询会让"被隔绝的目标"完全隐形，使多个不同场景塌缩成同一个兜底
+
+- **现象**：单位在**无目标**和**目标被海洋隔绝**两种场景下表现完全一样（都原地站桩）。设计上二者应当不同：无目标该随机游走，目标被隔开该走到最靠近目标的岸格（远程隔海射击、近战海边驻扎）。
+- **根因**：`FindNearestEnemy` / `FindNearestChest` / `FindNearestEnemyBuilding` 三个查询**都内建可达性过滤**（`CalculateMinMovementCostBetweenTwoHexes(...) && cost < bestCost`）。被海隔绝的目标 Dijkstra 无解 → 被跳过 → 三查询齐返回 `null`。于是"真的没有目标"和"目标存在但过不去"产生**完全相同的返回值**，下游策略无从分辨，只能落到同一个 `return null` 兜底。信息在查询层就被抹掉了。
+- **修复**：给索敌链加一组**忽略可达性**的镜像查询（`FindNearest*IgnoringReachability`，过滤条件完全一致，只把"可达且代价最小"换成"六边形距离最近"），兜底时先用它们判断"目标是否存在"，再单独校验可达性来区分两种场景。
+- **关键细节（否则会引入新 bug）**：判定"被隔绝"**必须真的跑一次可达性校验**，不能只看"忽略可达性的查询有结果、而普通查询没结果"。因为近战 step 2 有**警戒范围（3格）门槛**——一个**可达但较远**的敌人同样会落到兜底。若不校验就直接趋近，会变成无限追击，既越过 `AlertRange` 的设计意图，也抢掉"无目标 → 随机游走"。本项目 `CalculateMinMovementCostBetweenTwoHexes` 对不可达返回 `false`（且 `totalCost = -1`），可达返回 `true`，据此可精确区分。
+- **可迁移判据**：**当两个本该不同的场景表现塌缩成同一种时，先查它们的输入查询是不是共用了一个"把失败折叠成 `null`"的过滤器**。带过滤的查询天然会丢失"目标不存在"与"目标存在但不满足条件"的区别；需要下游分辨时，就得提供一个不带该过滤的镜像查询，把判定权交还给调用方——而不是在兜底里靠猜。

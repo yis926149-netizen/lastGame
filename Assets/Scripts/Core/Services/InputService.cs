@@ -57,8 +57,11 @@ public class InputService : IInputService
 
     public bool IsPointerOverUI()
     {
-        // -1 = ����� Standalone/Editor �¿ɿ����޲ΰ汾�ڲ��ֹ��������겻�ȶ�
-        return _eventSystem != null && _eventSystem.IsPointerOverGameObject(-1);
+        if (_eventSystem == null) return false;
+        // 触屏设备使用实际 fingerId，编辑器/PC 端使用 -1（鼠标）
+        if (Input.touchCount > 0)
+            return _eventSystem.IsPointerOverGameObject(Input.GetTouch(0).fingerId);
+        return _eventSystem.IsPointerOverGameObject(-1);
     }
 
     // ��� UI��targetCanvas Ϊ null ʱ������� UI������ֻ���� Canvas �µ� GraphicRaycaster

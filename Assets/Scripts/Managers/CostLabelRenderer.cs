@@ -55,6 +55,8 @@ public class CostLabelRenderer : MonoBehaviour
             go.transform.SetAsFirstSibling();
             _labelContainer = go.transform;
         }
+        if (_labelContainer != null)
+            _labelContainer.localScale = Vector3.one;
         _containerRect = _labelContainer?.GetComponent<RectTransform>();
 
         _camera = Camera.main;
@@ -104,8 +106,10 @@ public class CostLabelRenderer : MonoBehaviour
             var cg = label.GetComponent<CanvasGroup>();
             if (cg == null) cg = label.AddComponent<CanvasGroup>();
             cg.alpha = canAfford ? 1f : 0.35f;
+            cg.blocksRaycasts = canAfford;
             var button = label.GetComponent<Button>();
             if (button != null) button.interactable = canAfford;
+            label.SetActive(true);
         }
     }
 
@@ -224,6 +228,7 @@ public class CostLabelRenderer : MonoBehaviour
             var cg = label.GetComponent<CanvasGroup>();
             if (cg == null) cg = label.AddComponent<CanvasGroup>();
             cg.alpha = canAfford ? 1f : 0.35f;
+            cg.blocksRaycasts = canAfford;
 
             var button = label.GetComponent<Button>();
             if (button == null) button = label.AddComponent<Button>();
@@ -238,6 +243,9 @@ public class CostLabelRenderer : MonoBehaviour
                     _explorationService.TryExplore(capturedCell, 0);
                 });
             }
+
+            // 金币不足时保留灰显标签，但不阻断地图点击。
+            label.SetActive(true);
         }
 
         if (createdCount > 0)

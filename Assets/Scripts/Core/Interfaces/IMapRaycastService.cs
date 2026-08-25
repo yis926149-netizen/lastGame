@@ -12,6 +12,9 @@ public interface IMapRaycastService
     /// <summary>按屏幕坐标射线命中地图地形（Map Layer），返回世界命中点。</summary>
     bool RaycastMap(Vector2 screenPos, out RaycastHit hit, float maxDistance = 100f);
 
+    /// <summary>以指定相机位置按屏幕坐标射线命中地图地形。</summary>
+    bool RaycastMap(Vector2 screenPos, Vector3 cameraPosition, out RaycastHit hit, float maxDistance = 100f);
+
     /// <summary>判定命中对象属于地图地形（地图根 或 MapChunkView 后代）。</summary>
     bool IsMapObject(GameObject go);
 

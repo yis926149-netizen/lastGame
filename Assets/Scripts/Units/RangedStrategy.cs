@@ -7,7 +7,7 @@ using UnityEngine;
 //   CanAttack：射程环内有敌方单位/建筑时为 true。
 //   DoCombat：CombatResolver 瞬间结算 + PlayRangedAttackAnim（原地播放，无冲刺）+ MarkAttacked。
 //   ChooseNextPath：目标在射程内返回 null；否则返回完整路径（截至进入射程处）；
-//                   无目标/不可达时原地待机（停止移动，不再随机游走）。
+//                   目标被水域隔绝时趋近最近岸格（到位后可隔海射击），完全无目标时随机游走。
 //
 // 【批次 D】DoCombat 改用 CombatResolver + PlayRangedAttackAnim。
 //****************************************
@@ -39,8 +39,9 @@ public class RangedStrategy : IUnitStrategy
         Vector3? targetHex = brain.FindNearestEnemy() ?? brain.FindNearestChest() ?? brain.FindNearestEnemyBuilding();
         if (!targetHex.HasValue)
         {
-            // 无目标时原地待机（停止移动，不再随机游走打转）
-            return null;
+            // 无可达目标：可能是被水域隔绝（趋近最近岸格，到位后可隔海射击），
+            // 也可能真的没有目标（随机游走）。二者由 ChooseFallbackPath 区分。
+            return brain.ChooseFallbackPath(allPoints, startHex);
         }
 
         int attackRange = GetEffectiveRange(brain, startHex);
@@ -65,8 +66,8 @@ public class RangedStrategy : IUnitStrategy
             return path.GetRange(0, stopIdx + 1);
         }
 
-        // 目标不可达（或已到位置）→ 原地待机
-        return null;
+        // 目标不可达（或已到位置）→ 若目标被水域隔绝则趋近最近岸格，否则随机游走
+        return brain.ChooseFallbackPath(allPoints, startHex);
     }
 
     public bool CanAttack(UnitBrainBase brain)
