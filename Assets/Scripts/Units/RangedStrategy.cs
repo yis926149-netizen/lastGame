@@ -145,9 +145,17 @@ public class RangedStrategy : IUnitStrategy
         var umc = brain.Owner.unitMovementController;
         if (umc == null) return;
 
-        // 【批次 D】瞬间伤害结算
-        if (brain.Combat != null)
+        // 播放远程动画（原地，无冲刺）
+        umc.PlayRangedAttackAnim(bestTarget);
+
+        // 箭矢飞行表现：实例化 arrow 预制体沿弧线飞向目标，箭到达目的地时才结算伤害（对齐箭塔）
+        var rangedShooter = umc.GetComponent<UnitRangedShooter>();
+        if (rangedShooter == null)
+            rangedShooter = umc.gameObject.AddComponent<UnitRangedShooter>();
+        rangedShooter.ShootDelayed(bestTarget, () =>
         {
+            if (brain == null || brain.Combat == null || brain.Owner == null || bestTarget == null) return;
+
             if (bestIsUnit)
             {
                 var targetUmc = bestTarget.GetComponent<UnitMovementController>();
@@ -160,10 +168,7 @@ public class RangedStrategy : IUnitStrategy
                 if (targetBuilding?.buildingData != null)
                     brain.Combat.ResolveBuilding(brain.Owner, targetBuilding);
             }
-        }
-
-        // 播放远程动画（原地，无冲刺）
-        umc.PlayRangedAttackAnim(bestTarget);
+        });
 
         // 启动攻速冷却
         brain.MarkAttacked();

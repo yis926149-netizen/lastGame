@@ -60,7 +60,7 @@ MonoBehaviour:
   waterSurfaceOffset: 0.45
   elevationStep: 1.8
   verticalPerturbRatio: 0.4
-  heightGenerationMode: 0
+  heightGenerationMode: 1
   heightPaletteMap: {fileID: 2800000, guid: 058032dbeb1c59642afd474b24a1dd9e, type: 3}
   heightNoiseAmplitude: 0.5
   heightNoiseFrequency: 0.01

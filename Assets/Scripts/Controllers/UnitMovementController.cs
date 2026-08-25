@@ -118,6 +118,16 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     private bool _animOnly = false;
     private GameObject _hitParticles;
 
+    //****************************************
+    // 【临时方案 C】远程单位用更短的攻击动画窗口：
+    //   archer.controller 的 AnyState→攻击转场已改为 HasExitTime=0（立即切入），
+    //   若 isAttack 保持过久，攻击片段（约 1.08s 处自动退出回待机）后会被再次触发，出现"二次拉弓"。
+    //   因此远程单位把动画窗口压到 1.0s（短于片段退出点），确保 isAttack 先复位。
+    //   ★ 模型确定后改回方案 A（动画事件）时，本常量与 _rangedAttack 标志一并删除。★
+    //****************************************
+    private const float RangedAttackAnimationDuration = 1.0f;
+    private bool _rangedAttack = false;
+
     // ---------- 单位坐标缓存 ----------
     private Vector3 _cachedHexCoord;
     private bool _hexCoordCached;
@@ -508,8 +518,12 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             PlayAttackSfx();
 
             // 延迟停止动画和启动返回
-            Invoke(nameof(StopAttackAnimation), CoreGameplayConfigProvider.AttackAnimationDuration);
-            Invoke(nameof(SetReturnToOriginalPositionTrue), CoreGameplayConfigProvider.AttackAnimationDuration);
+            // 【临时方案 C】远程单位用更短的动画窗口，避免 isAttack 保持过久触发二次攻击动画
+            float animDuration = _rangedAttack
+                ? RangedAttackAnimationDuration
+                : CoreGameplayConfigProvider.AttackAnimationDuration;
+            Invoke(nameof(StopAttackAnimation), animDuration);
+            Invoke(nameof(SetReturnToOriginalPositionTrue), animDuration);
         }
 
         // ----- 4. 初始触发逻辑：移动结束或远程单位准备攻击 -----
@@ -669,6 +683,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         isAttack = false;
         attackedUnit = null; // 清除目标引用，避免残留
         _animOnly = false;   // 重置动画-only 标志
+        _rangedAttack = false;
     }
 
     /// <summary>
@@ -772,6 +787,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         if (_isDeathScheduled || target == null || isAttackingInProgress) return;
 
         _animOnly = true;
+        _rangedAttack = true;
         attackedUnit = target;
         attackTarget = target.tag;
         isAttackingInProgress = true;
