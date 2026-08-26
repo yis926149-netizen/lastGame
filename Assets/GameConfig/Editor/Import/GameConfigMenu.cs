@@ -21,5 +21,12 @@ namespace GameConfig.Editor
         {
             Debug.Log("[游戏配置] 校验报告:\n" + GameConfigValidator.Validate(GameConfigImporter.JsonPath));
         }
+
+        /// <summary>批处理入口：用于 Unity -batchmode -executeMethod 命令行重导入。</summary>
+        [MenuItem("Tools/游戏配置/批处理导入", false, 103)]
+        public static void HeadlessImport()
+        {
+            ImportAndValidate();
+        }
     }
 }

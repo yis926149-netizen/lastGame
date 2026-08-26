@@ -811,6 +811,16 @@ namespace GameConfig.Editor
                     unaffordableCardDim = GetFloat(v, col, "unaffordableCardDim", 0.45f),
                     talentScreenShakeStrength = GetFloat(v, col, "talentScreenShakeStrength", 0.15f),
                     talentScreenShakeDuration = GetFloat(v, col, "talentScreenShakeDuration", 0.3f),
+                    cardDragStage1Ratio = GetFloat(v, col, "cardDragStage1Ratio", 0.2f),
+                    cardDragStage2Ratio = GetFloat(v, col, "cardDragStage2Ratio", 0.4f),
+                    cardDragCardMinScale = GetFloat(v, col, "cardDragCardMinScale", 0.1f),
+                    cardDragCardFadeStart = GetFloat(v, col, "cardDragCardFadeStart", 0.6f),
+                    cardDragModelMinScale = GetFloat(v, col, "cardDragModelMinScale", 0.1f),
+                    cardDragModelFadeIn = GetFloat(v, col, "cardDragModelFadeIn", 0.2f),
+                    cardDragPreviewRTSize = GetInt(v, col, "cardDragPreviewRTSize", 512),
+                    cardDragPreviewWindowSize = GetFloat(v, col, "cardDragPreviewWindowSize", 512f),
+                    cardDragPreviewCameraDistance = GetFloat(v, col, "cardDragPreviewCameraDistance", 10f),
+                    cardDragPreviewPadding = GetFloat(v, col, "cardDragPreviewPadding", 1.25f),
                 });
             }
 

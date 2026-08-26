@@ -327,3 +327,20 @@
 - **修复**：给索敌链加一组**忽略可达性**的镜像查询（`FindNearest*IgnoringReachability`，过滤条件完全一致，只把"可达且代价最小"换成"六边形距离最近"），兜底时先用它们判断"目标是否存在"，再单独校验可达性来区分两种场景。
 - **关键细节（否则会引入新 bug）**：判定"被隔绝"**必须真的跑一次可达性校验**，不能只看"忽略可达性的查询有结果、而普通查询没结果"。因为近战 step 2 有**警戒范围（3格）门槛**——一个**可达但较远**的敌人同样会落到兜底。若不校验就直接趋近，会变成无限追击，既越过 `AlertRange` 的设计意图，也抢掉"无目标 → 随机游走"。本项目 `CalculateMinMovementCostBetweenTwoHexes` 对不可达返回 `false`（且 `totalCost = -1`），可达返回 `true`，据此可精确区分。
 - **可迁移判据**：**当两个本该不同的场景表现塌缩成同一种时，先查它们的输入查询是不是共用了一个"把失败折叠成 `null`"的过滤器**。带过滤的查询天然会丢失"目标不存在"与"目标存在但不满足条件"的区别；需要下游分辨时，就得提供一个不带该过滤的镜像查询，把判定权交还给调用方——而不是在兜底里靠猜。
+
+## RenderTexture 预览体取景三连坑：SkinnedMeshRenderer.bounds 的绑定姿势 / 离屏缓存 / 世界-局部混算
+
+做"卡牌拖拽 → 3D 模型预览"（独立 Layer + 正交预览相机 + RT + RawImage）时按 `Renderer.bounds` 自动取景，连踩三个独立坑，症状层层伪装：
+
+- **坑 1（世界差值赋给 localPosition）**：`bounds.center` 是**世界坐标**。`model.transform.localPosition = -(bounds.center - anchor.position)` 看着像"把模型挪到 anchor 中心"，实际把 anchor 自身的世界偏移也算进去了——预览工作室故意放在 `y=-5000`，模型于是被推到 `localPosition.y≈-5000`（世界 `y≈-10000`）飞出视锥，RT 全透明。**必须 `anchor.InverseTransformPoint(bounds.center)` 换算回局部空间再取反。**
+- **坑 2（蒙皮网格的顶点不在渲染器空间）**：`SkinnedMeshRenderer.sharedMesh.bounds` 的顶点在**绑定姿势空间**、由骨骼 `bindposes` 驱动，与渲染器自身 `transform` **无关**（渲染器常挂在与实际网格位置毫无关系的节点上）。拿 8 个角点过 `renderer.transform.TransformPoint` 换算 → 整体偏移。而 `MeshRenderer` 的 `mesh.bounds` 恰好就定义在自己 transform 的局部空间里，同样的代码完全正确。**决定性签名：「单位（蒙皮）偏移、建筑（MeshRenderer）正常」= 你在用 sharedMesh + renderer.transform 处理蒙皮网格。**
+- **坑 3（离屏返回绑定姿势缓存盒）**：改回直接读 `renderer.bounds` 还不够，它的可信度有两个前提：① 实例化当帧 Animator 尚未求值，得先 `animator.Update(0f)`（不推进时间，只求值一次骨骼矩阵）；② `updateWhenOffscreen` 默认 `false` 时 Unity 对**离屏**蒙皮网格返回**绑定姿势缓存盒**——预览体常驻主相机视锥外的独立 Layer，正是这条路径，必须置 `true`。
+- **诊断顺序**：先按"蒙皮 vs 非蒙皮"分流（坑 2 的签名），再查坐标空间（坑 1：把模型 `localPosition` 打出来，看是不是 ±几千），最后才是姿势/缓存（坑 3）。三者症状都表现为"有的卡能显示、有的不能，五五开"，不分流会一直在错误层面改。
+- **附带**：45° 斜俯视拍摄时正交尺寸要用 `bounds.extents.magnitude`（对角半径），用 `max(extents.x, extents.y)` 会在模型绕 Y 旋转后被水平裁切。`enabled` 不能用来过滤 Renderer——预览体已统一禁用所有 MonoBehaviour，某些 Prefab 的渲染器本就默认关闭，按 `enabled` 过滤会漏掉真实网格。
+
+## "位置即指示"的跟随物不能做边缘 Clamp，尤其不能用随缩放变化的边距
+
+- **现象**：拖拽预览窗口（512×512 RawImage）跟随指针；小模型阶段能贴到屏幕左右边，模型放大到满尺寸后却在离边很远处就停住。
+- **根因**：为"防止窗口出屏被裁剪"加了 `Clamp(localPoint.x, xMin + halfW, xMax - halfW)`，而 `halfW = rect.width * 0.5f * scale` **随缩放变化**——`scale` 从 0.1 涨到 1，边距从 ~26 涨到 256 参考单位。两阶段手感割裂只是表象，真问题是：这个窗口的位置本身就是**落点指示**，一旦被 Clamp 就与指针脱钩，玩家看到的落点是错的。
+- **修复**：去掉 Clamp，精确跟随。ScreenSpaceOverlay 下越界部分自然落到屏幕外，不产生渲染问题（除非父节点上有 `RectMask2D`/`Mask`）。
+- **可迁移判据**：给跟随指针的 UI 加边界约束前先问一句——**它的位置是"装饰"还是"信息"**。是信息（落点/瞄准/拾取目标）就不能 Clamp，宁可半个出屏；只有纯装饰性的浮层才适合限位。若确实要限位，边距也必须与视觉缩放解耦，否则会凭空造出"不同阶段行为不一致"的诡异手感。

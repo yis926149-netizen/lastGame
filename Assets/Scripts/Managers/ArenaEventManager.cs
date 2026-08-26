@@ -526,12 +526,8 @@ public class ArenaEventManager : ITickable
         }
         _mutationService.Commit(new MapTransitionOptions { Duration = 0f });
 
-        // 释放 Arena 临时可见性 → 迷雾重新遮盖（探索位始终未置位，需探索恢复）
-        if (_lease != null)
-        {
-            _lease.Release();
-            _lease = null;
-        }
+        // 宝箱摧毁后竞技场保持永久无迷雾：不释放 lease（全局迷雾规则——激活后不再重盖，进入只看迷雾）。
+        // 探索位仍不置位，此处仅刷新迷雾表现（竞技场区域因 lease 持续可见）。
         _renderBackend.ForceRefreshFogVisuals();
 
         // 注销并销毁宝箱。先确定性清格（不等 Destroy 延迟到帧末），基类 OnDestroy 幂等兜底

@@ -1,2 +1,2 @@
 configId,noneWeight,goldWeight,militaryWeight,tacticalWeight,buildingWeight,goldTiers,unitCountTiers,costNone,costGold,costMilitary,costTactical,costBuilding
-exploration_reward,20,20,20,20,20,"5,5,10,15,20,25","0,0,0,1,1,2",0,50,50,50,50
+exploration_reward,20,20,20,20,20,"5,5,10,15,20,25","0,0,0,1,1,2",0,10,50,50,50

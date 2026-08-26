@@ -95,6 +95,8 @@ public class HexCellData
     private int _exploredMask;
     public bool IsExplored => IsExploredBy(0);
     public bool IsExploredBy(int factionId) => (_exploredMask & (1 << factionId)) != 0;
+    /// <summary>是否被任意阵营（玩家0 / AI1）探索过。用于“未探索不可通行”判定（方案C 反转：任一阵营探索过即可通行）。</summary>
+    public bool IsExploredByAnyFaction => IsExploredBy(0) || IsExploredBy(1);
     public void ExploreBy(int factionId) => _exploredMask |= (1 << factionId);
 
     // 【探索奖励预生成】地图生成时固化；null 表示该格没有待结算奖励。

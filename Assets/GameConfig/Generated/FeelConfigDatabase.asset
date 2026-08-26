@@ -19,3 +19,13 @@ MonoBehaviour:
     unaffordableCardDim: 0.45
     talentScreenShakeStrength: 0.15
     talentScreenShakeDuration: 0.3
+    cardDragStage1Ratio: 0.2
+    cardDragStage2Ratio: 0.4
+    cardDragCardMinScale: 0.1
+    cardDragCardFadeStart: 0.6
+    cardDragModelMinScale: 0.1
+    cardDragModelFadeIn: 0.2
+    cardDragPreviewRTSize: 512
+    cardDragPreviewWindowSize: 512
+    cardDragPreviewCameraDistance: 10
+    cardDragPreviewPadding: 1.25

@@ -1535,7 +1535,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 222bdc7e85faeed4b9300c2a5747da44, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  AIDisabled: 1
+  AIDisabled: 0
 --- !u!114 &286174322
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4453,7 +4453,7 @@ Light:
   m_RenderMode: 0
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 4294967263
   m_RenderingLayerMask: 1
   m_Lightmapping: 1
   m_LightShadowCasterMode: 0
@@ -6084,7 +6084,7 @@ Camera:
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 4294967263
   m_RenderingPath: -1
   m_TargetTexture: {fileID: 0}
   m_TargetDisplay: 0

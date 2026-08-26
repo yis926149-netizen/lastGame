@@ -11,6 +11,7 @@ public class UnitMovementSystemTests
     private MapVisualEventSO _mockMapEvent;
     private UnitMovementSystem _system;
     private GameObject _unitObject;
+    private IMapVisibilityResolver _mockVisibility;
 
     [SetUp]
     public void SetUp()
@@ -19,9 +20,13 @@ public class UnitMovementSystemTests
 
         _mockMapData = Substitute.For<IMapDataService>();
         _mockMapEvent = ScriptableObject.CreateInstance<MapVisualEventSO>();
+        _mockVisibility = Substitute.For<IMapVisibilityResolver>();
+        _mockVisibility.IsVisibleToFaction(Arg.Any<HexCellData>(), Arg.Any<int>())
+            .Returns(call => call.Arg<HexCellData>().IsExploredByAnyFaction);
 
         _container.Bind<IMapDataService>().FromInstance(_mockMapData);
         _container.Bind<MapVisualEventSO>().FromInstance(_mockMapEvent);
+        _container.Bind<IMapVisibilityResolver>().FromInstance(_mockVisibility);
         _container.Bind<UnitMovementSystem>().AsSingle();
 
         _system = _container.Resolve<UnitMovementSystem>();
@@ -38,7 +43,7 @@ public class UnitMovementSystemTests
         }
     }
 
-    private void SetupMockMap()
+    private void SetupMockMap(bool explored = true)
     {
         // �����򵥵ĵ�ͼ����
         var cells = new Dictionary<Vector3, HexCellData>();
@@ -51,6 +56,8 @@ public class UnitMovementSystemTests
                 {
                     movementCost = 1f
                 };
+                if (explored)
+                    cell.ExploreBy(0);
                 cells[coord] = cell;
             }
         }
@@ -251,6 +258,51 @@ public class UnitMovementSystemTests
         Assert.AreEqual(4f, cost, 0.01f);
         Assert.IsNotNull(path);
         Assert.AreEqual(4, path.Count); // ÿһ��һ������
+    }
+
+    [Test]
+    public void Pathfinding_UnexploredCell_IsImpassable_UntilAnyFactionExplores()
+    {
+        // 重新构建“未探索”地图（默认已探索，这里显式关闭）
+        SetupMockMap(explored: false);
+
+        Vector3 start = new Vector3(2, -2, 0);
+        Vector3 target = new Vector3(2, -3, 1);
+
+        bool beforeExplore = _system.CalculateMinMovementCostBetweenTwoHexes(
+            new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
+            start, target, Enums.MovementPurpose.MoveToDestination, out _, out _);
+        Assert.IsFalse(beforeExplore, "双方均未探索的格不可通行");
+
+        // 全局判定：任一阵营探索过即可通行
+        _mockMapData.GetCell(target).ExploreBy(1);
+        bool afterExplore = _system.CalculateMinMovementCostBetweenTwoHexes(
+            new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
+            start, target, Enums.MovementPurpose.MoveToDestination, out _, out _);
+        Assert.IsTrue(afterExplore, "任一阵营探索后即可通行");
+    }
+
+    [Test]
+    public void Pathfinding_LeasedCell_IsEnterable_EvenIfUnexplored()
+    {
+        // 全部未探索
+        SetupMockMap(explored: false);
+
+        Vector3 start = new Vector3(2, -2, 0);
+        Vector3 target = new Vector3(2, -3, 1);
+
+        bool before = _system.CalculateMinMovementCostBetweenTwoHexes(
+            new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
+            start, target, Enums.MovementPurpose.MoveToDestination, out _, out _);
+        Assert.IsFalse(before, "未探索且有迷雾的格不可通行");
+
+        // 模拟竞技场 lease：该格被临时点亮（无迷雾），即使未探索也可进
+        var targetCell = _mockMapData.GetCell(target);
+        _mockVisibility.IsVisibleToFaction(targetCell, Arg.Any<int>()).Returns(true);
+        bool after = _system.CalculateMinMovementCostBetweenTwoHexes(
+            new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
+            start, target, Enums.MovementPurpose.MoveToDestination, out _, out _);
+        Assert.IsTrue(after, "被点亮（无迷雾）的格即使未探索也可通行");
     }
 
     [Test]

@@ -341,6 +341,13 @@ public class GameInstaller : MonoInstaller
         Container.Bind<TalentCardSelectionUI>().FromInstance(_talentCardSelectionUI).AsSingle();
 
         Container.BindInterfacesAndSelfTo<CardService>().AsSingle();
+
+        // 卡牌拖拽模型预览：纯 C# 类，自建预览相机/RT/RawImage；
+        // BindInterfacesAndSelfTo 同时绑定 IDisposable，由容器销毁时释放 RT 与预览物件。
+        Container.BindInterfacesAndSelfTo<CardDragPreviewController>()
+                 .AsSingle()
+                 .WithArguments(_targetUICanvas);
+
         Container.BindInterfacesAndSelfTo<CardPresenter>().AsSingle().NonLazy();
 
         // 战术牌系统：具体类型 AsSingle 创建唯一实例（不绑定 ICardDropHandler，避免与 CardPresenter 冲突），

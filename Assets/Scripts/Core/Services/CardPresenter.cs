@@ -4,7 +4,7 @@ using UnityEngine.UI;
 using Zenject;
 using DG.Tweening;
 
-public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBuildingSpawnService, ICardDropHandler
+public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBuildingSpawnService, ICardDropHandler, ICardDragVisualHandler
 {
     [Inject] private ICardService _cardService;
     [Inject] private IMapDataService _mapDataService;
@@ -26,6 +26,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
     [Inject] private GoldWallet _goldWallet;  // 【探索重构-阶段5.5】部署合法性检查
     [Inject] private PublicBuildingMarkerManager _publicBuildingMarkerManager;
     [Inject(Optional = true)] private IMapInteractionGate _interactionGate; // 动态地图-阶段二：事务/动画期间交互锁
+    [Inject(Optional = true)] private CardDragPreviewController _dragPreview; // 卡牌拖拽模型预览（缺失时静默降级为只缩卡）
 
     private ICardView _nextCardView;
     private List<ICardView> _cardViews = new List<ICardView>();
@@ -264,6 +265,11 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
             return false;
 
         NormalCardConfigSO config = view.Data?.NormalCardConfig;
+
+        // 进入提交阶段：先关闭预览再正式生成（§2.4），避免预览体与真实单位同帧同时出现。
+        // 上面两处 return false 之前不清理，保证「无效落点」时预览仍在，由 View 的取消路径统一收尾。
+        _dragPreview?.End(view);
+
         bool spawned;
         try
         {
@@ -317,9 +323,52 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         TryDealFromNextIfPossible();
     }
 
-    public void OnCardDragBegin(ICardView view) { }
+    public void OnCardDragBegin(ICardView view)
+    {
+        // 拖拽起手即准备模型预览：此时只实例化+取景，可见性完全由后续 modelProgress 决定。
+        if (_dragPreview == null || view == null) return;
 
-    public void OnCardDragCancel(ICardView view) { }
+        GameObject modelPrefab = ResolveModelPrefab(view.Data?.NormalCardConfig);
+        if (modelPrefab == null) return;
+
+        // token = view：拒绝上一张卡的迟到回调（§8）。
+        _dragPreview.Begin(modelPrefab, view);
+    }
+
+    public void OnCardDragCancel(ICardView view)
+    {
+        _dragPreview?.Cancel(view);
+    }
+
+    /// <summary>ICardDragVisualHandler：逐帧把 modelProgress 转成预览窗口的位置/缩放/淡入。</summary>
+    public void OnCardDragUpdate(ICardView view, Vector2 screenPos, float upwardDistance, float cardProgress, float modelProgress)
+    {
+        if (_dragPreview == null) return;
+
+        // 模型在阶段二前 ModelFadeIn 比例内淡入，与卡牌淡出交叉。
+        float fadeIn = Mathf.Max(0.0001f, FeelConfigProvider.CardDragModelFadeIn);
+        float modelAlpha = Mathf.Clamp01(modelProgress / fadeIn);
+
+        _dragPreview.UpdateProgress(screenPos, modelProgress, modelAlpha, view);
+    }
+
+    /// <summary>ICardDragVisualHandler：拖拽成功结束的显式清理入口（成功路径不会走 Cancel）。</summary>
+    public void OnCardDragEnd(ICardView view)
+    {
+        _dragPreview?.End(view);
+    }
+
+    /// <summary>取普通卡对应的模型 Prefab；与实际部署使用同一数据源（UnitConfigSO.unitModel / BuildingConfigSO.buildingModel）。</summary>
+    private GameObject ResolveModelPrefab(NormalCardConfigSO config)
+    {
+        if (config is UnitConfigSO unitConfig)
+            return _unitData?.GetUnitPrefab(unitConfig.Id);
+
+        if (config is BuildingConfigSO buildingConfig)
+            return _buildingData?.GetBuildingPrefab(buildingConfig.buildingId);
+
+        return null;
+    }
 
     /// <summary>ICardDropHandler：查询普通卡能否部署到指定格（放置预览高亮与确认路径共用同一规则）。</summary>
     public bool CanDeployTo(CardData data, HexCellData cell)

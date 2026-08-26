@@ -580,7 +580,7 @@
             "5,5,10,15,20,25",
             "0,0,0,1,1,2",
             "0",
-            "50",
+            "10",
             "50",
             "50",
             "50"
@@ -1124,7 +1124,17 @@
         "cameraShakeFrequency",
         "unaffordableCardDim",
         "talentScreenShakeStrength",
-        "talentScreenShakeDuration"
+        "talentScreenShakeDuration",
+        "cardDragStage1Ratio",
+        "cardDragStage2Ratio",
+        "cardDragCardMinScale",
+        "cardDragCardFadeStart",
+        "cardDragModelMinScale",
+        "cardDragModelFadeIn",
+        "cardDragPreviewRTSize",
+        "cardDragPreviewWindowSize",
+        "cardDragPreviewCameraDistance",
+        "cardDragPreviewPadding"
       ],
       "rows": [
         {
@@ -1134,7 +1144,17 @@
             "50",
             "0.45",
             "0.15",
-            "0.3"
+            "0.3",
+            "0.2",
+            "0.4",
+            "0.1",
+            "0.6",
+            "0.1",
+            "0.2",
+            "512",
+            "512",
+            "10",
+            "1.25"
           ]
         }
       ]

@@ -14,6 +14,24 @@ public interface ICardDropHandler
     bool CanDeployTo(CardData data, HexCellData cell);
 }
 
+/// <summary>
+/// 拖拽视觉通道（卡牌拖拽模型预览特效 §5.2）。
+/// 与 ICardDropHandler 分离：放置资格/部署是业务，本接口只承载逐帧视觉状态，
+/// 不实现本接口的 drop handler（如战术卡）自动不产生模型预览。
+/// </summary>
+public interface ICardDragVisualHandler
+{
+    /// <summary>拖拽逐帧更新：upwardDistance 为向上位移，进度定义见实施计划 §3。</summary>
+    void OnCardDragUpdate(ICardView view, Vector2 screenPos, float upwardDistance, float cardProgress, float modelProgress);
+
+    /// <summary>
+    /// 拖拽成功结束（有效落点）通知。
+    /// 成功路径不会调用 OnCardDragCancel，且卡牌随后被失活销毁，
+    /// 因此必须有独立的成功清理入口，不能依赖 OnDisable（§7）。
+    /// </summary>
+    void OnCardDragEnd(ICardView view);
+}
+
 public interface ICardView
 {
     /// <summary>

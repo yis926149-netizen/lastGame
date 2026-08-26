@@ -10,19 +10,21 @@ public class UnitMovementSystem : ITickable
     private readonly GameLoop _gameLoop;                // 用于暂停检查（批次 C）
     private readonly ILogisticsService _logisticsService; // 用于占领后重算后勤
     private readonly IMapInteractionGate _interactionGate; // 动态地图-阶段二：事务/动画期间交互锁
+    private readonly IMapVisibilityResolver _visibilityResolver; // 全局迷雾/临时点亮判定
 
     // 正在移动的单位列表
     private List<MovingUnit> _movingUnits = new List<MovingUnit>();
     private readonly Dictionary<Vector3, IUnitMovement> _reservedDestinations = new Dictionary<Vector3, IUnitMovement>();
     private List<Vector3> _cachedAllPoints;
 
-    public UnitMovementSystem(IMapDataService mapDataService, MapVisualEventSO mapVisualEvent, GameLoop gameLoop, [InjectOptional] ILogisticsService logisticsService = null, [InjectOptional] IMapInteractionGate interactionGate = null)
+    public UnitMovementSystem(IMapDataService mapDataService, MapVisualEventSO mapVisualEvent, GameLoop gameLoop, [InjectOptional] ILogisticsService logisticsService = null, [InjectOptional] IMapInteractionGate interactionGate = null, [InjectOptional] IMapVisibilityResolver visibilityResolver = null)
     {
         _mapDataService = mapDataService;
         _mapVisualEvent = mapVisualEvent;
         _gameLoop = gameLoop;
         _logisticsService = logisticsService;
         _interactionGate = interactionGate;
+        _visibilityResolver = visibilityResolver;
     }
 
     public IReadOnlyList<Vector3> AllHexCoordinates
@@ -427,6 +429,7 @@ public class UnitMovementSystem : ITickable
                 if (neighbor == null || !visited.Add(neighbor.HexCoordinate)) continue;
 
                 if (neighbor.movementCost < float.MaxValue &&
+                    IsFogFree(neighbor) &&
                     !neighbor.IsHaveUnit() &&
                     !neighbor.HasOccupant())
                 {
@@ -897,9 +900,23 @@ public class UnitMovementSystem : ITickable
         return d;
     }
 
-    private static bool CanEnterCell(HexCellData cell, GameObject movingUnit, bool allowOccupiedTarget)
+    /// <summary>全局迷雾判定：resolver 存在时按可见性（含竞技场 lease 等临时点亮），否则退回“任一阵营已探索”。</summary>
+    private bool IsFogFree(HexCellData cell)
+    {
+        return _visibilityResolver != null
+            ? _visibilityResolver.IsVisibleToFaction(cell, 0)
+            : cell.IsExploredByAnyFaction;
+    }
+
+    private bool CanEnterCell(HexCellData cell, GameObject movingUnit, bool allowOccupiedTarget)
     {
         if (cell == null || cell.movementCost < 0f || float.IsNaN(cell.movementCost) || float.IsInfinity(cell.movementCost) || cell.movementCost == float.MaxValue)
+        {
+            return false;
+        }
+
+        // 【迷雾决定进入】有迷雾不可进、无迷雾可进；探索只是解锁迷雾的一种手段。
+        if (!IsFogFree(cell))
         {
             return false;
         }

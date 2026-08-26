@@ -22,7 +22,7 @@ MonoBehaviour:
     goldTiers: 5,5,10,15,20,25
     unitCountTiers: 0,0,0,1,1,2
     costNone: 0
-    costGold: 50
+    costGold: 10
     costMilitary: 50
     costTactical: 50
     costBuilding: 50

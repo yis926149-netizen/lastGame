@@ -2,7 +2,7 @@
   "schemaVersion": "1.0.0",
   "exporterVersion": "0.1.0",
   "workbook": "游戏数值配置.xlsx",
-  "workbookSha256": "e3863ac11b27b069fa855e6685e117a2bc432151e19efeebae8381b20daf9727",
+  "workbookSha256": "3fcf0c39f93f111e424898ff396dc2dc7e2b2e5c7dcb8b5575c4e6217879917d",
   "tables": [
     {
       "sheetName": "单位",
@@ -136,7 +136,7 @@
       "sha256": "4f5adc5899d483d56b09c2ce9b92a8554ff511983a1dcb86015d8b4e86ad2cba"
     },
     "Csv/探索奖励配置.csv": {
-      "sha256": "a515a4f86fd1e93bcc1eded6faa5ce36a98808a56f03559907b58302807d479d"
+      "sha256": "4f7e106a1e10bc4b33ee6d8a5c2b6f7dc2ae1e48304296e86745639065bb03b4"
     },
     "Csv/普通卡池.csv": {
       "sha256": "90e2c49378d0beddf10d0f66e0ae2846fc10792f84d62dab7ff15e21c692ba86"
@@ -151,10 +151,10 @@
       "sha256": "52816a7cf9b1bcd2321b713002293da9ec0f88b5bb0ebf737984ec8a2d03cb12"
     },
     "Csv/表现配置.csv": {
-      "sha256": "866bd0992b7db62c8f55fc61a08ca2545953f5d7130e64db5080b8bd921ff09e"
+      "sha256": "f3990a7e23f2a9e32ac6685e7f291297aba6f8f8bcf1fb21b1f9573df9949fcf"
     },
     "game-config.json": {
-      "sha256": "6fbcbc37de98a8e12a4cf8fdbcc153b94c578cfa3831bfe10ad005278ea93ad5"
+      "sha256": "9e8089b8e658d1ae203f6e579a98806cb942778ade9edbcdc526a5de59e0b294"
     }
   }
 }

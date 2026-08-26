@@ -41,13 +41,16 @@ public class UnitMovementEjectionTests
         Object.DestroyImmediate(_mockMapEvent);
     }
 
-    private HexCellData NewCell(Vector3 coord, float height = 2f)
+    private HexCellData NewCell(Vector3 coord, float height = 2f, bool explored = true)
     {
-        return new HexCellData(Enums.HexType.NoRiver, 0, coord, new Vector3(coord.x, height, coord.z), height)
+        var cell = new HexCellData(Enums.HexType.NoRiver, 0, coord, new Vector3(coord.x, height, coord.z), height)
         {
             movementCost = 1f,
             RealCenterWorldCoordinate = new Vector3(coord.x * 3f, height, coord.z * 3f)
         };
+        if (explored)
+            cell.ExploreBy(0); // 标记已探索，避免"未探索不可通行"干扰弹射落点测试
+        return cell;
     }
 
     private void BuildMap()
@@ -142,6 +145,24 @@ public class UnitMovementEjectionTests
         Assert.AreEqual(_sw, landing.HexCoordinate, "被占用的 SE 不应作为落点");
         Assert.AreEqual(go, _cells[_sw].GetUnit());
         Assert.AreEqual(go, _cells[_sw].GetOccupant(), "落点 Occupant 必须同步写入");
+    }
+
+    [Test]
+    public void EjectUnits_SkipsUnexploredNeighbor()
+    {
+        // NE 替换为"可通行但未探索"格：弹射应跳过它，落到已探索的 E
+        _cells[_ne] = NewCell(_ne, explored: false);
+        _cells[_origin].movementCost = float.MaxValue; // 原格变不可通行
+
+        MakeUnitAt(_origin, out GameObject go);
+        _cells[_origin].SetHaveUnit(true, go);
+        _cells[_origin].SetOccupant(go);
+
+        _system.EjectUnitsFromImpassableCells(new List<HexCellData> { _cells[_origin] });
+
+        HexCellData landing = FindUnitCell(go);
+        Assert.NotNull(landing);
+        Assert.AreEqual(_e, landing.HexCoordinate, "未探索的 NE 不应作为弹射落点，应落到已探索的 E");
     }
 
     // NOTE: The 2 tests below depend on RequestMove registering a moving unit.

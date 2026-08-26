@@ -27,6 +27,23 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     /// <summary>各 Graphic 的原始颜色（含 alpha），用于压暗/还原。SetData 时采样。</summary>
     private readonly Dictionary<Graphic, Color> _graphicBaseColors = new Dictionary<Graphic, Color>();
 
+    /// <summary>
+    /// 拖拽期间的视觉通道（普通卡 = CardPresenter；战术卡不实现本接口，自动无模型预览）。
+    /// 在 OnBeginDrag 时锁定一次，保证 Update/End 与 Begin 落在同一个 handler 上。
+    /// </summary>
+    private ICardDragVisualHandler _dragVisual;
+
+    /// <summary>拖拽淡出倍率（§3 cardAlpha）。与可负担压暗、原始 alpha 相乘后统一写入。</summary>
+    private float _dragAlpha = 1f;
+
+    /// <summary>本卡所在 Canvas 的参考高度；OnBeginDrag 缓存一次，避免逐帧 GetComponentInParent。</summary>
+    private float _canvasHeight = UIScreenHelper.ReferenceHeight;
+
+    /// <summary>逐帧缓存的两阶段进度，供 OnDrag 通知视觉通道时复用（避免重复计算）。</summary>
+    private float _upwardDistance;
+    private float _cardProgress;
+    private float _modelProgress;
+
     /// <summary>允许外部覆盖 drop handler（战术卡等非默认材质）。应在 Zenject 注入之后、首次拖拽之前调用。</summary>
     public void OverrideDropHandler(ICardDropHandler handler) => _dropHandler = handler;
 
@@ -171,14 +188,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     {
         _isAffordable = affordable;
 
-        // 买不起时按各组件原始 alpha 缩放压暗，买得起时还原原色。
-        foreach (var kv in _graphicBaseColors)
-        {
-            if (kv.Key == null) continue;
-            Color c = kv.Value;
-            if (!affordable) c.a *= FeelConfigProvider.UnaffordableCardDim;
-            kv.Key.color = c;
-        }
+        ApplyGraphicAlpha();
 
         // 买不起时停止接收射线（悬浮/拖拽），并复位悬浮上移；若在拖拽中立即取消。
         if (_image != null) _image.raycastTarget = affordable;
@@ -192,6 +202,24 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
                 _rectTransform.DOAnchorPos(_originPosition, 0.2f);
             }
             if (_isDragging) CancelDrag();
+        }
+    }
+
+    /// <summary>
+    /// alpha 唯一写入口（实施计划 §5.3）：最终 alpha = 原始 alpha × 可负担倍率 × 拖拽淡出倍率。
+    /// 三个来源都只改自己那一项因子，再由本方法统一合成，避免互相覆盖。
+    /// </summary>
+    private void ApplyGraphicAlpha()
+    {
+        float affordMul = _isAffordable ? 1f : FeelConfigProvider.UnaffordableCardDim;
+        float mul = affordMul * _dragAlpha;
+
+        foreach (var kv in _graphicBaseColors)
+        {
+            if (kv.Key == null) continue;
+            Color c = kv.Value;
+            c.a *= mul;
+            kv.Key.color = c;
         }
     }
 
@@ -223,18 +251,61 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     {
         RectTransform target = _dragProxy != null ? _dragProxy : _rectTransform;
         target.anchoredPosition = localPoint;
-        float distanceY = Mathf.Abs(localPoint.y - originPos.y);
-        float maxDistance = UIScreenHelper.ReferenceHeight * 0.37f; // B3: 拖拽最大距离改为 Canvas 参考高度比例
-        float minScale = 0.6f;
-        float scaleRatio = Mathf.Lerp(1f, minScale, Mathf.Clamp01(distanceY / maxDistance));
-        target.localScale = _uiConfig.CardSize * scaleRatio;
+
+        // 只有向上拖才推进两阶段进度；向下拖进度按 0 处理（§0.5），不取绝对值。
+        _upwardDistance = Mathf.Max(0f, localPoint.y - originPos.y);
+
+        if (!SupportsModelPreview)
+        {
+            // 战术卡/幽灵卡：维持原有单阶段缩放手感（minScale 0.6，双向生效）。
+            float legacyDistance = Mathf.Abs(localPoint.y - originPos.y);
+            float legacyMax = _canvasHeight * 0.37f;
+            float legacyRatio = Mathf.Lerp(1f, 0.6f, Mathf.Clamp01(legacyDistance / legacyMax));
+            target.localScale = _uiConfig.CardSize * legacyRatio;
+
+            _cardProgress = 0f;
+            _modelProgress = 0f;
+            return;
+        }
+
+        float d1 = Mathf.Max(1f, _canvasHeight * FeelConfigProvider.CardDragStage1Ratio);
+        float d2 = Mathf.Max(d1 + 1f, _canvasHeight * FeelConfigProvider.CardDragStage2Ratio);
+
+        _cardProgress = Mathf.Clamp01(_upwardDistance / d1);
+        _modelProgress = Mathf.Clamp01((_upwardDistance - d1) / (d2 - d1));
+
+        // 阶段一：卡牌 100% → CardMinScale，并在 CardFadeStart 之后淡出。
+        float cardScale = Mathf.Lerp(1f, FeelConfigProvider.CardDragCardMinScale, _cardProgress);
+        target.localScale = _uiConfig.CardSize * cardScale;
+
+        float fadeStart = Mathf.Clamp01(FeelConfigProvider.CardDragCardFadeStart);
+        float fadeSpan = Mathf.Max(0.0001f, 1f - fadeStart);
+        _dragAlpha = 1f - Mathf.Clamp01((_cardProgress - fadeStart) / fadeSpan);
+        ApplyGraphicAlpha();
     }
+
+    /// <summary>是否走「卡牌→模型」两阶段表现：仅普通卡（持有 NormalCardConfig）且非代理拖拽。</summary>
+    private bool SupportsModelPreview => _dragProxy == null && _data != null && _data.NormalCardConfig != null;
 
     public void ResetToOrigin()
     {
         _rectTransform.DOKill();
         _rectTransform.DOAnchorPos(_originPosition, 0.2f);
         transform.DOScale(_uiConfig.CardSize, 0.2f);
+
+        // 幽灵代理在拖拽期间承担了位移/缩放，取消时必须一并复位，否则下次借出时姿态残留。
+        if (_dragProxy != null)
+        {
+            _dragProxy.DOKill();
+            _dragProxy.localScale = _uiConfig.CardSize;
+        }
+
+        // 复位拖拽淡出因子并重新合成 alpha（可负担压暗由 _isAffordable 继续生效）。
+        _dragAlpha = 1f;
+        _upwardDistance = 0f;
+        _cardProgress = 0f;
+        _modelProgress = 0f;
+        ApplyGraphicAlpha();
     }
 
     public void ClearHighlights()
@@ -269,14 +340,26 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _playerInputHandler.Value.ForceDeselectUnit();
         _isDragging = true;
         _activeDraggingCard = this;
+
+        // 逐帧比例基准只在拖拽开始取一次（§3：优先 Canvas 参考高度，回退 1920）。
+        _canvasHeight = UIScreenHelper.CanvasHeight(this);
+        _dragAlpha = 1f;
+        _upwardDistance = 0f;
+        _cardProgress = 0f;
+        _modelProgress = 0f;
+
         _dropHandler?.OnCardDragBegin(this);
+
+        // OnCardDragBegin 可能设置幽灵代理（战术卡），因此在其之后再判定是否走模型预览。
+        _dragVisual = SupportsModelPreview ? _dropHandler as ICardDragVisualHandler : null;
+        _dragVisual?.OnCardDragUpdate(this, eventData.position, 0f, 0f, 0f);
     }
 
     public void OnDrag(PointerEventData eventData)
     {
         if (IsNextCard || !_isDragging) return;
 
-        transform.SetAsLastSibling();               
+        transform.SetAsLastSibling();
 
         RectTransform handPanelRect = _rectTransform.parent as RectTransform;
         if (handPanelRect == null) return;
@@ -288,6 +371,9 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
             out Vector2 handPanelLocalPos))
         {
             OnDragUpdate(handPanelLocalPos, _originPosition);
+
+            // 进度已在 OnDragUpdate 中算好，这里只做转发（每帧不重复计算）。
+            _dragVisual?.OnCardDragUpdate(this, eventData.position, _upwardDistance, _cardProgress, _modelProgress);
         }
     }
 
@@ -303,6 +389,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
         if (_gameLoop != null && _gameLoop.IsPaused)
         {
+            EndDragVisual();
             _dropHandler?.OnCardDragCancel(this);
             ResetToOrigin();
             return;
@@ -328,12 +415,28 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
             if (targetCell != null)
             {
                 if (_dropHandler.HandleCardDragEnd(this, targetCell, hit.point))
+                {
+                    // 成功路径不会走 OnCardDragCancel，且卡牌随后被销毁，
+                    // 必须在此显式收尾（End 幂等，与 handler 内部的提前关闭不冲突）。
+                    EndDragVisual();
                     return;
+                }
             }
         }
 
+        EndDragVisual();
         _dropHandler?.OnCardDragCancel(this);
         ResetToOrigin();
+    }
+
+    /// <summary>关闭本次拖拽的视觉通道（幂等）；随后清空引用，避免迟到回调作用到下一次拖拽。</summary>
+    private void EndDragVisual()
+    {
+        if (_dragVisual == null) return;
+
+        ICardDragVisualHandler visual = _dragVisual;
+        _dragVisual = null;
+        visual.OnCardDragEnd(this);
     }
 
     private void OnApplicationFocus(bool hasFocus)
@@ -346,6 +449,8 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     private void OnDisable()
     {
         if (_goldWallet != null) _goldWallet.OnGoldChanged -= OnGoldChanged;
+        // 失活可能发生在成功部署销毁流程中，此时视觉通道已由 EndDragVisual 收尾；这里兜底幂等关闭。
+        EndDragVisual();
         if (_isDragging) _dropHandler?.OnCardDragCancel(this);
         ReleaseDragCapture();
         _rectTransform?.DOKill();
@@ -363,6 +468,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         ReleaseDragCapture();
         transform.SetSiblingIndex(originalSiblingIndex);
         ClearHighlights();
+        EndDragVisual();
         _dropHandler?.OnCardDragCancel(this);
         ResetToOrigin();
     }
