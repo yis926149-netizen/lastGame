@@ -65,8 +65,6 @@ public class CostLabelRenderer : MonoBehaviour
             _mapVisualEvent.OnMapVisualChanged.AddListener(RequestRefresh);
         if (_goldWallet != null)
             _goldWallet.OnGoldChanged += OnGoldChanged;
-        if (_explorationService != null)
-            _explorationService.CellExplored += OnCellExplored;
         if (_logisticsService != null)
             _logisticsService.LogisticsChanged += OnLogisticsChanged;
 
@@ -80,8 +78,6 @@ public class CostLabelRenderer : MonoBehaviour
             _mapVisualEvent.OnMapVisualChanged.RemoveListener(RequestRefresh);
         if (_goldWallet != null)
             _goldWallet.OnGoldChanged -= OnGoldChanged;
-        if (_explorationService != null)
-            _explorationService.CellExplored -= OnCellExplored;
         if (_logisticsService != null)
             _logisticsService.LogisticsChanged -= OnLogisticsChanged;
         foreach (var kv in _activeLabels)
@@ -111,11 +107,6 @@ public class CostLabelRenderer : MonoBehaviour
             if (button != null) button.interactable = canAfford;
             label.SetActive(true);
         }
-    }
-
-    private void OnCellExplored(HexCellData cell)
-    {
-        RequestRefresh();
     }
 
     private void OnLogisticsChanged()

@@ -12,7 +12,7 @@
 - **金矿与收入规则**：新增金矿建筑类型（`BulidingType.GoldMine`，产出由 `BuildingConfigSO.goldIncomePerSecond` 配置化）；`IncomeEligibilityRule` 统一"归属 + 后勤畅通"收入资格（断供暂停产金），`BuildingIncomeRule` 汇总金矿建筑产出，`GoldIncomeService` 每秒收入 =（基础 + 金矿地貌 + 金矿建筑）× 天赋乘数。
 - **实时游戏循环**：`GameLoop` 每帧驱动所有单位自动决策，玩家随时可通过卡牌部署单位，并可暂停/继续游戏。
 - **单位自动化**：每种单位有独立的兵种策略——近战、远程——由 `UnitBrainBase` 统一调度，逐格移动、探测敌人、自动攻击。
-- **卡牌系统**：拖拽卡牌向地图放置单位或建筑，是玩家唯一的交互方式。普通卡池数值由 Excel 数值库 `NormalCardPoolDatabaseSO` 驱动（当前 4 张：`unit.archer`、`unit.swordsman`、`building.arrow_tower`、`building.barracks`，`unit.archer` 为首张保底卡），资源引用（Prefab/Sprite/音效）仍走 `NormalCardPoolSO` / `UnitConfigSO` / `BuildingConfigSO` 等 ScriptableObject，详见 [普通卡池对象化改造方案.md](历史归档/普通卡池对象化改造方案.md) 与 [Excel配置表混合架构修改计划.md](Excel配置表混合架构修改计划.md)。
+- **卡牌系统**：拖拽卡牌向地图放置单位或建筑，是玩家唯一的交互方式。普通卡池数值由 Excel 数值库 `NormalCardPoolDatabaseSO` 驱动（当前 4 张：`unit.archer`、`unit.swordsman`、`building.arrow_tower`、`building.barracks`，`unit.archer` 为首张保底卡），资源引用（Prefab/Sprite/音效）仍走 `NormalCardPoolSO` / `UnitConfigSO` / `BuildingConfigSO` 等 ScriptableObject，详见 [普通卡池对象化改造方案.md](历史归档/普通卡池对象化改造方案.md) 与 [Excel配置表混合架构修改计划.md](审计与规划/Excel配置表混合架构修改计划.md)。
 - **城市与建筑**：玩家开局拥有一个主城及周围一环势力范围。通过探索地块或占领公共建筑扩张势力范围。可部署祭坛、攻防雕像等建筑。不再支持建新城。势力范围边界渲染为实体城墙/城墩（玩家与 AI 各一套预制体，由 `SphereOfInfluenceRenderer` 按边界折线摆放）。
 - **断供与吞并**：断供地块上的建筑全部失能（箭塔停火、兵营暂停生产），不再被自动索敌；敌方单位踩上失能建筑格可随格占领（建筑易主、不摧毁）；断供区域与敌方后勤网络共边相邻时整区域吞并（含建筑与公共建筑外一环）。详见 [断供迷雾与建筑失能吞并设计方案.md](游戏系统/断供迷雾与建筑失能吞并设计方案.md)。
 - **公共建筑**：地图中立区域随机生成多格公共建筑，双方争夺——首次击破归属攻击方，之后易主不回中立。占领后势力范围自动扩张并收割资源。开局隐藏，通过浮标示意位置；任意单位进入建筑占位格外一环后全局发现，触发石柱/飞盘特效揭示建筑模型和相关地块。
@@ -21,7 +21,7 @@
 - **天赋卡牌系统**：游戏开始时和占领公共建筑后，玩家从 3 张随机天赋卡中选择 1 张，获得整局永久乘数型 Buff（伤害 `talent.damage`、城墙 `talent.building_hp`、财富 `talent.gold`，数值由 Excel 天赋卡表维护）。AI 达到同样条件时后台自动随机选卡。选卡时游戏自动暂停并伴有入场动画、选中特效和屏幕震动。
 - **战术卡牌系统**：开局固定发放 2 张战术牌（战斗号令 `tactical.battle_order`、维修 `tactical.repair`），拖拽释放到目标格，作用于落点及其周围一环内的己方单位/建筑——维修群体回血、战斗号令临时提升攻击与移速，同名牌叠放显示数量、耗尽不自动补充，详见 [战术牌系统SO设计.md](游戏系统/战术牌系统SO设计.md)。
 - **地图道具/资源系统**：地图随机生成可拾取资源（动物/宝箱/矿物/植物；回血包历史保留未启用），按拾取效果类型（攻击提升/防御提升/回血/金币）由 `MapResourceProvider` + `MapResourceCollectionService` 统一消费，详见 [地图道具系统总结.md](地图与地形/地图道具系统总结.md)。
-- **Excel 数据驱动配置系统**：平衡数值统一由 `Config/Excel/游戏数值配置.xlsx` 维护，经 `Tools/ConfigExporter`（独立 .NET 8 工具）导出为 CSV/JSON，再由 Unity 菜单 `Tools/游戏配置/导入并校验` 生成 `Assets/GameConfig/Generated` 下只读数值库 SO，运行时通过各 `*ConfigProvider` 读取（阶段 6 起 Excel 为唯一数值源），详见 [Excel配置表混合架构修改计划.md](Excel配置表混合架构修改计划.md)。
+- **Excel 数据驱动配置系统**：平衡数值统一由 `Config/Excel/游戏数值配置.xlsx` 维护，经 `Tools/ConfigExporter`（独立 .NET 8 工具）导出为 CSV/JSON，再由 Unity 菜单 `Tools/游戏配置/导入并校验` 生成 `Assets/GameConfig/Generated` 下只读数值库 SO，运行时通过各 `*ConfigProvider` 读取（阶段 6 起 Excel 为唯一数值源），详见 [Excel配置表混合架构修改计划.md](审计与规划/Excel配置表混合架构修改计划.md)。
 
 ## 开发环境
 
@@ -261,7 +261,7 @@ ProjectSettings/                    # 编辑器、场景与项目设置
 
 ## 数据驱动配置系统（Excel 数值化）
 
-平衡数值已从零散 ScriptableObject / Inspector 字段 / C# 常量收口为「Excel 唯一数值源 + 自动生成只读 SO + Provider」的混合架构，方案与分阶段实施见 [Excel配置表混合架构修改计划.md](Excel配置表混合架构修改计划.md)（阶段 1~6 已全部完成）：
+平衡数值已从零散 ScriptableObject / Inspector 字段 / C# 常量收口为「Excel 唯一数值源 + 自动生成只读 SO + Provider」的混合架构，方案与分阶段实施见 [Excel配置表混合架构修改计划.md](审计与规划/Excel配置表混合架构修改计划.md)（阶段 1~6 已全部完成）：
 
 ```text
 Config/Excel/游戏数值配置.xlsx（策划唯一数值源）
@@ -486,11 +486,11 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 - 迷雾修复：`_FogMaskTex` 重建迁入 Chunk 后端 + 订阅 `LogisticsChanged`（2026-08-04）
 - 竞技场：`ArenaEventManager` 37 格状态机（Inactive→Reserved→Activated→Destroyed），预留区初始化、突起动画、宝箱摧毁恢复、对局结束动画兜底
 - 能力测试：V 键全图波浪（纯视觉脉冲、自动回落）；R/F 键指格永久 ±1 微调（2026-08-05 已屏蔽保留，方案见 [鼠标指格地形高度微调测试-RF键实现方案.md](历史归档/鼠标指格地形高度微调测试-RF键实现方案.md)）
-- 规划文档：[程序化山脉实现方式讨论.md](程序化山脉实现方式讨论.md)（地貌型程序化山脉构思，2026-08-06 起已实现，见下文）
+- 规划文档：[程序化山脉实现方式讨论.md](地图与地形/程序化山脉实现方式讨论.md)（地貌型程序化山脉构思，2026-08-06 起已实现，见下文）
 
 2026-08-06 ~ 2026-08-12 程序化山脉系统与多项玩法/表现更新：
 
-- **程序化山脉系统全落地**（阶段 1~7.8，决策记录见 [程序化山脉实现方式讨论.md](程序化山脉实现方式讨论.md)）：
+- **程序化山脉系统全落地**（阶段 1~7.8，决策记录见 [程序化山脉实现方式讨论.md](地图与地形/程序化山脉实现方式讨论.md)）：
   - 生成：`RidgeGenerator` 评分行走脊线 + 宽度化坡面格（不参与地貌散落/簇权重池），参数快照固化到格级数据（`MountainRidgeData`），SeedService 新增 "Mountain" 随机流；地图生成顺序调整为 地形 → 山 → 其他地貌 → 河 → 资源
   - 几何：`MountainGeometryBuilder` 确定性高度场（脊线噪声 + 格级噪声）+ Low-poly 顶面/过渡面/封口构造，脊线连续修订（均值→脊线相邻对）、山-普通 rect 格界劈半；`MountainHash` 确定性哈希
   - 材质：`MountainMaterialContract` 定义山体槽 UV0 契约（ridgeKey01 / faceTier 3 档色阶），新增 `Custom/MountainLowPoly_Fog` 与 `_Transition` 稳定 shader 资产
@@ -504,7 +504,7 @@ AI 逻辑集中在 [Assets/Scripts/AI/](Assets/Scripts/AI/)，由 [AIManager](As
 - **势力范围实体城墙**：`SphereOfInfluenceRenderer` 改为纯实体模型渲染（玩家/AI 各一套城墙/城墩预制体 `wall-player`/`wall-AI`，部件独立判定），删除旧描边面片回退渲染
 - **其他**：镜头新增鼠标左键拖拽平移（`CameraController.HandleMouseDrag`，UI 上不触发）；开局界面新增 `SimpleStartButton`（延迟激活 + 呼吸动效直接进游戏）；`GlobalTimerService`/`GlobalTimerUI` 全局倒计时 HUD（默认 300 秒、≤60 秒紧急脉冲，选卡面板触发启动）；天赋卡选卡面板背景图 shuffle 不重复；`EndGame` 平局（Draw）按胜利结算；`UnitMovementController` 死亡流程防护与 Animator 诊断、`CombatResolver` 死亡单位不再结算伤害；`MountainConfigSO` 新增 `debugSingleCellAndStraightRidge` 对照模式；地图生成配置更新（20×24、种子 20260811、`visualPerturbFrequency` 噪声采样频率配置化、主城按地图中列 + 边缘前一行定位）；建筑配置资产重命名（`BuildingConfig-4`→`barracks`、`BuildingConfig-5`→`arrow_tower`）
 
-Excel 配置表混合架构改造（阶段 1~6 已完成，详见 [Excel配置表混合架构修改计划.md](Excel配置表混合架构修改计划.md)，各阶段完成说明见 `历史归档/阶段2~5运行时接入-完成说明与验证清单.md`）：
+Excel 配置表混合架构改造（阶段 1~6 已完成，详见 [Excel配置表混合架构修改计划.md](审计与规划/Excel配置表混合架构修改计划.md)，各阶段完成说明见 `历史归档/阶段2~5运行时接入-完成说明与验证清单.md`）：
 
 - 数据通路：`Config/Excel/游戏数值配置.xlsx` → `Tools/ConfigExporter`（独立 .NET 8 工具，含单元测试）导出 CSV/JSON → Unity 菜单 `Tools/游戏配置/导入并校验` 生成 `Assets/GameConfig/Generated` 只读 SO → `GameInstaller` 绑定 + `*ConfigProvider` 运行时读取
 - 阶段 2：单位/建筑/普通卡池数值迁移（14 单位、7 建筑、4 张普通卡，`unit.archer` 首张保底；修正 `AttackInterval=0` 等异常值）
@@ -517,9 +517,9 @@ Excel 配置表混合架构改造（阶段 1~6 已完成，详见 [Excel配置�
 ## 当前说明
 
 - 性能已针对六边形地图完成全项目优化（P0 + P1 全部落地，当前地图配置 20×24 = 480 格），详见 [视觉与渲染/性能优化方案讨论.md](视觉与渲染/性能优化方案讨论.md)。
-- 平衡数值已收口到 Excel 配置表（`Config/Excel/游戏数值配置.xlsx`，阶段 1~6 完成），运行时数值由 `Assets/GameConfig/Generated` 生成的只读 SO 提供。改数值流程：编辑 Excel → 运行 `Tools/ConfigExporter` → Unity 菜单 `Tools/游戏配置/导入并校验`，详见 [Excel配置表混合架构修改计划.md](Excel配置表混合架构修改计划.md)。
+- 平衡数值已收口到 Excel 配置表（`Config/Excel/游戏数值配置.xlsx`，阶段 1~6 完成），运行时数值由 `Assets/GameConfig/Generated` 生成的只读 SO 提供。改数值流程：编辑 Excel → 运行 `Tools/ConfigExporter` → Unity 菜单 `Tools/游戏配置/导入并校验`，详见 [Excel配置表混合架构修改计划.md](审计与规划/Excel配置表混合架构修改计划.md)。
 - 项目当前仍使用默认工程名称，尚未在仓库中确定正式游戏名称。
 - 仓库中包含部分历史资源和第三方资源目录（KayKit、Lana Studio、Toon_RTS、unity-chan!、VFXPACK_IMPACT_WALLCOEUR_FreeVersion 等），其是否仍被场景或脚本引用需要单独确认后再清理。
 - 仓库暂未提供明确的发布平台说明、CI 配置或自动化构建脚本；`Tools/ConfigExporter` 支持命令行/CI 无界面导出，但尚未接入 CI 门禁。
 - 当前工作区可能包含未提交的配置生成物与探索奖励预生成改动（地块奖励快照、按奖励类型费用与标签图标，见改造历史）。
-- 项目配套的设计文档分散在多个专题目录中：`游戏系统/`、`探索系统重构/`、`视觉与渲染/`、`地图与地形/`、`动态地图/`、`AI设计/`、`审计与规划/`、`历史归档/`；根目录保留活跃方案/讨论文档（`Excel配置表混合架构修改计划.md`、`程序化山脉实现方式讨论.md`（含山脉决策 ①~㉛ 记录）、`六边形网格覆盖层实现计划.md`），过时文档已归档至 `历史归档/`（阶段2~5运行时接入完成说明、需配表数值统计、策划案差异审计报告、普通卡池对象化改造方案、中间代码清理名单、鼠标指格地形高度微调测试-RF键实现方案等）。
+- 项目配套的设计文档已按专题归档：`游戏系统/`、`探索系统重构/`、`视觉与渲染/`、`地图与地形/`（含 `程序化山脉实现方式讨论.md`、`可变六边形顶面细分修改规划.md`、`六边形网格覆盖层实现计划.md` 等地形/网格文档）、`动态地图/`、`AI设计/`、`审计与规划/`（含 `Excel配置表混合架构修改计划.md` 与微信小游戏/H5/资源相关方案报告）、`历史归档/`；根目录仅保留 `README.md`。

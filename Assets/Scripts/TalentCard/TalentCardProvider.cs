@@ -38,24 +38,70 @@ public class TalentCardProvider
         return result;
     }
 
-    /// <summary>从启用天赋卡中随机抽 count 张（Fisher-Yates 洗牌，无重复）。</summary>
+    /// <summary>
+    /// 从启用天赋卡中按「候选袋」随机抽 count 张：一袋内无放回，抽空后再开启同样的新袋。
+    /// 因此会优先保证候选不重复；仅当 count 超过当前可用卡数时才进入下一袋并产生重复。
+    /// repeatable=false 的卡只进入第一袋，repeatable=true 的卡可进入后续新袋。
+    /// </summary>
     public List<TalentCardConfigSO> DrawRandom(int count)
     {
-        var available = new List<TalentCardConfigSO>(GetEnabledCards());
-        available.RemoveAll(c => c == null);
-        if (available.Count == 0)
+        var firstBag = new List<TalentCardConfigSO>(GetEnabledCards());
+        firstBag.RemoveAll(c => c == null);
+        if (firstBag.Count == 0 || count <= 0)
             return new List<TalentCardConfigSO>();
 
-        int drawCount = System.Math.Min(count, available.Count);
-        for (int i = 0; i < drawCount; i++)
+        var refillBag = firstBag.FindAll(IsRepeatable);
+        var currentBag = new List<TalentCardConfigSO>(firstBag);
+        var result = new List<TalentCardConfigSO>(count);
+
+        while (result.Count < count)
         {
-            int j = i + UnityEngine.Random.Range(0, available.Count - i);
-            var temp = available[i];
-            available[i] = available[j];
-            available[j] = temp;
+            if (currentBag.Count == 0)
+            {
+                if (refillBag.Count == 0)
+                    break;
+                currentBag.AddRange(refillBag);
+            }
+
+            var card = PickWeighted(currentBag);
+            result.Add(card);
+            currentBag.Remove(card);
+        }
+        return result;
+    }
+
+    /// <summary>按 Excel weight 权重从当前候选袋随机抽一张。</summary>
+    private TalentCardConfigSO PickWeighted(List<TalentCardConfigSO> cards)
+    {
+        float total = 0f;
+        var weights = new float[cards.Count];
+        for (int i = 0; i < cards.Count; i++)
+        {
+            weights[i] = GetWeight(cards[i]);
+            total += weights[i];
         }
 
-        return available.GetRange(0, drawCount);
+        float roll = UnityEngine.Random.Range(0f, total);
+        for (int i = 0; i < cards.Count; i++)
+        {
+            roll -= weights[i];
+            if (roll <= 0f) return cards[i];
+        }
+        return cards[cards.Count - 1];
+    }
+
+    private float GetWeight(TalentCardConfigSO card)
+    {
+        if (_balance != null && _balance.TryGetTalent(card.talentId, out var b))
+            return UnityEngine.Mathf.Max(1f, b.weight);
+        return 1f;
+    }
+
+    private bool IsRepeatable(TalentCardConfigSO card)
+    {
+        if (_balance != null && _balance.TryGetTalent(card.talentId, out var b))
+            return b.repeatable;
+        return true;
     }
 
     /// <summary>按 talentId 查 Excel 数值；未命中返回 null。</summary>

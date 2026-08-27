@@ -34,7 +34,7 @@ MonoBehaviour:
     handCardLimit: 5
     initialHandCardCount: 5
     tacticalCardSlotCount: 2
-    talentOfferCount: 3
+    talentOfferCount: 5
     publicBuildingMaxCount: 3
     publicBuildingMinLandNeighbors: 2
     publicBuildingArenaReserveExtraRings: 1

@@ -344,3 +344,14 @@
 - **根因**：为"防止窗口出屏被裁剪"加了 `Clamp(localPoint.x, xMin + halfW, xMax - halfW)`，而 `halfW = rect.width * 0.5f * scale` **随缩放变化**——`scale` 从 0.1 涨到 1，边距从 ~26 涨到 256 参考单位。两阶段手感割裂只是表象，真问题是：这个窗口的位置本身就是**落点指示**，一旦被 Clamp 就与指针脱钩，玩家看到的落点是错的。
 - **修复**：去掉 Clamp，精确跟随。ScreenSpaceOverlay 下越界部分自然落到屏幕外，不产生渲染问题（除非父节点上有 `RectMask2D`/`Mask`）。
 - **可迁移判据**：给跟随指针的 UI 加边界约束前先问一句——**它的位置是"装饰"还是"信息"**。是信息（落点/瞄准/拾取目标）就不能 Clamp，宁可半个出屏；只有纯装饰性的浮层才适合限位。若确实要限位，边距也必须与视觉缩放解耦，否则会凭空造出"不同阶段行为不一致"的诡异手感。
+
+## 世界空间单位血条在「Prefab 视图对齐」与「Play 姿态」对不上：绑定姿势坐标系 + Rebuild 坐标系漂移
+
+给 `archer_blue.prefab` 里世界空间 Canvas 下的血条（Slider）调位置时，Prefab 场景视图看着贴住了单位胸口，进 Play 却悬空/偏移一大截（比如血条高高飘在上方）。顺着 Bip/网格节点的绑定姿势调，越调越偏。
+
+- **根因 1（主导）——Prefab 视图显示的是 FBX 绑定姿势，Play 里 Animator(Humanoid) 每帧重写骨骼变换**。`archer_blue` 的 `Bip001` 绑定局部位置 `(-3.25, -8.0, -15.32)`（且 WK_ 网格节点在 `(-3.25, -10.9, -15.12)`，尺度 4）——这套数只是素材制作时留下的绑定姿势，运行时被 Animator retarget 成另一套（往往把脚放到 Animator 根、体高拉回正常量级）。**在 Prefab 视图里"把血条拖到模型胸口"这一操作本身就在错误参考系里**：你看得见的模型不是运行时那个模型的形状/位置。
+- **根因 2（放大偏移）——血条 RectTransform 的 `m_AnchoredPosition` 是**真实数值**，而它 `m_LocalPosition.x/y` 在 YAML 里是 0（不一致）。Prefab 视图能容忍这组不一致数，Play 里 RectTransform 按 "anchoredPosition + 父 Rect" **重算** localPosition，把 `anch=(3.6,-36.2)`（Canvas 已乘 `0.015×4`）这道纵向偏移重新变现，血条相对模型又动一格。
+- **根因 3（与朝向耦合）——血条离 Canvas 原点很远时，朝向变化会被放大成水平漂移**。Canvas 本身用 `LookAt(相机)` 每帧 billboard（`UIController.Update` 的 `unitCanvas/buildingCanvas` 分支），它认的是**游戏相机**的朝向；Prefab 视图里 Canvas 的 `eulerX=-39.312` 只是场景相机/静态视角。血条锚点离原点越远，朝向差 28° 产生的位移就越大；而同工程里 `swordsman_blue`/`archer_red` 的血条锚点就在 Canvas 原点附近，朝向差几乎没影响——**同一套 billboard 逻辑，只有"血条放远"的文件才会被坑**。
+- **修复（以 `archer_blue` 为 0 号参照，照抄**正确**文件）**：血条锚点改回接近 Canvas 原点的做法——`archer_red`/`swordsman_blue` 的滑块 `anch=(x:20,y:0)`（即 `localPosition (1.2, 0, 0)`×0.06 世界单位）且 `localPosition.z=0`；竖向偏移放在**外层 Canvas 节点**的 `anchoredPosition=(0, 2.5)`。别再把血条 z 拉成 `-357.8`、也别把锚点挪到 `(3.6,-36.2)`。
+- **可迁移判据**：**带 Animator 的 Prefab，凡是在 Prefab 视图里能看到"模型位置与节点不一致、且绑定姿势数值巨大（±几十、尺度 4）"的，千万别拿 Prefab 视图当运行时参考**。判定"改对了没"要进 Play 看；或者用一个运行时不重绑骨骼的参考物（如 Cube）做对齐参照。**要复用别的 Prefab 的布局，直接对比这几项**：血条 `anchoredPosition`（是否 ≈原点）、血条 `localPosition.z`（是否为 0）、外层 `Canvas.anchoredPosition`（竖向偏移是否放在这）、`Canvas` 的 `scale`（是否 `0.015`）——4 项都和正确文件一致，Play 姿态自然对得上。
+- **附带**：两个文件都改了导致回归。`archer_blue.prefab` 未提交改动（`model` 指到 `y=2.23`、血条锚点 `(3.6,-36.2)`、`localPosition.z=-357.8`）与 `archer_red`（`anch=(x:20,y:0)`、`z=0`）互为反例——**改血条前先 `git diff` 看两侧是否都被动过**。

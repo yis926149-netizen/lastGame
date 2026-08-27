@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using DG.Tweening;
 using Zenject;
 
 //****************************************
@@ -113,6 +114,12 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     private bool _isDeathScheduled = false;
     /// <summary>死亡流程已触发（动画播放中，等待销毁）。供外部（CombatResolver 等）只读查询。</summary>
     public bool IsDeathScheduled => _isDeathScheduled;
+
+    // 【死亡下沉】两条触发路径：帧事件（严格播完动画）或退化兜底（无帧事件时延时），先到者生效。
+    private bool _sinkStarted = false;             // 下沉是否已启动（幂等守卫）
+    private const float DeathFallbackDelay = 2f;   // 无帧事件时的退化延时（秒）
+    private const float DeathSinkDepth = 1.5f;     // 下沉深度（世界单位，沿 -Y）
+    private const float DeathSinkDuration = 0.5f;  // 下沉时长（秒）
 
     // 【批次 D】动画-only 标志：为 true 时 CommenceAttack 分支不施加伤害（伤害已由 CombatResolver 结算）
     private bool _animOnly = false;
@@ -353,14 +360,48 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         var canvas = GetComponentInChildren<Canvas>();
         if (canvas != null)
             canvas.gameObject.SetActive(false);
-        animator.SetBool("isDeath", true);
+        if (animator != null)
+        {
+            animator.SetBool("isDeath", true);
+        }
         _audioManager.PlaySFX("cartoon_trumpet_fail(5)");
-        Invoke(nameof(RemoveUnit), CoreGameplayConfigProvider.UnitDeathDestroyDelay);
+
+        // 死亡收尾（下沉 + 销毁）由两条路径触发，先到者生效（StartSinkAndRemove 幂等）：
+        //   1) 死亡动画最后一帧的 AnimationEvent → OnDeathAnimFinished()（严格播完动画再下沉）；
+        //   2) 退化兜底：死亡动画未配帧事件时，延时 DeathFallbackDelay 后下沉。
+        Invoke(nameof(StartSinkAndRemove), DeathFallbackDelay);
     }
 
     private void RemoveUnit()
     {
         _unitRemovalService.DestroyDeactivatedUnit(gameObject);
+    }
+
+    /// <summary>
+    /// 死亡动画帧事件回调。需在死亡片段最后一帧配置 AnimationEvent（Function = OnDeathAnimFinished）。
+    /// 实现「严格播完动画 → 立即下沉」，下沉完成后由 DOTween OnComplete 触发销毁。
+    /// </summary>
+    public void OnDeathAnimFinished()
+    {
+        StartSinkAndRemove();
+    }
+
+    /// <summary>
+    /// 下沉并销毁（幂等）。帧事件与退化兜底两条路径都汇聚到这里，先到者生效。
+    /// </summary>
+    private void StartSinkAndRemove()
+    {
+        if (_sinkStarted) return;
+        _sinkStarted = true;
+
+        // 帧事件已触发时，取消可能仍挂着的兜底 Invoke，保持干净。
+        CancelInvoke(nameof(StartSinkAndRemove));
+
+        Vector3 target = transform.position + Vector3.down * DeathSinkDepth;
+        transform.DOMove(target, DeathSinkDuration)
+            .SetEase(Ease.InQuad)
+            .SetLink(gameObject)
+            .OnComplete(RemoveUnit);
     }
 
     public void PrepareForRemoval()

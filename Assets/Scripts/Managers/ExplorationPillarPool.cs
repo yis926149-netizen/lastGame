@@ -1,13 +1,15 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Zenject;
 
+/// <summary>
+/// 探索动画表现（石柱升起 / 飞盘砸落）。
+/// 【探索结果纯广播】订阅统一广播的 Explored（仅玩家阵营）播放动画；
+/// 动画奖励触发点（石柱溶解30% / 飞盘撞击）回调 _explorationService.SignalRewardPoint(cell)，
+/// 不再自行暴露 ExplorationRewardPoint 事件。
+/// </summary>
 public class ExplorationPillarPool : MonoBehaviour
 {
-	/// <summary>探索动画的奖励触发点（石柱溶解30% / 飞盘撞击），与 CompleteExploration 同点触发，供金币等表现层对齐播放。</summary>
-	public event Action<HexCellData> ExplorationRewardPoint;
-
 	[Header("特效方案选择")]
 	[SerializeField] private ExplorationEffectStyle _effectStyle = ExplorationEffectStyle.PillarRise;
 
@@ -21,6 +23,7 @@ public class ExplorationPillarPool : MonoBehaviour
 	[SerializeField] private int _initialPoolSize = 5;
 
 	private IExplorationService _explorationService;
+	private IExplorationBroadcastSource _broadcastSource;
 	private Queue<ExplorationPillarEffect> _pillarPool = new Queue<ExplorationPillarEffect>();
 	private Queue<ExplorationDiskEffect> _diskPool = new Queue<ExplorationDiskEffect>();
 	private readonly HashSet<ExplorationPillarEffect> _pooledPillars = new HashSet<ExplorationPillarEffect>();
@@ -35,9 +38,10 @@ public class ExplorationPillarPool : MonoBehaviour
 	}
 
 	[Inject]
-	public void Construct(IExplorationService explorationService)
+	public void Construct(IExplorationService explorationService, IExplorationBroadcastSource broadcastSource)
 	{
 		_explorationService = explorationService;
+		_broadcastSource = broadcastSource;
 	}
 
 	private void Start()
@@ -45,6 +49,11 @@ public class ExplorationPillarPool : MonoBehaviour
 		if (_explorationService == null)
 		{
 			Debug.LogError("[PillarPool] _explorationService 未注入！Zenject 可能未找到该组件。");
+			return;
+		}
+		if (_broadcastSource == null)
+		{
+			Debug.LogError("[PillarPool] _broadcastSource 未注入！Zenject 可能未找到该组件。");
 			return;
 		}
 
@@ -71,19 +80,25 @@ public class ExplorationPillarPool : MonoBehaviour
 				break;
 		}
 
-		_explorationService.CellExplored += OnCellExplored;
+		_broadcastSource.Broadcast += OnBroadcast;
 	}
 
 	private void OnDestroy()
 	{
-		if (_explorationService != null)
+		if (_broadcastSource != null)
 		{
-			_explorationService.CellExplored -= OnCellExplored;
+			_broadcastSource.Broadcast -= OnBroadcast;
 		}
 	}
 
-	private void OnCellExplored(HexCellData cell)
+	private void OnBroadcast(ExplorationAcquisition acquisition)
 	{
+		if (acquisition == null || acquisition.FactionId != 0)
+			return;
+		if (acquisition.Phase != ExplorationBroadcastPhase.Explored)
+			return;
+
+		HexCellData cell = acquisition.Cell;
 		if (cell == null) return;
 
 		switch (_effectStyle)
@@ -129,8 +144,7 @@ public class ExplorationPillarPool : MonoBehaviour
 		pillar.Play(cell.RealCenterWorldCoordinate,
 			onDissolveStart: () =>
 			{
-				_explorationService.CompleteExploration(cell);
-				ExplorationRewardPoint?.Invoke(cell);
+				_explorationService.SignalRewardPoint(cell);
 			},
 			onComplete: ReturnPillarToPool);
 	}
@@ -141,8 +155,7 @@ public class ExplorationPillarPool : MonoBehaviour
 		disk.Play(cell.RealCenterWorldCoordinate,
 			onImpact: () =>
 			{
-				_explorationService.CompleteExploration(cell);
-				ExplorationRewardPoint?.Invoke(cell);
+				_explorationService.SignalRewardPoint(cell);
 			},
 			onComplete: ReturnDiskToPool);
 	}

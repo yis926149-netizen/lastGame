@@ -1,10 +1,10 @@
-using System;
-
 /// <summary>
 /// 探索服务接口：主动探索地块的核心入口。
 /// 【探索重构-阶段3】新增服务，替代旧的自动探索逻辑。
 /// 【统一开发入口】TryExplore 增加阵营参数：玩家与 AI 共用同一服务，
 /// 服务内校验（含目标格中立校验）保证同时开发互斥（先到先得，后到不扣费）。
+/// 【探索结果纯广播】探索结果统一通过 IExplorationBroadcastSource 广播，
+/// 本接口不再暴露 CellExplored / ExplorationRewardTriggered / CompleteExploration 等旧事件。
 /// </summary>
 public interface IExplorationService
 {
@@ -17,21 +17,11 @@ public interface IExplorationService
     ExploreResult TryExplore(HexCellData targetCell, int factionId);
 
     /// <summary>
-    /// 完成探索后逻辑（领土、收割、视觉刷新），由动画回调在柱体特效结束后触发。
+    /// 玩家探索动画到达奖励表现点（石柱溶解30% / 飞盘撞击）时调用。
+    /// 幂等：同一地块只有第一次成功调用会发布 RewardPoint；动画异常由服务超时兜底。
     /// </summary>
-    void CompleteExploration(HexCellData cell);
-
-    /// <summary>
-    /// 探索成功事件：供 UI/视觉/音效等订阅。
-    /// 事件参数：被探索的格子。
-    /// </summary>
-    event Action<HexCellData> CellExplored;
-
-    /// <summary>
-    /// 探索奖励触发事件：在探索成功时触发，供奖励系统按阵营订阅。
-    /// 事件参数：被探索的格子、开发方阵营（0=玩家，1=AI）。
-    /// </summary>
-    event Action<HexCellData, int> ExplorationRewardTriggered;
+    /// <param name="targetCell">动画完成的地块</param>
+    void SignalRewardPoint(HexCellData targetCell);
 }
 
 /// <summary>

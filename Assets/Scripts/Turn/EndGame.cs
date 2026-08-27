@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Video;
 using Zenject;
 
 //****************************************
@@ -247,9 +248,32 @@ public class EndGame : MonoBehaviour
             return;
         }
 
+        // 防御：视频对象存在但缺少可播放的 VideoClip（无 VideoPlayer 组件、或 clip 为空/引用丢失）时，
+        // 避免激活一个空层后空等 EndGameUiDelaySeconds 的黑屏，直接进入结算 UI。
+        if (!HasPlayableVideo(animation))
+        {
+            Debug.LogWarning($"[EndGame] {Result} animation has no playable video clip; displaying the result UI immediately.", this);
+            DisplayEndGameUI();
+            return;
+        }
+
         animation.gameObject.SetActive(true);
         animation.SetAsLastSibling();
         Invoke(nameof(DisplayEndGameUI), _gameFlow.EndGameUiDelaySeconds);
+    }
+
+    /// <summary>
+    /// 判断结算动画对象下是否存在可播放的视频：任一 VideoPlayer（含禁用子对象）挂有非空 clip 即视为可播放。
+    /// </summary>
+    private bool HasPlayableVideo(Transform animation)
+    {
+        var players = animation.GetComponentsInChildren<VideoPlayer>(true);
+        foreach (var player in players)
+        {
+            if (player != null && player.clip != null)
+                return true;
+        }
+        return false;
     }
 
     private void DisplayEndGameUI()

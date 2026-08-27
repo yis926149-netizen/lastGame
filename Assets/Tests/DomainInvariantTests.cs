@@ -20,9 +20,19 @@ public class DomainInvariantTests
     }
 
     [Test]
-    public void CompleteExploration_DuplicateCallback_SettlesEconomyOnce()
+    public void PlayerExploration_PhasesExploredSettledRewardPoint_IdempotentRewardPoint()
     {
-        var wallet = new GoldWallet();
+        var economyDb = ScriptableObject.CreateInstance<EconomyConfigDatabaseSO>();
+        economyDb.ReplaceAll(new[]
+        {
+            new EconomyConfigData
+            {
+                startingGold = 100,
+                baseIncomePerTick = 2,
+                explorationCostFallback = 50,
+            }
+        });
+        var wallet = new GoldWallet(new EconomyConfigProvider(economyDb));
         wallet.InitPlayer(0);
 
         var costProvider = Substitute.For<IExplorationCostProvider>();
@@ -38,6 +48,7 @@ public class DomainInvariantTests
         database.baseExplorationGold = 5;
         var collection = new MapResourceCollectionService(wallet, null, new MapResourceProvider(database));
 
+        var hub = new ExplorationBroadcastHub();
         var service = new ExplorationService(
             costProvider,
             wallet,
@@ -45,21 +56,61 @@ public class DomainInvariantTests
             _explorationMapVisualEvent,
             territory,
             logistics,
-            collection);
+            collection,
+            hub,
+            hub);
+
         var cell = new HexCellData(Enums.HexType.NoRiver, 0, Vector3.zero, Vector3.zero, 1f);
-        int rewardEventCount = 0;
-        service.ExplorationRewardTriggered += (_, _) => rewardEventCount++;
+        var snapshot = new ExplorationRewardData
+        {
+            RewardType = ExplorationRewardConfigSO.ExplorationRewardType.Gold,
+            GoldAmount = 25,
+        };
+        cell.SetExplorationReward(snapshot);
 
+        var phases = new System.Collections.Generic.List<ExplorationBroadcastPhase>();
+        int settledGold = 0;
+        hub.Broadcast += acquisition =>
+        {
+            phases.Add(acquisition.Phase);
+            if (acquisition.Phase == ExplorationBroadcastPhase.Settled)
+                settledGold = acquisition.SettledGoldAmount;
+        };
+
+        // 1) 探索成功：唯一消费快照 + 发布 Explored
         Assert.AreEqual(ExploreResult.Success, service.TryExplore(cell, 0));
-        service.CompleteExploration(cell);
-        service.CompleteExploration(cell);
+        Assert.IsNull(cell.ExplorationReward); // 快照已唯一消费
 
+        // 2) 奖励系统结算（模拟发布 Settled）：服务缓存玩家实际结算结果
+        hub.Publish(ExplorationAcquisition.Explored(cell, 0, snapshot).SettledAs(
+            ExplorationRewardConfigSO.ExplorationRewardType.Gold, 25));
+
+        // 3) 动画奖励点：发布 RewardPoint（复用 Settled 的实际结算结果）
+        service.SignalRewardPoint(cell);
+
+        // 4) 重复动画回调：不产生第二个 RewardPoint
+        service.SignalRewardPoint(cell);
+
+        // 5) null 回调：不抛异常
+        service.SignalRewardPoint(null);
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                ExplorationBroadcastPhase.Explored,
+                ExplorationBroadcastPhase.Settled,
+                ExplorationBroadcastPhase.RewardPoint,
+            },
+            phases);
+        Assert.AreEqual(25, settledGold);
+
+        // 100 起始 - 50 费用 + 5 基础收割；金币奖励入账由真实奖励系统完成（此处模拟，不重复入账）
         Assert.AreEqual(55, wallet.Gold);
-        Assert.AreEqual(1, rewardEventCount);
         territory.Received(1).Claim(cell);
         logistics.Received(1).RecalculateAll();
 
         Object.DestroyImmediate(database);
+        Object.DestroyImmediate(economyDb);
     }
 
     // ── 【地图资源配置化】生成权重与奖励规则 ──────────────

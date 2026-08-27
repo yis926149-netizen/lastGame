@@ -25,6 +25,15 @@ public class TalentCardSelectionUI : MonoBehaviour
     [Header("横排布局")]
     [SerializeField] private float _cardWidth = 452f;
     [SerializeField] private float _cardSpacing = 40f;
+    [Header("换行布局")]
+    [Tooltip("每行最多卡片数，超过自动换行")]
+    [SerializeField] private int _cardsPerRow = 3;
+    [Tooltip("卡片高度，用于计算行距（对应 CardFrame 预制体高度）")]
+    [SerializeField] private float _cardHeight = 711f;
+    [Tooltip("行与行之间的空隙")]
+    [SerializeField] private float _rowSpacing = 40f;
+    [Tooltip("初始预建槽位数，候选超过会自动补建")]
+    [SerializeField] private int _maxSlots = 6;
     [Header("B2: 竖屏适配")]
     [Tooltip("竖屏下卡牌宽度缩放系数")]
     [SerializeField] private float _portraitWidthScale = 0.65f;
@@ -50,6 +59,9 @@ public class TalentCardSelectionUI : MonoBehaviour
     private Sequence _entranceSequence;
     private bool _duringEntrance;
     private bool _subscribed;
+
+    // 布局时算出的基础缩放（横屏 1、竖屏 _portraitWidthScale），入场动画结束后的稳态缩放。
+    private float _baseScale = 1f;
 
     // 面板专用高层 Canvas：选卡期间 sortOrder=1000 覆盖所有其他 UI（含手牌），
     // 其全屏暗幕(raycastTarget=true)即可拦截所有背景点击，卡牌渲染在暗幕之上仍可点。
@@ -148,59 +160,92 @@ public class TalentCardSelectionUI : MonoBehaviour
 
     private void BuildSlots()
     {
-        // B2: 竖屏适配 - 根据屏幕宽高比缩小卡牌尺寸
-        float aspectRatio = (float)Screen.width / Screen.height;
-        float cardWidthActual = aspectRatio < 1f ? _cardWidth * _portraitWidthScale : _cardWidth;
-        float cardSpacingActual = aspectRatio < 1f ? _cardSpacing * _portraitWidthScale : _cardSpacing;
+        for (int i = 0; i < _maxSlots; i++)
+            CreateSlot(i);
+    }
 
-        float step   = cardWidthActual + cardSpacingActual;
-        float startX = -(step);
+    // 创建一个卡槽（默认隐藏）。
+    private void CreateSlot(int index)
+    {
+        var go = Instantiate(_cardSlotPrefab, _slotsParent);
+        go.SetActive(false);
 
-        for (int i = 0; i < 3; i++)
+        var rt = go.GetComponent<RectTransform>();
+        if (rt != null)
         {
-            var go = Instantiate(_cardSlotPrefab, _slotsParent);
-            go.SetActive(false);
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+        }
 
-            var rt = go.GetComponent<RectTransform>();
+        var nameText = go.transform.Find("name")?.GetComponent<Text>();
+        var descText = go.transform.Find("introduction")?.GetComponent<Text>();
+        var typeIcon = go.transform.Find("type")?.GetComponent<Image>();
+        var mainIcon = go.transform.Find("main")?.GetComponent<Image>();
+
+        var btn = go.GetComponent<Button>();
+        if (btn == null) btn = go.AddComponent<Button>();
+        btn.targetGraphic = go.GetComponent<Graphic>();
+
+        var cg = go.GetComponent<CanvasGroup>();
+        if (cg == null) cg = go.AddComponent<CanvasGroup>();
+        cg.alpha = 0f;
+        cg.interactable = false;
+        cg.blocksRaycasts = false;
+
+        var visual = go.GetComponent<TalentCardSlotVisual>();
+        if (visual == null) visual = go.AddComponent<TalentCardSlotVisual>();
+
+        int slotIndex = index;
+        btn.onClick.AddListener(() => OnCardClicked(slotIndex));
+
+        _slots.Add(new SlotRef
+        {
+            Root = go, Button = btn, CanvasGroup = cg, Visual = visual,
+            TypeIcon = typeIcon, MainIcon = mainIcon,
+            NameText = nameText, DescText = descText,
+        });
+    }
+
+    // 按“每行最多 _cardsPerRow 张、行内横向居中、整体纵向居中”摆放前 count 张卡。
+    private void LayoutSlots(int count)
+    {
+        float aspectRatio = (float)Screen.width / Screen.height;
+        _baseScale = aspectRatio < 1f ? _portraitWidthScale : 1f;
+
+        float cardWidth = _cardWidth * _baseScale;
+        float cardSpacing = _cardSpacing * _baseScale;
+        float cardHeight = _cardHeight * _baseScale;
+        float rowSpacing = _rowSpacing * _baseScale;
+
+        float colStep = cardWidth + cardSpacing;
+        float rowStep = cardHeight + rowSpacing;
+
+        int perRow = Mathf.Max(1, _cardsPerRow);
+        int rows = Mathf.CeilToInt(count / (float)perRow);
+
+        for (int i = 0; i < count; i++)
+        {
+            int row = i / perRow;
+            int col = i % perRow;
+
+            // 本行实际卡片数（最后一行可能不满）
+            int countInRow = Mathf.Min(perRow, count - row * perRow);
+            float rowWidth = (countInRow - 1) * colStep;
+            float x = -rowWidth * 0.5f + col * colStep;
+
+            // 整体纵向居中，且新增（不满）的行放在最上面：第 row 行中心 y = row*rowStep - 总高/2
+            float totalHeight = (rows - 1) * rowStep;
+            float y = row * rowStep - totalHeight * 0.5f;
+
+            var rt = _slots[i].Root.GetComponent<RectTransform>();
             if (rt != null)
             {
                 rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
                 rt.pivot = new Vector2(0.5f, 0.5f);
-                rt.anchoredPosition = new Vector2(startX + i * step, 0f);
-                // B2: 竖屏适配 - 缩放卡牌预制体本身
-                if (aspectRatio < 1f)
-                {
-                    rt.localScale = Vector3.one * _portraitWidthScale;
-                }
+                rt.anchoredPosition = new Vector2(x, y);
+                rt.localScale = Vector3.one * _baseScale;
             }
-
-            var nameText = go.transform.Find("name")?.GetComponent<Text>();
-            var descText = go.transform.Find("introduction")?.GetComponent<Text>();
-            var typeIcon = go.transform.Find("type")?.GetComponent<Image>();
-            var mainIcon = go.transform.Find("main")?.GetComponent<Image>();
-
-            var btn = go.GetComponent<Button>();
-            if (btn == null) btn = go.AddComponent<Button>();
-            btn.targetGraphic = go.GetComponent<Graphic>();
-
-            var cg = go.GetComponent<CanvasGroup>();
-            if (cg == null) cg = go.AddComponent<CanvasGroup>();
-            cg.alpha = 0f;
-            cg.interactable = false;
-            cg.blocksRaycasts = false;
-
-            var visual = go.GetComponent<TalentCardSlotVisual>();
-            if (visual == null) visual = go.AddComponent<TalentCardSlotVisual>();
-
-            int index = i;
-            btn.onClick.AddListener(() => OnCardClicked(index));
-
-            _slots.Add(new SlotRef
-            {
-                Root = go, Button = btn, CanvasGroup = cg, Visual = visual,
-                TypeIcon = typeIcon, MainIcon = mainIcon,
-                NameText = nameText, DescText = descText,
-            });
         }
     }
 
@@ -214,6 +259,10 @@ public class TalentCardSelectionUI : MonoBehaviour
         if (_gameLoop != null) _gameLoop.SetPaused(true);
         _currentCards = args.Cards;
         _duringEntrance = true;
+
+        // 候选超过预建槽位时按需补建
+        while (_slots.Count < _currentCards.Count)
+            CreateSlot(_slots.Count);
 
         // 背景图 shuffle 后不重复分配给各活跃卡槽
         AssignShuffledBackgrounds();
@@ -238,6 +287,9 @@ public class TalentCardSelectionUI : MonoBehaviour
                 _slots[i].Root.SetActive(false);
             }
         }
+
+        // 按“每行最多 _cardsPerRow 张、行内横向居中、整体纵向居中”重新摆放
+        LayoutSlots(_currentCards.Count);
 
         // 暗幕先激活（raycastTarget 拦截所有穿透点击），再播入场动画
         if (_darkOverlay != null)
@@ -268,12 +320,12 @@ public class TalentCardSelectionUI : MonoBehaviour
 
             var t = _slots[i].Root.transform;
             var cg = _slots[i].CanvasGroup;
-            t.localScale = Vector3.one * _entranceStartScale;
+            t.localScale = Vector3.one * (_baseScale * _entranceStartScale);
             cg.alpha = 0f;
 
             _entranceSequence.Insert(
                 _staggerSec * i,
-                t.DOScale(1f, _cardAnimSec).SetEase(Ease.OutBack).SetDelay(0.08f));
+                t.DOScale(_baseScale, _cardAnimSec).SetEase(Ease.OutBack).SetDelay(0.08f));
             _entranceSequence.Insert(
                 _staggerSec * i,
                 cg.DOFade(1f, _cardAnimSec).SetEase(Ease.OutQuad));

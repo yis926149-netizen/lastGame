@@ -204,14 +204,21 @@ public class GameInstaller : MonoInstaller
         // 三态记忆迷雾 - 视野计算服务
         // 【探索重构-阶段6】FieldOfViewService 和 AIFogService 已移除
 
-        // 【探索重构-阶段3】主动探索服务及占位实现
-        Container.Bind<IExplorationService>().To<ExplorationService>().AsSingle();
+        // 【探索结果纯广播】统一广播中心：源接口（只读订阅）与发布接口（领域服务）解析到同一单例。
+        Container.Bind<ExplorationBroadcastHub>().AsSingle();
+        Container.Bind<IExplorationBroadcastSource>().To<ExplorationBroadcastHub>().FromResolve();
+        Container.Bind<IExplorationBroadcastPublisher>().To<ExplorationBroadcastHub>().FromResolve();
+
+        // 【探索重构-阶段3】主动探索服务：
+        // IExplorationService + ITickable + IDisposable + 具体类解析到同一实例（单条绑定，勿重复绑定）。
+        Container.BindInterfacesAndSelfTo<ExplorationService>().AsSingle();
         Container.Bind<IExplorationRule>().To<AdjacencyExplorationRule>().AsSingle();   // 邻接规则
 
         // 【探索奖励随机机制 + Excel 数值化】探索奖励系统与提供者
         Container.Bind<ExplorationRewardConfigSO>().FromInstance(_explorationRewardConfigSO).AsSingle();
         Container.Bind<ExplorationRewardProvider>().AsSingle();
-        Container.Bind<ExplorationRewardSystem>().AsSingle().NonLazy(); // NonLazy 确保立即构造并订阅事件
+        // BindInterfacesAndSelfTo 同时绑定 IDisposable，由容器销毁时解绑广播订阅。
+        Container.BindInterfacesAndSelfTo<ExplorationRewardSystem>().AsSingle().NonLazy(); // NonLazy 确保立即构造并订阅广播
 
         // 【探索重构-阶段7】金币资源系统
         Container.Bind(typeof(GoldWallet), typeof(IPlayerResourceWallet)).To<GoldWallet>().AsSingle();

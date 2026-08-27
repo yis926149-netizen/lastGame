@@ -4,9 +4,9 @@ using UnityEngine.UI;
 using Zenject;
 
 /// <summary>
-/// 探索金币奖励表现层：奖励系统在金币到账时登记"待播"（PlayCoinAt），
-/// 探索动画到达奖励触发点（ExplorationPillarPool.ExplorationRewardPoint，
-/// 石柱=溶解30%，飞盘=撞击）时播放。
+/// 探索金币奖励表现层：订阅统一广播的 RewardPoint 阶段，
+/// 只处理玩家阵营且实际结算为金币（SettledRewardType == Gold）的载荷，
+/// 使用 SettledGoldAmount 播放金币表现（含建筑降级金币，不漏播、不误播）。
 /// 表现方式由 Inspector 下拉框切换（CoinModel=金币模型弹跳 / AddCoinsUI=漂字）。
 /// </summary>
 public class ExplorationCoinPresenter : MonoBehaviour
@@ -30,39 +30,23 @@ public class ExplorationCoinPresenter : MonoBehaviour
 	[Header("对象池配置")]
 	[SerializeField] private int _initialPoolSize = 4;
 
-	/// <summary>待播登记的超时上限：超过该时长仍无动画奖励点事件则视为异常中断，清理登记。</summary>
-	private const float PendingExpirySeconds = 10f;
-
-	private struct PendingCoin
-	{
-		public float TimeStamp;
-		public int Amount;
-
-		public PendingCoin(float timeStamp, int amount)
-		{
-			TimeStamp = timeStamp;
-			Amount = amount;
-		}
-	}
-
-	private ExplorationPillarPool _pillarPool;
+	private IExplorationBroadcastSource _broadcastSource;
 	private readonly Queue<ExplorationCoinEffect> _coinPool = new Queue<ExplorationCoinEffect>();
 	private readonly HashSet<ExplorationCoinEffect> _pooledCoins = new HashSet<ExplorationCoinEffect>();
 	private readonly Queue<ExplorationAddCoinsUIEffect> _uiPool = new Queue<ExplorationAddCoinsUIEffect>();
 	private readonly HashSet<ExplorationAddCoinsUIEffect> _pooledUIs = new HashSet<ExplorationAddCoinsUIEffect>();
-	private readonly Dictionary<Vector3, PendingCoin> _pendingCoins = new Dictionary<Vector3, PendingCoin>();
 
 	[Inject]
-	public void Construct(ExplorationPillarPool pillarPool)
+	public void Construct(IExplorationBroadcastSource broadcastSource)
 	{
-		_pillarPool = pillarPool;
+		_broadcastSource = broadcastSource;
 	}
 
 	private void Start()
 	{
-		if (_pillarPool == null)
+		if (_broadcastSource == null)
 		{
-			Debug.LogError("[CoinPresenter] ExplorationPillarPool 未注入！Zenject 可能未找到该组件。");
+			Debug.LogError("[CoinPresenter] IExplorationBroadcastSource 未注入！Zenject 可能未找到该组件。");
 			return;
 		}
 		if (_coinPrefab == null && _addCoinsUIPrefab == null)
@@ -77,44 +61,32 @@ public class ExplorationCoinPresenter : MonoBehaviour
 			if (_addCoinsUIPrefab != null) ReturnUIToPool(InstantiateUI());
 		}
 
-		_pillarPool.ExplorationRewardPoint += OnExplorationRewardPoint;
-	}
-
-	/// <summary>动态查找当前激活的 Screen Space Overlay Canvas（场景中存在多个 World Space Canvas，不可缓存）。</summary>
-	private Canvas FindActiveOverlayCanvas()
-	{
-		foreach (var canvas in FindObjectsOfType<Canvas>())
-		{
-			if (canvas.renderMode == UnityEngine.RenderMode.ScreenSpaceOverlay && canvas.isActiveAndEnabled)
-				return canvas;
-		}
-		return null;
+		_broadcastSource.Broadcast += OnBroadcast;
 	}
 
 	private void OnDestroy()
 	{
-		if (_pillarPool != null)
+		if (_broadcastSource != null)
 		{
-			_pillarPool.ExplorationRewardPoint -= OnExplorationRewardPoint;
+			_broadcastSource.Broadcast -= OnBroadcast;
 		}
-		_pendingCoins.Clear();
 	}
 
-	/// <summary>由探索奖励系统调用：登记该地块待播金币表现（动画奖励触发点到达时播放）。</summary>
-	public void PlayCoinAt(HexCellData cell, int amount)
+	/// <summary>只处理玩家 RewardPoint 且实际结算为金币的载荷。</summary>
+	private void OnBroadcast(ExplorationAcquisition acquisition)
 	{
-		if (cell == null) return;
-		PruneExpiredPendings();
-		_pendingCoins[cell.HexCoordinate] = new PendingCoin(Time.realtimeSinceStartup, amount);
+		if (acquisition == null) return;
+		if (acquisition.Phase != ExplorationBroadcastPhase.RewardPoint) return;
+		if (acquisition.FactionId != 0) return;
+		if (acquisition.SettledRewardType != ExplorationRewardConfigSO.ExplorationRewardType.Gold) return;
+		if (acquisition.Cell == null || acquisition.SettledGoldAmount <= 0) return;
+
+		PlayCoinNow(acquisition.Cell, acquisition.SettledGoldAmount);
 	}
 
-	private void OnExplorationRewardPoint(HexCellData cell)
+	/// <summary>立即播放金币表现（使用对象池，按 Inspector 选择方案）。</summary>
+	private void PlayCoinNow(HexCellData cell, int amount)
 	{
-		if (cell == null) return;
-		PruneExpiredPendings();
-		if (!_pendingCoins.TryGetValue(cell.HexCoordinate, out PendingCoin pending)) return;
-		_pendingCoins.Remove(cell.HexCoordinate);
-
 		switch (_effectStyle)
 		{
 			case CoinRewardEffectStyle.CoinModel:
@@ -137,26 +109,21 @@ public class ExplorationCoinPresenter : MonoBehaviour
 					{
 						ui.transform.SetParent(overlayCanvas.transform, false);
 					}
-					ui.Play(cell.RealCenterWorldCoordinate, pending.Amount, (RectTransform)overlayCanvas.transform, ReturnUIToPool);
+					ui.Play(cell.RealCenterWorldCoordinate, amount, (RectTransform)overlayCanvas.transform, ReturnUIToPool);
 				}
 				break;
 		}
 	}
 
-	/// <summary>清理超时未消费的待播登记（探索动画异常中断时避免条目泄漏）。</summary>
-	private void PruneExpiredPendings()
+	/// <summary>动态查找当前激活的 Screen Space Overlay Canvas（场景中存在多个 World Space Canvas，不可缓存）。</summary>
+	private Canvas FindActiveOverlayCanvas()
 	{
-		if (_pendingCoins.Count == 0) return;
-		var expired = new List<Vector3>();
-		foreach (var kv in _pendingCoins)
+		foreach (var canvas in FindObjectsOfType<Canvas>())
 		{
-			if (Time.realtimeSinceStartup - kv.Value.TimeStamp > PendingExpirySeconds)
-				expired.Add(kv.Key);
+			if (canvas.renderMode == UnityEngine.RenderMode.ScreenSpaceOverlay && canvas.isActiveAndEnabled)
+				return canvas;
 		}
-		foreach (var coord in expired)
-		{
-			_pendingCoins.Remove(coord);
-		}
+		return null;
 	}
 
 	// ── 方案一：金币模型对象池 ────────────────

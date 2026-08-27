@@ -5021,7 +5021,11 @@ MonoBehaviour:
   _cardSlotPrefab: {fileID: 4126988599795236846, guid: 301fc3dffb5016a4eb780f2ae49393a8, type: 3}
   _slotsParent: {fileID: 1810035894}
   _cardWidth: 452
-  _cardSpacing: 40
+  _cardSpacing: 65
+  _cardsPerRow: 3
+  _cardHeight: 711
+  _rowSpacing: 30
+  _maxSlots: 6
   _portraitWidthScale: 0.65
   _staggerSec: 0.06
   _cardAnimSec: 0.35
@@ -5697,7 +5701,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 6.6, y: -145}
+  m_AnchoredPosition: {x: 2.2, y: -3.4}
   m_SizeDelta: {x: 245.67, y: 130.3836}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &921053251
@@ -9273,7 +9277,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 171}
   m_SizeDelta: {x: 100, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1810035895

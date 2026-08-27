@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Zenject;
@@ -5,9 +6,10 @@ using Zenject;
 /// <summary>
 /// AI 自动探索：每隔一定时间自动探索邻接己方领地且未探索的中立地块。
 /// 【统一开发入口】开发（校验/扣费/归属/重算/收割）改走 IExplorationService，
-/// 与玩家共用同一服务，中立校验保证同时开发互斥；奖励按统一事件结算。
+/// 与玩家共用同一服务，中立校验保证同时开发互斥；奖励按统一广播结算。
+/// 【探索结果纯广播】订阅 Explored（仅 AI 阵营），从载荷结算并发布 Settled；AI 不产生 RewardPoint。
 /// </summary>
-public class AIAutoExplorer : ITickable
+public class AIAutoExplorer : ITickable, IDisposable
 {
     private const int AIIndex = 1;
 
@@ -22,6 +24,8 @@ public class AIAutoExplorer : ITickable
     private readonly AIEntityFactory _aiFactory;
     private readonly IExplorationService _explorationService;
     private readonly AIConfigProvider _aiConfig;
+    private readonly IExplorationBroadcastSource _broadcastSource;
+    private readonly IExplorationBroadcastPublisher _broadcastPublisher;
 
     private float _timer;
 
@@ -36,6 +40,8 @@ public class AIAutoExplorer : ITickable
         IExplorationCostProvider costProvider,
         AIEntityFactory aiFactory,
         IExplorationService explorationService,
+        IExplorationBroadcastSource broadcastSource,
+        IExplorationBroadcastPublisher broadcastPublisher,
         AIConfigProvider aiConfig = null)
     {
         _mapData = mapData;
@@ -49,8 +55,15 @@ public class AIAutoExplorer : ITickable
         _aiFactory = aiFactory;
         _explorationService = explorationService;
         _aiConfig = aiConfig;
+        _broadcastSource = broadcastSource;
+        _broadcastPublisher = broadcastPublisher;
 
-        _explorationService.ExplorationRewardTriggered += OnExplorationRewardTriggered;
+        _broadcastSource.Broadcast += OnBroadcast;
+    }
+
+    public void Dispose()
+    {
+        _broadcastSource.Broadcast -= OnBroadcast;
     }
 
     public void Tick()
@@ -106,51 +119,79 @@ public class AIAutoExplorer : ITickable
         return _explorationService.TryExplore(target, AIIndex) == ExploreResult.Success;
     }
 
-    // ── 探索奖励结算（订阅统一事件，按阵营分发）────────────
-    /// <summary>
-    /// 消费地图生成时固化的奖励快照。
-    /// 金币 → 进入 AI 钱包；军事 → 生成单位（溢出邻格）；战术 → AI 战术牌系统未实现，暂不发放；无奖励 → 无结算。
-    /// </summary>
-    private void OnExplorationRewardTriggered(HexCellData cell, int factionId)
+    // ── 探索奖励结算（订阅统一广播，仅处理 AI 阵营 Explored）────────────
+    private void OnBroadcast(ExplorationAcquisition acquisition)
     {
-        if (factionId != AIIndex || cell == null) return;
-        ExplorationRewardData reward = cell.TakeExplorationReward();
-        if (reward == null)
-        {
-            Debug.LogWarning($"[AIAutoExplorer] 地块 {cell.HexCoordinate} 没有预生成奖励，跳过结算");
+        if (acquisition == null || acquisition.FactionId != AIIndex)
             return;
-        }
+        if (acquisition.Phase != ExplorationBroadcastPhase.Explored)
+            return;
 
-        switch (reward.RewardType)
+        Settle(acquisition);
+    }
+
+    /// <summary>
+    /// 从载荷结算奖励并发布 Settled。
+    /// 金币 → 进入 AI 钱包；军事 → 生成单位（溢出邻格）；战术 → AI 战术牌系统未实现，暂不发放；
+    /// 建筑 → 放置或降级金币；无奖励/缺失快照 → 发布 None。
+    /// </summary>
+    private void Settle(ExplorationAcquisition acquisition)
+    {
+        HexCellData cell = acquisition.Cell;
+
+        try
         {
-            case ExplorationRewardConfigSO.ExplorationRewardType.None:
-                break;
+            if (!acquisition.HasRewardSnapshot)
+            {
+                Debug.LogWarning($"[AIAutoExplorer] 地块 {cell.HexCoordinate} 没有预生成奖励，跳过结算");
+                _broadcastPublisher.Publish(acquisition.SettledAs(ExplorationRewardConfigSO.ExplorationRewardType.None));
+                return;
+            }
 
-            case ExplorationRewardConfigSO.ExplorationRewardType.Gold:
-                AddGoldReward(reward.GoldAmount);
-                Debug.Log($"[AIAutoExplorer] 探索奖励：金币 +{reward.GoldAmount}");
-                break;
+            switch (acquisition.OriginalRewardType)
+            {
+                case ExplorationRewardConfigSO.ExplorationRewardType.None:
+                    _broadcastPublisher.Publish(acquisition.SettledAs(ExplorationRewardConfigSO.ExplorationRewardType.None));
+                    break;
 
-            case ExplorationRewardConfigSO.ExplorationRewardType.MilitaryUnit:
-                SpawnRewardUnits(cell, reward.UnitConfigs);
-                break;
+                case ExplorationRewardConfigSO.ExplorationRewardType.Gold:
+                    AddGoldReward(acquisition.OriginalGoldAmount);
+                    Debug.Log($"[AIAutoExplorer] 探索奖励：金币 +{acquisition.OriginalGoldAmount}");
+                    _broadcastPublisher.Publish(acquisition.SettledAs(ExplorationRewardConfigSO.ExplorationRewardType.Gold, acquisition.OriginalGoldAmount));
+                    break;
 
-            case ExplorationRewardConfigSO.ExplorationRewardType.TacticalCard:
-                // AI 战术牌系统尚未实现，战术奖励暂不发放
-                Debug.Log("[AIAutoExplorer] 探索奖励：战术卡牌（AI 暂不发放）");
-                break;
+                case ExplorationRewardConfigSO.ExplorationRewardType.MilitaryUnit:
+                    SpawnRewardUnits(cell, acquisition.UnitConfigs);
+                    _broadcastPublisher.Publish(acquisition.SettledAs(ExplorationRewardConfigSO.ExplorationRewardType.MilitaryUnit));
+                    break;
 
-            case ExplorationRewardConfigSO.ExplorationRewardType.Building:
-                SpawnRewardBuilding(cell, reward.BuildingConfig, reward.GoldAmount);
-                break;
+                case ExplorationRewardConfigSO.ExplorationRewardType.TacticalCard:
+                    // AI 战术牌系统尚未实现，战术奖励暂不发放
+                    Debug.Log("[AIAutoExplorer] 探索奖励：战术卡牌（AI 暂不发放）");
+                    _broadcastPublisher.Publish(acquisition.SettledAs(ExplorationRewardConfigSO.ExplorationRewardType.TacticalCard));
+                    break;
+
+                case ExplorationRewardConfigSO.ExplorationRewardType.Building:
+                    SettleBuilding(acquisition);
+                    break;
+
+                default:
+                    _broadcastPublisher.Publish(acquisition.SettledAs(ExplorationRewardConfigSO.ExplorationRewardType.None));
+                    break;
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception);
+            _broadcastPublisher.Publish(acquisition.SettledAs(ExplorationRewardConfigSO.ExplorationRewardType.None));
         }
     }
 
-    private void SpawnRewardUnits(HexCellData targetCell, UnitConfigSO[] unitConfigs)
+    private void SpawnRewardUnits(HexCellData targetCell, IReadOnlyList<UnitConfigSO> unitConfigs)
     {
         if (_aiFactory == null || unitConfigs == null) return;
 
-        for (int i = 0; i < unitConfigs.Length; i++)
+        for (int i = 0; i < unitConfigs.Count; i++)
         {
             HexCellData spawnCell = targetCell;
             Vector3 spawnPos = targetCell.RealCenterWorldCoordinate;
@@ -176,14 +217,24 @@ public class AIAutoExplorer : ITickable
     /// <summary>
     /// AI 建筑奖励：直接放置在被探索地块上；格子不合格或生成失败时降级为金币（与玩家侧同规则）。
     /// </summary>
-    private void SpawnRewardBuilding(HexCellData cell, BuildingConfigSO config, int fallbackGoldAmount)
+    private void SettleBuilding(ExplorationAcquisition acquisition)
     {
-        if (_aiFactory == null) return;
+        HexCellData cell = acquisition.Cell;
+        BuildingConfigSO config = acquisition.BuildingConfig;
+        int fallbackGold = acquisition.OriginalGoldAmount;
+
+        if (_aiFactory == null)
+        {
+            Debug.LogWarning("[AIAutoExplorer] AIEntityFactory 未注入，建筑奖励无法结算");
+            _broadcastPublisher.Publish(acquisition.SettledAs(ExplorationRewardConfigSO.ExplorationRewardType.None));
+            return;
+        }
 
         if (config == null)
         {
             Debug.LogWarning("[AIAutoExplorer] 探索奖励：建筑奖励但 rewardBuildings 为空，降级为金币");
-            DegradeToGold(fallbackGoldAmount);
+            DegradeToGold(fallbackGold);
+            _broadcastPublisher.Publish(acquisition.SettledAs(ExplorationRewardConfigSO.ExplorationRewardType.Gold, fallbackGold));
             return;
         }
 
@@ -191,12 +242,14 @@ public class AIAutoExplorer : ITickable
         if (!RewardBuildingRule.CanPlace(cell))
         {
             Debug.Log("[AIAutoExplorer] 探索奖励：地块不可建造，建筑奖励降级为金币");
-            DegradeToGold(fallbackGoldAmount);
+            DegradeToGold(fallbackGold);
+            _broadcastPublisher.Publish(acquisition.SettledAs(ExplorationRewardConfigSO.ExplorationRewardType.Gold, fallbackGold));
             return;
         }
 
         _aiFactory.GenerateBuilding(config, cell.RealCenterWorldCoordinate);
         Debug.Log($"[AIAutoExplorer] 探索奖励：建筑 {config.name}");
+        _broadcastPublisher.Publish(acquisition.SettledAs(ExplorationRewardConfigSO.ExplorationRewardType.Building));
     }
 
     /// <summary>使用预生成的备用金币完成建筑奖励降级。</summary>
