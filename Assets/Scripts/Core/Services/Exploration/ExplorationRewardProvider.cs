@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using GameConfig;
+using UnityEngine;
+using SystemRandom = System.Random;
 
 //****************************************
 //功能说明：探索奖励提供者（阶段6：Excel 唯一主源）。
@@ -44,7 +46,7 @@ public class ExplorationRewardProvider
         return _config.Config;
     }
 
-    public ExplorationRewardConfigSO.ExplorationRewardType RollRewardType(Random random)
+    public ExplorationRewardConfigSO.ExplorationRewardType RollRewardType(SystemRandom random)
     {
         var cfg = RequireConfig();
         int total = cfg.noneWeight + cfg.goldWeight + cfg.militaryWeight + cfg.tacticalWeight + cfg.buildingWeight;
@@ -61,23 +63,24 @@ public class ExplorationRewardProvider
         return ExplorationRewardConfigSO.ExplorationRewardType.Building;
     }
 
-    public int RollGold(Random random)
+    public int RollGold(SystemRandom random)
     {
         int[] tiers = ParseIntList(RequireConfig().goldTiers);
         if (tiers.Length > 0) return tiers[random.Next(0, tiers.Length)];
         return 0;
     }
 
-    public int RollUnitCount(Random random)
+    public int RollUnitCount(SystemRandom random)
     {
         int[] tiers = ParseIntList(RequireConfig().unitCountTiers);
         if (tiers.Length > 0) return Math.Max(0, tiers[random.Next(0, tiers.Length)]);
         return 0;
     }
 
-    public UnitConfigSO RollUnitConfig(Random random)
+    public UnitConfigSO RollUnitConfig(SystemRandom random)
     {
         string configId = RollPoolEntry("MilitaryUnit", random);
+        Debug.Log($"[RewardTrace] Resolve unit poolConfig={(string.IsNullOrEmpty(configId) ? "NULL" : configId)}");
         if (string.IsNullOrEmpty(configId)) return null;
 
         if (_unitBalance == null || !_unitBalance.TryGetUnit(configId, out var ub))
@@ -86,12 +89,14 @@ public class ExplorationRewardProvider
         if (_unitProvider == null || !_unitProvider.TryGetUnitConfig(ub.legacyId, out var unit))
             throw new InvalidOperationException(
                 $"[ExplorationReward] 奖励池 unit.{configId} 映射的 legacyId {ub.legacyId} 无对应 UnitConfigSO 资源。");
+        Debug.Log($"[RewardTrace] Resolve unit success poolConfig={configId} legacyId={ub.legacyId} unitId={unit.Id}");
         return unit;
     }
 
-    public TacticalCardSO RollTacticalCard(Random random)
+    public TacticalCardSO RollTacticalCard(SystemRandom random)
     {
         string configId = RollPoolEntry("TacticalCard", random);
+        Debug.Log($"[RewardTrace] Resolve tactical poolConfig={(string.IsNullOrEmpty(configId) ? "NULL" : configId)}");
         if (string.IsNullOrEmpty(configId)) return null;
 
         if (_tacticalDatabase == null || _tacticalDatabase.cards == null)
@@ -104,9 +109,10 @@ public class ExplorationRewardProvider
             $"[ExplorationReward] 奖励池 tactical.{configId} 无对应 TacticalCardSO 资源。");
     }
 
-    public BuildingConfigSO RollBuildingConfig(Random random)
+    public BuildingConfigSO RollBuildingConfig(SystemRandom random)
     {
         string configId = RollPoolEntry("Building", random);
+        Debug.Log($"[RewardTrace] Resolve building poolConfig={(string.IsNullOrEmpty(configId) ? "NULL" : configId)}");
         if (string.IsNullOrEmpty(configId)) return null;
 
         if (_buildingBalance == null || !_buildingBalance.TryGetBuilding(configId, out var bb))
@@ -119,7 +125,7 @@ public class ExplorationRewardProvider
     }
 
     /// <summary>地图生成时一次性固化奖励类型及其全部随机结果。</summary>
-    public ExplorationRewardData GenerateReward(Random random)
+    public ExplorationRewardData GenerateReward(SystemRandom random)
     {
         var reward = new ExplorationRewardData
         {
@@ -151,7 +157,31 @@ public class ExplorationRewardProvider
                 break;
         }
 
+        LogGeneratedReward(reward);
         return reward;
+    }
+
+    private void LogGeneratedReward(ExplorationRewardData reward)
+    {
+        switch (reward.RewardType)
+        {
+            case ExplorationRewardConfigSO.ExplorationRewardType.MilitaryUnit:
+                int count = reward.UnitConfigs?.Length ?? -1;
+                var ids = new List<string>();
+                if (reward.UnitConfigs != null)
+                {
+                    foreach (var u in reward.UnitConfigs)
+                        ids.Add(u == null ? "NULL" : u.Id.ToString());
+                }
+                Debug.Log($"[RewardTrace] Provider military count={count} units=[{string.Join(",", ids)}]");
+                break;
+            case ExplorationRewardConfigSO.ExplorationRewardType.TacticalCard:
+                Debug.Log($"[RewardTrace] Provider tactical card={(reward.TacticalCard == null ? "NULL" : reward.TacticalCard.cardId)}");
+                break;
+            case ExplorationRewardConfigSO.ExplorationRewardType.Building:
+                Debug.Log($"[RewardTrace] Provider building config={(reward.BuildingConfig == null ? "NULL" : reward.BuildingConfig.buildingId.ToString())} fallbackGold={reward.GoldAmount}");
+                break;
+        }
     }
 
     /// <summary>按奖励类型返回探索费用（Excel 唯一主源）。</summary>
@@ -168,14 +198,27 @@ public class ExplorationRewardProvider
         };
     }
 
-    private string RollPoolEntry(string rewardType, Random random)
+    private string RollPoolEntry(string rewardType, SystemRandom random)
     {
         if (_pool == null)
             throw new InvalidOperationException(
                 "[ExplorationReward] Excel 奖励池未加载：请先运行 工具/游戏配置/导入并校验，并在 GameInstaller 绑定 ExplorationRewardPoolDatabaseSO。");
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        var allEntries = _pool.EnabledEntries;
+        var entryDiagnostics = new List<string>();
+        foreach (var e in allEntries)
+        {
+            entryDiagnostics.Add(e == null
+                ? "NULL_ENTRY"
+                : $"{e.rewardType}:{e.configId}:enabled={e.enabled}:weight={e.weight}");
+        }
+        Debug.Log($"[RewardTrace] Pool request={rewardType} enabledCount={allEntries.Count} entries=[{string.Join(" | ", entryDiagnostics)}]");
+#endif
+
         var candidates = new List<ExplorationRewardPoolEntry>();
         int totalWeight = 0;
+        Debug.Log($"[RewardTrace] Pool rawEntries count={_pool.Entries.Count}");
         foreach (var entry in _pool.EnabledEntries)
         {
             if (entry == null || entry.rewardType != rewardType) continue;
@@ -183,6 +226,7 @@ public class ExplorationRewardProvider
             totalWeight += Math.Max(1, entry.weight);
         }
 
+        Debug.Log($"[RewardTrace] Pool result={rewardType} candidates={candidates.Count} totalWeight={totalWeight} configIds=[{string.Join(",", candidates.ConvertAll(e => e.configId ?? "NULL").ToArray())}]");
         if (candidates.Count == 0 || totalWeight <= 0) return null;
 
         int roll = random.Next(0, totalWeight);

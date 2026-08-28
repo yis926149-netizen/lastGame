@@ -55,7 +55,7 @@ public class UnitRemovalServiceTests
         Assert.IsFalse(_cell.IsHaveUnit());
         Assert.IsNull(_cell.GetUnit());
         Assert.IsFalse(_unitRepository.AllPlayerUnits.ContainsKey(_unit));
-        Assert.IsFalse(_unit.activeSelf);
+        Assert.IsTrue(_unit == null);
         Assert.AreEqual(1, removedCount);
     }
 
@@ -69,7 +69,7 @@ public class UnitRemovalServiceTests
 
         Assert.IsFalse(_cell.IsHaveUnit());
         Assert.IsFalse(_unitRepository.TryGetEnemyUnit(_unit, out _));
-        Assert.IsFalse(_unit.activeSelf);
+        Assert.IsTrue(_unit == null);
     }
 
     [Test]

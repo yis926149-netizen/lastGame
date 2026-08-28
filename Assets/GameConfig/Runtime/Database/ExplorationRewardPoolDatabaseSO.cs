@@ -23,6 +23,13 @@ namespace GameConfig
             get { EnsureLookup(); return enabledEntries; }
         }
 
+        private void OnEnable()
+        {
+            // Unity 可能在不重载域的 Play Mode 下复用 ScriptableObject 实例；
+            // 运行时缓存不能跨生命周期沿用。
+            enabledEntries = null;
+        }
+
         public void ReplaceAll(ExplorationRewardPoolEntry[] data)
         {
             entries = data ?? Array.Empty<ExplorationRewardPoolEntry>();
@@ -32,7 +39,8 @@ namespace GameConfig
 
         private void EnsureLookup()
         {
-            if (enabledEntries is not null)
+            if (enabledEntries is not null &&
+                (enabledEntries.Count > 0 || entries == null || entries.Length == 0))
                 return;
 
             enabledEntries = new List<ExplorationRewardPoolEntry>();
@@ -41,6 +49,17 @@ namespace GameConfig
                 if (entry != null && entry.enabled)
                     enabledEntries.Add(entry);
             }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"[RewardTrace] PoolDatabase EnsureLookup raw={(entries == null ? -1 : entries.Length)} enabled={enabledEntries.Count}");
+            if (entries != null)
+            {
+                foreach (var entry in entries)
+                {
+                    Debug.Log($"[RewardTrace] PoolDatabase entry={(entry == null ? "NULL" : $"{entry.rewardType}:{entry.configId}:enabled={entry.enabled}:weight={entry.weight}")}");
+                }
+            }
+#endif
         }
     }
 }

@@ -104,6 +104,7 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
     /// </summary>
     public int AddCard(TacticalCardSO config)
     {
+        Debug.Log($"[RewardTrace] AddCard enter card={(config == null ? "NULL" : config.cardId)} prefab={(_cardPrefab == null ? "NULL" : "OK")} anchor1={(_anchor1 == null ? "NULL" : "OK")} anchor2={(_anchor2 == null ? "NULL" : "OK")}");
         if (config == null) return -1;
         if (_cardPrefab == null || _anchor1 == null || _anchor2 == null)
         {
@@ -155,6 +156,7 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
     /// </summary>
     public void AddCardWithFly(TacticalCardSO config, Vector3 worldStartPos)
     {
+        Debug.Log($"[RewardTrace] AddCardWithFly card={(config == null ? "NULL" : config.cardId)} flyBusy={_flyBusy}");
         if (config == null) return;
 
         if (_flyBusy)
@@ -713,17 +715,21 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
     private void AddOwnUnitOnCell(HexCellData cell, List<CharacterData> result)
     {
         if (cell == null) return;
-        GameObject unit = cell.GetOccupant() ?? cell.GetUnit();
-        if (unit == null) return;
 
-        var controller = unit.GetComponent<UnitMovementController>();
-        if (controller == null || controller.characterData == null) return;
-        if (controller.PlayerIndex != 0) return;              // 仅己方（玩家）单位
-        if (controller.IsDeathScheduled) return;              // 死亡流程中的单位跳过
-        if (controller.characterData.currentHp <= 0) return;  // 已阵亡单位跳过
+        // 【多单位落点】枚举格内全部站位单位。
+        foreach (GameObject unit in cell.GetStandingUnits())
+        {
+            if (unit == null) continue;
 
-        if (!result.Contains(controller.characterData))
-            result.Add(controller.characterData);
+            var controller = unit.GetComponent<UnitMovementController>();
+            if (controller == null || controller.characterData == null) continue;
+            if (controller.PlayerIndex != 0) continue;              // 仅己方（玩家）单位
+            if (controller.IsDeathScheduled) continue;              // 死亡流程中的单位跳过
+            if (controller.characterData.currentHp <= 0) continue;  // 已阵亡单位跳过
+
+            if (!result.Contains(controller.characterData))
+                result.Add(controller.characterData);
+        }
     }
 
     // ── 飞行卡动画用缓动与曲线 ──────────────────────────────

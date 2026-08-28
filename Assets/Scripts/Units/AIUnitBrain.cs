@@ -62,7 +62,7 @@ public class AIUnitBrain : UnitBrainBase
 
             if (Movement.CalculateMinMovementCostBetweenTwoHexes(
                     allPoints, startHex, endHex,
-                    Enums.MovementPurpose.MoveToAttack, out float cost, out _)
+                    Enums.MovementPurpose.MoveToAttack, FactionId, out float cost, out _)
                 && cost < bestCost)
             {
                 bestCost = cost;
@@ -121,7 +121,7 @@ public class AIUnitBrain : UnitBrainBase
 
             if (Movement.CalculateMinMovementCostBetweenTwoHexes(
                     allPoints, startHex, endHex,
-                    Enums.MovementPurpose.MoveToAttack, out float cost, out _)
+                    Enums.MovementPurpose.MoveToAttack, FactionId, out float cost, out _)
                 && cost < bestCost)
             {
                 bestCost = cost;

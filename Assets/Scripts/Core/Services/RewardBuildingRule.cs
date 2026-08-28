@@ -14,6 +14,6 @@ public static class RewardBuildingRule
         return cell != null
             && MountainCellRule.CanBuildOnCell(cell)
             && cell.BulidingTypeOnHex_Building.Key == Enums.BulidingType.NoBuilding
-            && !cell.IsHaveUnit();
+            && !cell.HasAnyStandingUnit();
     }
 }

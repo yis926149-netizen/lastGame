@@ -40,6 +40,8 @@ Shader "Custom/River" {
         float _XSpeed;
         // 【阶段四】河流淡出（MaterialPropertyBlock 提供，§13.4）
         float _FadeAlpha;
+        // _FogCoverRiver: 1=河流应用迷雾遮罩，0=始终显示正常水面
+        float _FogCoverRiver;
 
         struct Input {
             float2 uv_MainTex;
@@ -80,7 +82,17 @@ Shader "Custom/River" {
         }
 
         void fogFinal(Input IN, SurfaceOutputStandard o, inout fixed4 color) {
-            FogBlend_final(color, IN.fogCoord);
+            if (_FogCoverRiver > 0.0)
+            {
+                // 先算探索遮罩，再用它在"完全迷雾"和"原始水面外观"之间插值
+                float explored = FogBlend_computeExplored(IN.fogCoord);
+                // rgb：lerp 到迷雾色，强度由 _FogCoverRiver 和探索状态共同决定
+                fixed4 foggedColor = color;
+                FogBlend_final(foggedColor, IN.fogCoord);
+                color.rgb = lerp(lerp(foggedColor.rgb, color.rgb, explored), color.rgb, 1.0 - _FogCoverRiver);
+                // alpha：未探索区推向不透明，强度同样受 _FogCoverRiver 缩放
+                color.a = lerp(lerp(1.0, color.a, explored), color.a, 1.0 - _FogCoverRiver);
+            }
         }
         ENDCG
     }

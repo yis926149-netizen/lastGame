@@ -65,6 +65,7 @@ Material:
     - _Cutoff: 0.5
     - _DetailNormalMapScale: 1
     - _DstBlend: 0
+    - _FadeAlpha: 1
     - _FoamDensity: 9.3
     - _FoamStrength: 0.57
     - _GlossMapScale: 1
@@ -83,7 +84,7 @@ Material:
     - _WaveStrength: 0
     - _ZWrite: 1
     m_Colors:
-    - _BaseColor: {r: 0.47923335, g: 0.5866319, b: 0.7735849, a: 1}
+    - _BaseColor: {r: 0.16862746, g: 0.9254902, b: 0.75686276, a: 1}
     - _Color: {r: 0.3613582, g: 0.6403283, b: 0.7610062, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
   m_BuildTextureStacks: []

@@ -302,7 +302,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
     private static bool IsDeploymentCommitted(NormalCardConfigSO config, HexCellData targetCell)
     {
         if (targetCell == null) return false;
-        if (config is UnitConfigSO) return targetCell.IsHaveUnit();
+        if (config is UnitConfigSO) return targetCell.HasAnyStandingUnit();
         if (config is BuildingConfigSO) return targetCell.BulidingTypeOnHex_Building.Value != null;
         return false;
     }
@@ -391,7 +391,8 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         if (_goldWallet.Gold < (config != null ? GetCardCost(config) : _goldWallet.CardCost)) return false;
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
-        if (cell.IsHaveUnit()) return false;
+        // 【多单位落点】部署改按有效容量判断：仍有自由站位槽即可部署。
+        if (!cell.HasFreeStandingSlot()) return false;
         // 金矿格不可部署建筑（单位不受限）
         if (config is BuildingConfigSO && cell.landForm != null && LandFormEffectRule.GetBlockBuildingSpawn(cell.landForm)) return false;
         return true;
@@ -416,7 +417,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
                          prefabCanvas.transform.GetChild(1).GetComponent<Slider>() != null;
         if (prefab == null || parent == null || !hasUnitUi)
         {
-            Debug.LogError($"[CardPresenter] Unit card {unitID} cannot be deployed because its prefab hierarchy is incomplete.");
+            Debug.LogError($"[RewardTrace] SpawnUnit fail unitId={unitID} prefab={(prefab == null ? "NULL" : "OK")} parent={(parent == null ? "NULL" : "OK")} hasUnitUi={hasUnitUi}");
             return null;
         }
 
@@ -467,7 +468,14 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         Vector3 hexCoord = _mapDataService.WorldToHexCoordinate(g.transform.position);
         HexCellData h = _mapDataService.GetCell(hexCoord);
         _unitRepository.AddPlayerUnit(g, characterData);
-        h.SetHaveUnit(true, g);
+        // 【多单位落点】按站位槽生成：取得自由站位槽并吸附到槽位世界坐标（满员退回旧单单位写入兜底）。
+        if (h != null)
+        {
+            if (h.TryClaimStandingUnit(g, position, position, preferLine: false, out _, out Vector3 slotPos))
+                g.transform.position = slotPos;
+            else
+                h.SetHaveUnit(true, g);
+        }
         // 【探索重构-阶段5】部署不再自动探索周围地块
         _mapVisualEvent.Raise();
 
@@ -527,7 +535,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
                              prefabCanvas.transform.GetChild(0).GetComponent<Slider>() != null;
         if (h == null || prefab == null || parent == null || !hasBuildingUi)
         {
-            Debug.LogError($"[CardPresenter] Building card {buildingID} cannot be deployed because its prefab hierarchy is incomplete.");
+            Debug.LogError($"[RewardTrace] SpawnBuilding fail buildingId={buildingID} h={(h == null ? "NULL" : "OK")} prefab={(prefab == null ? "NULL" : "OK")} parent={(parent == null ? "NULL" : "OK")} hasBuildingUi={hasBuildingUi}");
             return false;
         }
 

@@ -106,16 +106,14 @@ public class UnitRemovalService
             _movementSystem.ReleaseReservationByUnit(unit);
         }
 
+        // 【多单位落点】按站位槽枚举查找并释放单位的站位（含旧字段同步）。
         HexCellData occupiedCell = _mapDataService.GetCellByWorldPosition(unit.transform.position);
-        if (occupiedCell == null || occupiedCell.GetUnit() != unit)
+        if (occupiedCell == null || !occupiedCell.GetStandingUnits().Contains(unit))
         {
-            occupiedCell = _mapDataService.GetAllCells()?.FirstOrDefault(cell => cell.GetUnit() == unit);
+            occupiedCell = _mapDataService.GetAllCells()?.FirstOrDefault(cell => cell.GetStandingUnits().Contains(unit));
         }
 
-        if (occupiedCell != null && occupiedCell.GetUnit() == unit)
-        {
-            occupiedCell.SetHaveUnit(false, null);
-        }
+        occupiedCell?.ReleaseStandingUnit(unit);
 
         if (controller != null)
         {
@@ -138,6 +136,10 @@ public class UnitRemovalService
     {
         if (unit == null) return;
         unit.SetActive(false);
-        Object.Destroy(unit);
+
+        if (Application.isPlaying)
+            Object.Destroy(unit);
+        else
+            Object.DestroyImmediate(unit);
     }
 }

@@ -136,6 +136,10 @@ public class HexCellData
     private GameObject _occupant;
     private readonly GameObject[] _attackerSlots = new GameObject[6];
 
+    // ── 【多单位落点】槽位模型（生成期烘焙，运行时只读）────────────────
+    // StandingSlot（占用）与 ReservedSlot（预留）统一走此模型；旧 HaveUnit/_occupant 保留为兼容字段。
+    private UnitSlotProvider _unitSlots;
+
     /// <summary>格子当前是否有移动主人（普通占用）。</summary>
     public bool HasOccupant() => _occupant != null;
 
@@ -189,6 +193,116 @@ public class HexCellData
         if (delta == new Vector3(-1, 1, 0))  return 4; // W
         if (delta == new Vector3(-1, 0, 1))  return 5; // NW
         return -1;
+    }
+
+    // ── 【多单位落点】槽位模型访问与烘焙 ────────────────────────────
+    /// <summary>本格槽位模型（可能为 null：尚未烘焙的测试格 / 兼容旧数据）。</summary>
+    public UnitSlotProvider UnitSlots => _unitSlots;
+    public bool HasBakedUnitSlots => _unitSlots != null;
+
+    /// <summary>惰性创建槽位模型（用于测试 / 未烘焙格）。</summary>
+    public UnitSlotProvider EnsureUnitSlots()
+    {
+        if (_unitSlots == null)
+            _unitSlots = new UnitSlotProvider();
+        return _unitSlots;
+    }
+
+    /// <summary>生成期烘焙：采样并固定本格 5 个槽位偏移。cellWidth=2*InnerRadius，cellDepth=1.5*OuterRadius。</summary>
+    public void BakeUnitSlots(int mapSeed, float cellWidth, float cellDepth)
+    {
+        EnsureUnitSlots().Bake(mapSeed, HexCoordinate, cellWidth, cellDepth);
+    }
+
+    // ── 【多单位落点】容量查询（AI / UI / 寻路统一读有效容量）────────
+    /// <summary>是否存在空闲站位槽。未烘焙格退回旧单单位语义。</summary>
+    public bool HasFreeStandingSlot()
+    {
+        if (_unitSlots == null) return !IsHaveUnit();
+        return _unitSlots.HasFreeStandingSlot();
+    }
+
+    /// <summary>剩余可站位槽数（未烘焙格：有单位=0，无单位=1）。</summary>
+    public int FreeStandingSlotCount => _unitSlots == null ? (IsHaveUnit() ? 0 : 1) : _unitSlots.FreeStandingCount;
+
+    /// <summary>当前站位单位数（未烘焙格退回旧单单位语义）。</summary>
+    public int StandingUnitCount => _unitSlots == null ? (IsHaveUnit() ? 1 : 0) : _unitSlots.StandingCount;
+
+    /// <summary>格上是否有任意站位单位（用于发现/统计等）。</summary>
+    public bool HasAnyStandingUnit() => _unitSlots != null ? _unitSlots.StandingCount > 0 : IsHaveUnit();
+
+    /// <summary>指定单位是否正站本格某槽位（未烘焙格退回旧 GetUnit 比较）。</summary>
+    public bool HasStandingUnit(GameObject unit)
+    {
+        if (unit == null) return false;
+        if (_unitSlots != null) return _unitSlots.GetStandingSlot(unit) >= 0;
+        return GetUnit() == unit;
+    }
+
+    /// <summary>是否「站位+预留」均满（移动任务预留判断用）。未烘焙格退回旧单单位语义。</summary>
+    public bool HasFreeSlotForReservation()
+    {
+        if (_unitSlots == null) return !IsHaveUnit();
+        return _unitSlots.HasFreeSlotForReservation();
+    }
+
+    /// <summary>枚举格内全部站位单位（去重）。未烘焙格退回旧 GetUnit()。</summary>
+    public List<GameObject> GetStandingUnits()
+    {
+        List<GameObject> list = new List<GameObject>();
+        if (_unitSlots != null)
+        {
+            _unitSlots.GetStandingUnits(list);
+        }
+        else if (IsHaveUnit() && GetUnit() != null)
+        {
+            list.Add(GetUnit());
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// 统一站位占用入口：取得一个站位槽并同步旧字段（primary owner）。
+    /// 供部署/出生/移动抵达共用，避免各调用方自行只写 SetHaveUnit。
+    /// </summary>
+    public bool TryClaimStandingUnit(
+        GameObject unit,
+        Vector3 fromWorld,
+        Vector3 toWorld,
+        bool preferLine,
+        out int slotId,
+        out Vector3 worldPos)
+    {
+        slotId = -1;
+        worldPos = RealCenterWorldCoordinate;
+        if (unit == null) return false;
+
+        UnitSlotProvider slots = EnsureUnitSlots();
+        if (!slots.TryAcquireStandingSlot(unit, fromWorld, toWorld, out slotId, out worldPos, RealCenterWorldCoordinate, preferLine))
+            return false;
+
+        // 同步旧字段（primary owner）：仅当格上尚无 primary 时写入，避免覆盖另一个“逻辑主人”。
+        if (!IsHaveUnit()) SetHaveUnit(true, unit);
+        if (_occupant == null) _occupant = unit;
+        return true;
+    }
+
+    /// <summary>释放单位在本格的站位槽并同步旧字段；若释放的是 primary，则提升下一个站位单位为 primary。</summary>
+    public void ReleaseStandingUnit(GameObject unit)
+    {
+        _unitSlots?.ReleaseStandingSlot(unit);
+
+        if (HaveUnit.Value == unit) SetHaveUnit(false, null);
+        if (_occupant == unit)
+        {
+            _occupant = null;
+            List<GameObject> remaining = GetStandingUnits();
+            if (remaining.Count > 0)
+            {
+                _occupant = remaining[0];
+                if (!IsHaveUnit()) SetHaveUnit(true, remaining[0]);
+            }
+        }
     }
 
     public HexCellData(Enums.HexType HexType, int GenerateOrder, Vector3 HexCoordinate, Vector3 CenterWorldCoordinate, float Height)

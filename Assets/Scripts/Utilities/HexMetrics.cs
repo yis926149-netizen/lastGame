@@ -29,7 +29,7 @@ public class HexMetrics
         );
     }
 
-    // 扰动方法：输入原始顶点位置，返回扰动后位置
+    // 扰动方法：输入原始顶点位置，返回扰动后位置（仅 XZ，Y 由 PerturbY2 单独管理）
     public static Vector3 Perturb(Vector3 position)
     {
         // 1. 采样噪声：获取当前顶点位置对应的四通道噪声数据（Vector4）
@@ -37,15 +37,12 @@ public class HexMetrics
 
         //扰动上限
         float upperLimit = 0.2f;
-        //倍率
-        float magnification = 7;
-        // 2. 通道映射+范围调整：生成X、Z轴扰动（Y轴初期禁用，保持单元格平整）
+        // 2. 仅扰动 XZ，不动 Y——Y 高程统一由 PerturbY2 的有界连续公式控制，
+        //    避免大振幅取模产生锯齿状坑洼感。
         position.x += ((noiseSample.x * 2f - 1f) * HexMetrics.cellPerturbStrength) % upperLimit; // R通道→X轴
-        position.y += ((noiseSample.y * 2f - 1f) * HexMetrics.cellPerturbStrength * magnification) % upperLimit; 
         position.z += ((noiseSample.z * 2f - 1f) * HexMetrics.cellPerturbStrength) % upperLimit; // B通道→Z轴
 
-        // 3. 返回扰动后的顶点位置（包含噪声信息的Vector3）
-        //print("扰动强度：" + new Vector3(((noiseSample.x * 2f - 1f) * HexMetrics.cellPerturbStrength) % 0.25f, ((noiseSample.y * 2f - 1f) * HexMetrics.cellPerturbStrength * 7) % 0.25f, ((noiseSample.z * 2f - 1f) * HexMetrics.cellPerturbStrength) % 0.25f));
+        // 3. 返回扰动后的顶点位置
         return position;
     }
 

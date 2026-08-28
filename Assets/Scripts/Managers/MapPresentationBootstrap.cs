@@ -518,8 +518,11 @@ public sealed class MapPresentationBootstrap : MonoBehaviour, IMapPresentationBo
         Shader.SetGlobalFloat("_FogEdgeStyle", _config != null ? (float)(int)_config.fogEdgeStyle : 0f);
         Shader.SetGlobalFloat("_FogEdgeSoftness", _config != null ? _config.fogEdgeSoftness : 0.8f);
         Shader.SetGlobalFloat("_FogEdgeAnimSpeed", _config != null ? _config.fogEdgeAnimSpeed : 0.25f);
-        Shader.SetGlobalFloat("_FogUnexploredDesaturate", 0.5f);
-        Shader.SetGlobalFloat("_FogUnexploredBlend", 0.7f);
+        Shader.SetGlobalFloat("_FogEdgeTransparency", _config != null ? _config.fogEdgeTransparency : 0f);
+        Shader.SetGlobalFloat("_FogUnexploredDesaturate", _config != null ? _config.fogUnexploredDesaturate : 0.5f);
+        Shader.SetGlobalFloat("_FogUnexploredBlend", _config != null ? _config.fogUnexploredBlend : 0.7f);
+        Shader.SetGlobalFloat("_FogCoverOcean", _config != null && _config.fogCoverOcean ? 1f : 0f);
+        Shader.SetGlobalFloat("_FogCoverRiver", _config != null ? _config.fogCoverRiver : 0f);
         Shader.SetGlobalVector("_FogScrollSpeed", new Vector4(0.02f, 0.01f, 0f, 0f));
 
         CreateFogMask(minX, minZ, sizeX, sizeZ);

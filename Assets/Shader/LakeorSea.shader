@@ -29,6 +29,7 @@ Shader "Custom/LakeorSea" {
             #pragma target 3.0
 
             #include "UnityCG.cginc"
+            #include "FogBlend.cginc"
 
             // 声明 Properties 中定义的参数
             uniform float4 _BaseColor;
@@ -40,16 +41,9 @@ Shader "Custom/LakeorSea" {
             // 【阶段四】水面淡出（MaterialPropertyBlock 提供，§13.4）
             uniform float _FadeAlpha;
 
-            // 全局迷雾属性（由 MapRenderer.SetupFogGlobalShaderProperties 设置，
-            // 与地形迷雾共用同一张贴图与色调，保证水面未探索区与地形迷雾无缝衔接）
-            uniform sampler2D _FogTex;
-            uniform float4 _FogColor;
-            uniform float _FogTexScale;
-            uniform float _FogEmission;
-            uniform float _FogTexAmount;
-            uniform float4 _FogMapOrigin;  // 地图世界 XZ 包围盒起点 (x=minX, y=minZ)
-            uniform float4 _FogMapSize;    // 地图世界 XZ 尺寸 (x=sizeX, y=sizeZ)
-            // 【探索重构-阶段1】_FogMemoryDim 已移除（记忆区概念不存在）
+            // 迷雾相关 uniform 由 FogBlend.cginc 统一声明
+            // _FogCoverOcean: 1=海洋应用迷雾遮罩，0=始终显示正常水面
+            float _FogCoverOcean;
 
             // ------------------------------
             // 通用波浪函数（复用开阔水逻辑，避免动画断层）
@@ -91,7 +85,7 @@ Shader "Custom/LakeorSea" {
             struct v2f {
                 float2 uv : TEXCOORD0;       // 传递 UV 到片段着色器
                 float4 worldPos : TEXCOORD1; // 传递世界坐标（用于计算波浪）
-                // 【探索重构-阶段1】explored/visible 已不再用于显隐控制
+                float2 fogCoord : TEXCOORD2; // 迷雾遮罩整图归一化 UV
                 float4 pos : SV_POSITION;    // 裁剪空间坐标（用于渲染）
             };
 
@@ -103,7 +97,7 @@ Shader "Custom/LakeorSea" {
                 o.pos = UnityObjectToClipPos(v.vertex);
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 o.worldPos = mul(unity_ObjectToWorld, v.vertex);
-                // 【探索重构-阶段1】顶点色不再传递
+                FogBlend_vert(v.vertex, o.fogCoord);
                 return o;
             }
 
@@ -145,7 +139,10 @@ Shader "Custom/LakeorSea" {
                 // 保持 alpha 通道值（支持透明调节）；【阶段四】乘 _FadeAlpha 实现湖海淡出（§13.4）
                 finalColor.a = _BaseColor.a * _FadeAlpha;
 
-                // 【探索重构-阶段1】始终显示正常水面，不再按探索状态覆盖迷雾或压暗
+                // 勾选 fogCoverOcean 时，对水面应用与地形相同的迷雾遮罩
+                if (_FogCoverOcean > 0.5)
+                    FogBlend_final(finalColor, i.fogCoord);
+
                 return finalColor;
             }
             ENDCG

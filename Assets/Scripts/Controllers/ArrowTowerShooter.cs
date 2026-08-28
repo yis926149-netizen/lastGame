@@ -80,19 +80,22 @@ public class ArrowTowerShooter : MonoBehaviour
         {
             if (cell == null || cell.HexType == Enums.HexType.LakeOrSea) continue;
 
-            GameObject unit = cell.GetUnit();
-            if (unit == null) continue;
-
-            if (!TryGetEnemyTargetData(unit, out CharacterData data)) continue;
-
-            if (data == null || data.unitData == null || data.currentHp <= 0) continue;
-
-            float dist = HexDistance(centerHex.HexCoordinate, cell.HexCoordinate);
-            if (dist < bestDist)
+            // 【多单位落点】枚举格内全部站位单位，取最近敌方单位。
+            foreach (GameObject unit in cell.GetStandingUnits())
             {
-                bestDist = dist;
-                bestTarget = unit;
-                bestData = data;
+                if (unit == null) continue;
+
+                if (!TryGetEnemyTargetData(unit, out CharacterData data)) continue;
+
+                if (data == null || data.unitData == null || data.currentHp <= 0) continue;
+
+                float dist = HexDistance(centerHex.HexCoordinate, cell.HexCoordinate);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    bestTarget = unit;
+                    bestData = data;
+                }
             }
         }
 

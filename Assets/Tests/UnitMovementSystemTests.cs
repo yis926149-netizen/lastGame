@@ -176,6 +176,7 @@ public class UnitMovementSystemTests
             start,
             target,
             Enums.MovementPurpose.MoveToDestination,
+            0,
             out _,
             out _);
 
@@ -200,19 +201,19 @@ public class UnitMovementSystemTests
             MakeMountain(new Vector3(3, -3, 0), form);
             bool walled = _system.CalculateMinMovementCostBetweenTwoHexes(
                 new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
-                start, target, Enums.MovementPurpose.MoveToDestination, out _, out _);
+                start, target, Enums.MovementPurpose.MoveToDestination, 0, out _, out _);
             Assert.IsFalse(walled, "山墙封死路径 ⇒ 目标不可达（决策 ①）");
 
             // 山格作为终点：普通可达目标被设为山格 ⇒ 拒绝
             Vector3 mountainTarget = new Vector3(2, -3, 1);
             bool reachableBefore = _system.CalculateMinMovementCostBetweenTwoHexes(
                 new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
-                new Vector3(2, -2, 0), mountainTarget, Enums.MovementPurpose.MoveToDestination, out _, out _);
+                new Vector3(2, -2, 0), mountainTarget, Enums.MovementPurpose.MoveToDestination, 0, out _, out _);
             Assert.IsTrue(reachableBefore, "前置：该目标在无山时可达");
             MakeMountain(mountainTarget, form);
             bool asTarget = _system.CalculateMinMovementCostBetweenTwoHexes(
                 new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
-                new Vector3(2, -2, 0), mountainTarget, Enums.MovementPurpose.MoveToDestination, out _, out _);
+                new Vector3(2, -2, 0), mountainTarget, Enums.MovementPurpose.MoveToDestination, 0, out _, out _);
             Assert.IsFalse(asTarget, "山格作为终点 ⇒ 正确拒绝（决策 ①）");
         }
         finally
@@ -252,7 +253,7 @@ public class UnitMovementSystemTests
 
         bool success = _system.CalculateMinMovementCostBetweenTwoHexes(
             allPoints, start, end, Enums.MovementPurpose.MoveToDestination,
-            out float cost, out List<Vector3> path);
+            0, out float cost, out List<Vector3> path);
 
         Assert.IsTrue(success);
         Assert.AreEqual(4f, cost, 0.01f);
@@ -271,14 +272,14 @@ public class UnitMovementSystemTests
 
         bool beforeExplore = _system.CalculateMinMovementCostBetweenTwoHexes(
             new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
-            start, target, Enums.MovementPurpose.MoveToDestination, out _, out _);
+            start, target, Enums.MovementPurpose.MoveToDestination, 0, out _, out _);
         Assert.IsFalse(beforeExplore, "双方均未探索的格不可通行");
 
         // 全局判定：任一阵营探索过即可通行
         _mockMapData.GetCell(target).ExploreBy(1);
         bool afterExplore = _system.CalculateMinMovementCostBetweenTwoHexes(
             new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
-            start, target, Enums.MovementPurpose.MoveToDestination, out _, out _);
+            start, target, Enums.MovementPurpose.MoveToDestination, 0, out _, out _);
         Assert.IsTrue(afterExplore, "任一阵营探索后即可通行");
     }
 
@@ -293,7 +294,7 @@ public class UnitMovementSystemTests
 
         bool before = _system.CalculateMinMovementCostBetweenTwoHexes(
             new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
-            start, target, Enums.MovementPurpose.MoveToDestination, out _, out _);
+            start, target, Enums.MovementPurpose.MoveToDestination, 0, out _, out _);
         Assert.IsFalse(before, "未探索且有迷雾的格不可通行");
 
         // 模拟竞技场 lease：该格被临时点亮（无迷雾），即使未探索也可进
@@ -301,7 +302,7 @@ public class UnitMovementSystemTests
         _mockVisibility.IsVisibleToFaction(targetCell, Arg.Any<int>()).Returns(true);
         bool after = _system.CalculateMinMovementCostBetweenTwoHexes(
             new List<Vector3>(_mockMapData.GetAllHexCoordinates()),
-            start, target, Enums.MovementPurpose.MoveToDestination, out _, out _);
+            start, target, Enums.MovementPurpose.MoveToDestination, 0, out _, out _);
         Assert.IsTrue(after, "被点亮（无迷雾）的格即使未探索也可通行");
     }
 
@@ -312,7 +313,7 @@ public class UnitMovementSystemTests
         var start = new Vector3(2, -2, 0);
         float movement = 2.5f; // ����2����ÿ��1�ѣ�
 
-        var reachable = _system.GetAllReachableHexesFromStartHex(allPoints, start, movement);
+        var reachable = _system.GetAllReachableHexesFromStartHex(allPoints, start, movement, 0);
 
         // Ӧ������㱾���;����2�ĸ���
         Assert.Contains(start, reachable);

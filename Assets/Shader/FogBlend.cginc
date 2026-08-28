@@ -20,6 +20,7 @@ float _FogEdgeAnimSpeed; // 曲线边界流动速度（仅 WideSmooth），0=静
 // 【探索重构-方案三】未探索区视觉参数（去饱和+半透明雾，不再遮挡地形）
 float  _FogUnexploredDesaturate; // 未探索区去饱和强度 [0,1]，建议 0.5
 float  _FogUnexploredBlend;      // 迷雾色叠加强度 [0,1]，建议 0.5
+float  _FogEdgeTransparency;     // 探索边界额外透明度 [0,1]；0=无效果，1=边界处迷雾完全透明
 float2 _FogScrollSpeed;          // 雾纹理 UV 滚动速度（世界单位/秒），建议 (0.02, 0.01)
 
 struct FogInput
@@ -145,9 +146,47 @@ fixed3 FogBlend_applyUnexplored(float3 baseColor, float2 uvW)
     return lerp(unexploredColor, FogBlend_sampleFogLayer(uvW, 1.0, 0.0), _FogUnexploredBlend);
 }
 
+// 计算当前片元的探索遮罩值（0=未探索，1=已探索），与 FogBlend_final 内部逻辑一致。
+// 供需要在 FogBlend_final 之外独立获取探索状态的着色器使用（如调整透明度）。
+float FogBlend_computeExplored(float2 uv_FogTex)
+{
+    float2 uvW = FogBlend_warpUV(uv_FogTex);
+
+    if (_FogEdgeStyle < 0.5)
+    {
+        float r = tex2Dlod(_FogMaskTex, float4(uvW, 0, 0)).r;
+        return FogBlend_resolveEdge(r);
+    }
+
+    float soft = FogBlend_sampleSoftMask(uvW);
+
+    if (_FogEdgeStyle < 1.5)
+        return smoothstep(0.25, 0.75, soft);
+
+    if (_FogEdgeStyle < 2.5)
+    {
+        float w = max(saturate(_FogEdgeSoftness * 0.2), 0.05);
+        float2 uvE = (_FogEdgeAnimSpeed > 0.0001)
+            ? FogBlend_warpUV_animated(uv_FogTex, _FogEdgeAnimSpeed)
+            : uvW;
+        float r = tex2Dlod(_FogMaskTex, float4(uvE, 0, 0)).r;
+        return smoothstep(0.5 - w, 0.5 + w, r);
+    }
+
+    if (_FogEdgeStyle < 3.5)
+    {
+        float n = FogBlend_valueNoise(uvW * 12.0);
+        return smoothstep(0.32 - n * 0.18, 0.68 + n * 0.18, soft);
+    }
+
+    // style 4 (SoftPlusFogBand)：edgeBandFog 仅影响 rgb，explored 部分与 BlurMask9 相同
+    return smoothstep(0.25, 0.75, soft);
+}
+
 // 【探索重构-方案三】在 finalcolor 修改器中调用：光照算完后处理未探索区视觉。
 //  - 已探索(exploredJagged=1)：正常光照颜色，不变。
 //  - 未探索(exploredJagged=0)：地形去饱和 + 叠加半透明滚动迷雾（不遮挡地形信息）。
+//  - 边界区域(0<exploredJagged<1)：_FogEdgeTransparency>0 时，迷雾在边界处额外减淡。
 void FogBlend_final(inout fixed4 color, float2 uv_FogTex)
 {
     float2 uvW = FogBlend_warpUV(uv_FogTex);
@@ -172,7 +211,6 @@ void FogBlend_final(inout fixed4 color, float2 uv_FogTex)
         {
             float w = saturate(_FogEdgeSoftness * 0.2);
             w = max(w, 0.05);
-            // animSpeed>0 时用动画版 warp（曲线实时流动）；=0 时退回静态 uvW
             float2 uvE = (_FogEdgeAnimSpeed > 0.0001)
                 ? FogBlend_warpUV_animated(uv_FogTex, _FogEdgeAnimSpeed)
                 : uvW;
@@ -191,6 +229,11 @@ void FogBlend_final(inout fixed4 color, float2 uv_FogTex)
         }
     }
 
+    // 边界透明因子：在 exploredJagged=0.5 处最强（值1），两端衰减到0。
+    // 与 _FogEdgeTransparency 相乘后在 unexploredColor 和原始地形色间额外插值，
+    // 让边界处的迷雾看起来更薄、更通透。
+    float edgeFactor = saturate(4.0 * exploredJagged * (1.0 - exploredJagged)) * _FogEdgeTransparency;
+
     fixed3 unexploredColor = FogBlend_applyUnexplored(color.rgb, uvW);
 
     if (edgeBandFog > 0.001)
@@ -198,6 +241,9 @@ void FogBlend_final(inout fixed4 color, float2 uv_FogTex)
         fixed3 bandLayer = FogBlend_sampleFogLayer(uvW, 1.7, 0.31) * 0.7;
         unexploredColor = lerp(unexploredColor, bandLayer, edgeBandFog * 0.45);
     }
+
+    // 边界处把 unexploredColor 向原始地形色推一些，产生薄雾渗透感
+    unexploredColor = lerp(unexploredColor, color.rgb, edgeFactor);
 
     // 按锯齿边界在"未探索处理色"和"正常色"间过渡
     color.rgb = lerp(unexploredColor, color.rgb, exploredJagged);

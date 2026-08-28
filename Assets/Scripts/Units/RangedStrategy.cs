@@ -29,7 +29,7 @@ public class RangedStrategy : IUnitStrategy
         Vector3? directionHint = brain.FindApproximateDirectionToHiddenBuilding();
         if (directionHint.HasValue && movement.CalculateMinMovementCostBetweenTwoHexes(
                 allPoints, startHex, directionHint.Value,
-                Enums.MovementPurpose.MoveToDestination, out _, out List<Vector3> directionPath)
+                Enums.MovementPurpose.MoveToDestination, brain.FactionId, out _, out List<Vector3> directionPath)
             && directionPath != null && directionPath.Count > 0)
         {
             return new List<Vector3> { directionPath[0] };
@@ -50,7 +50,7 @@ public class RangedStrategy : IUnitStrategy
 
         if (movement.CalculateMinMovementCostBetweenTwoHexes(
                 allPoints, startHex, targetHex.Value,
-                Enums.MovementPurpose.MoveToAttack, out _, out List<Vector3> path)
+                Enums.MovementPurpose.MoveToAttack, brain.FactionId, out _, out List<Vector3> path)
             && path != null && path.Count > 0)
         {
             // 只走到射程够得着目标的位置：截取路径到距目标 attackRange 格为止
@@ -86,9 +86,9 @@ public class RangedStrategy : IUnitStrategy
             float dist = HexDistance(selfHex, cell.HexCoordinate);
             if (dist > attackRange || dist < 0.1f) continue;
 
-            if (cell.IsHaveUnit())
+            // 【多单位落点】枚举格内全部站位单位。
+            foreach (GameObject u in cell.GetStandingUnits())
             {
-                GameObject u = cell.GetUnit();
                 if (u != null && u.CompareTag(enemyUnitTag)) return true;
             }
 
@@ -119,17 +119,19 @@ public class RangedStrategy : IUnitStrategy
             float dist = HexDistance(selfHex, cell.HexCoordinate);
             if (dist > attackRange || dist < 0.1f) continue;
 
-            if (cell.IsHaveUnit())
+            // 【多单位落点】枚举格内全部站位单位，取最近敌方单位；命中后跳过本格建筑。
+            bool foundUnit = false;
+            foreach (GameObject u in cell.GetStandingUnits())
             {
-                GameObject u = cell.GetUnit();
                 if (u != null && u.CompareTag(enemyUnitTag) && dist < bestDist)
                 {
                     bestDist = dist;
                     bestTarget = u;
                     bestIsUnit = true;
-                    continue;
+                    foundUnit = true;
                 }
             }
+            if (foundUnit) continue;
 
             GameObject b = cell.BulidingTypeOnHex_Building.Value;
             if (IsAttackableBuilding(b, enemyBuildingTag) && dist < bestDist)

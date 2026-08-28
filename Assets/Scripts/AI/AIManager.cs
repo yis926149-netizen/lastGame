@@ -88,7 +88,7 @@ public class AIManager : MonoBehaviour, IAIManager
         return cell != null &&
                cell.HexType != Enums.HexType.LakeOrSea &&
                cell.BulidingTypeOnHex_Building.Key == Enums.BulidingType.NoBuilding &&
-               !cell.IsHaveUnit();
+               !cell.HasAnyStandingUnit();
     }
 
     // ---------------- AI 回合行为 ----------------

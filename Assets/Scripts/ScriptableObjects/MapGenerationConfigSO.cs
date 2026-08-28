@@ -182,6 +182,23 @@ public class MapGenerationConfigSO : ScriptableObject
     [Tooltip("曲线边界流动速度，仅 WideSmooth 生效。0=静态；越大边界摆动越快。建议 0.1~0.4，过大会让边缘格子明显脉动")]
     [Range(0f, 2f)]
     public float fogEdgeAnimSpeed = 0.25f;
+    [Tooltip("探索边界处迷雾的额外透明度。0=无效果（边界与内部一致）；1=边界处迷雾完全透明，地形清晰可见。产生薄雾从边界向内渗透的感觉")]
+    [Range(0f, 1f)]
+    public float fogEdgeTransparency = 0f;
+    [Tooltip("未探索区域迷雾不透明度。0=完全透明（看穿地图）；1=完全遮挡。建议 0.5~0.9")]
+    [Range(0f, 1f)]
+    public float fogUnexploredBlend = 0.7f;
+    [Tooltip("未探索区域去饱和强度。0=保留原色；1=完全灰色。配合 FogUnexploredBlend 调为 0 可彻底关闭迷雾视觉效果")]
+    [Range(0f, 1f)]
+    public float fogUnexploredDesaturate = 0.5f;
+    [Tooltip("勾选后海洋面片也会应用战争迷雾遮罩（边缘风格与地形保持一致）；不勾选则海洋始终完整显示")]
+    public bool fogCoverOcean = false;
+    [Tooltip("河流迷雾覆盖强度。0=始终完整显示（原样）；1=与地形相同的完全遮罩；中间值可调节覆盖程度")]
+    [Range(0f, 1f)]
+    public float fogCoverRiver = 0f;
+    [Tooltip("海洋迷雾覆盖强度。0=始终完整显示（原样）；1=与地形相同的完全遮罩；中间值可调节覆盖程度")]
+    [Range(0f, 1f)]
+    public float fogCoverOceanBlend = 0f;
 
     [Header("程序化山脉")]
     [Tooltip("山脉生成配置（决策 ㉔ 山专属参数块）；留空 = 不生成山脉")]

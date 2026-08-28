@@ -14,8 +14,16 @@ public class UnitMovementSystem : ITickable
 
     // 正在移动的单位列表
     private List<MovingUnit> _movingUnits = new List<MovingUnit>();
-    private readonly Dictionary<Vector3, IUnitMovement> _reservedDestinations = new Dictionary<Vector3, IUnitMovement>();
+    // 格级预留查询（任一槽被预留即视为该格已预留）；槽级状态存于 HexCellData.UnitSlots.ReservedBy
+    private readonly HashSet<Vector3> _reservedCells = new HashSet<Vector3>();
     private List<Vector3> _cachedAllPoints;
+
+    // ── 【阶段 3】表现层避让参数（纯表现，不影响逻辑格/槽位/占用）────────
+    // 错峰出发：同批移动单位 0~0.2s 递增延迟，错开「同槽位号汇合/交叉路口」的瞬时重合。
+    private const float MoveStaggerMaxSeconds = 0.2f;
+    // 成对分离：距离 < SeparationRadius 的单位对各自横向推开，每帧推开量 clamp 到 MaxSeparationPush。
+    private const float SeparationRadius = 0.6f;
+    private const float MaxSeparationPush = 0.2f;
 
     public UnitMovementSystem(IMapDataService mapDataService, MapVisualEventSO mapVisualEvent, GameLoop gameLoop, [InjectOptional] ILogisticsService logisticsService = null, [InjectOptional] IMapInteractionGate interactionGate = null, [InjectOptional] IMapVisibilityResolver visibilityResolver = null)
     {
@@ -69,13 +77,8 @@ public class UnitMovementSystem : ITickable
             }
         }
 
-        if (_reservedDestinations.TryGetValue(destinationHex, out var reservingUnit) && reservingUnit != unit)
-        {
-            return false;
-        }
-
         var destinationCell = _mapDataService.GetCell(destinationHex);
-        if (destinationCell == null || (destinationCell.IsHaveUnit() && destinationCell.GetUnit() != unit.gameObject))
+        if (destinationCell == null)
         {
             return false;
         }
@@ -92,6 +95,7 @@ public class UnitMovementSystem : ITickable
             startHex,
             destinationHex,
             purpose,
+            FactionOf(unit.gameObject),
             out float _,
             out List<Vector3> path))
         {
@@ -136,20 +140,104 @@ public class UnitMovementSystem : ITickable
         float speedMultiplier = umc?.characterData?.moveSpeedMultiplier ?? 1f;
         float computedSpeed = Mathf.Max(1f, baseMovementPoints * CoreGameplayConfigProvider.MovementSpeedPerPoint * speedMultiplier);
 
+        // 起点站位：确保单位在起点格持有一个站位槽（未烘焙/旧逻辑格惰性创建并取中心槽）。
+        HexCellData startCell = _mapDataService.GetCell(startHex);
+        int startSlot = -1;
+        if (startCell != null)
+        {
+            startSlot = startCell.UnitSlots?.GetStandingSlot(unit.gameObject) ?? -1;
+            if (startSlot < 0)
+            {
+                Vector3 p = unit.gameObject.transform.position;
+                startCell.TryClaimStandingUnit(unit.gameObject, p, p, false, out startSlot, out _);
+            }
+        }
+
         var movingUnit = new MovingUnit
         {
             Unit = unit,
             Path = actualPath,
+            VisualSlots = new List<int>(),
             CurrentPathIndex = 0,
             Purpose = purpose,
             StartHex = startHex,
+            StartSlot = startSlot,
+            CurrentStandingHex = startHex,
+            CurrentStandingSlot = startSlot,
             DestinationHex = destinationHex,
+            DestinationSlot = -1,
             StartRemainingMovement = unit.RemainingMovement,
-            MoveSpeed = computedSpeed
+            MoveSpeed = computedSpeed,
+            ReservedNodes = new List<KeyValuePair<Vector3, int>>()
         };
-        _reservedDestinations[destinationHex] = unit;
+
+        // 【完整任务模式】原子预留整条路径的槽位：任一路径格无「站位+预留」空闲槽则整体失败，不产生半状态。
+        if (!ReservePathSlots(movingUnit))
+        {
+            Debug.LogWarning("[UnitMovementSystem] RequestMove rejected: no free slot on path.");
+            return false;
+        }
+
+        movingUnit.DestinationSlot = movingUnit.VisualSlots.Count > 0
+            ? movingUnit.VisualSlots[movingUnit.VisualSlots.Count - 1]
+            : -1;
+
         _movingUnits.Add(movingUnit);
 
+        return true;
+    }
+
+    /// <summary>
+    /// 为整条逻辑路径逐格预留视觉槽位（几何选点：取「前格中心→后格中心」连线最近的空槽）。
+    /// 任一路径格失败则回滚已预留的槽位并返回 false。
+    /// </summary>
+    private bool ReservePathSlots(MovingUnit movingUnit)
+    {
+        GameObject unitGo = movingUnit.Unit?.gameObject;
+        List<Vector3> path = movingUnit.Path;
+        if (path == null || path.Count == 0) return true;
+
+        Vector3 startCenter = unitGo != null
+            ? unitGo.transform.position
+            : (_mapDataService.GetCell(movingUnit.StartHex)?.RealCenterWorldCoordinate ?? Vector3.zero);
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            HexCellData cell = _mapDataService.GetCell(path[i]);
+            if (cell == null) { ReleaseReservation(movingUnit); return false; }
+
+            // 未烘焙格：退回旧单单位语义——已被其他单位占用则预留失败。
+            if (cell.UnitSlots == null)
+            {
+                if (cell.IsHaveUnit() && !cell.HasStandingUnit(unitGo)) { ReleaseReservation(movingUnit); return false; }
+                cell.EnsureUnitSlots();
+            }
+
+            Vector3 from = (i == 0)
+                ? startCenter
+                : (_mapDataService.GetCell(path[i - 1])?.RealCenterWorldCoordinate ?? cell.RealCenterWorldCoordinate);
+
+            Vector3 to;
+            if (i + 1 < path.Count)
+            {
+                to = _mapDataService.GetCell(path[i + 1])?.RealCenterWorldCoordinate ?? cell.RealCenterWorldCoordinate;
+            }
+            else
+            {
+                Vector3 cur = cell.RealCenterWorldCoordinate;
+                to = cur + (cur - from);
+            }
+
+            if (!cell.UnitSlots.TryReserveSlot(movingUnit.Unit, from, to, cell.RealCenterWorldCoordinate, out int slotId, out _))
+            {
+                ReleaseReservation(movingUnit);
+                return false;
+            }
+
+            movingUnit.VisualSlots.Add(slotId);
+            movingUnit.ReservedNodes.Add(new KeyValuePair<Vector3, int>(path[i], slotId));
+            _reservedCells.Add(path[i]);
+        }
         return true;
     }
 
@@ -170,7 +258,7 @@ public class UnitMovementSystem : ITickable
 
     public bool IsDestinationReserved(Vector3 hexCoordinate)
     {
-        return _reservedDestinations.ContainsKey(hexCoordinate);
+        return _reservedCells.Contains(hexCoordinate);
     }
 
     // Zenject 每帧调用（Tick）
@@ -217,14 +305,15 @@ public class UnitMovementSystem : ITickable
         for (int i = 0; i < 6; i++)
         {
             HexCellData neighbor = _mapDataService.GetNeighbor(targetCell, (Enums.HexDirection)i);
-            if (neighbor == null || !CanEnterCell(neighbor, unit.gameObject, false)) continue;
-            if (_reservedDestinations.TryGetValue(neighbor.HexCoordinate, out var reservingUnit) && reservingUnit != unit) continue;
+            if (neighbor == null || !CanEnterCell(neighbor, unit.gameObject, false, FactionOf(unit.gameObject))) continue;
+            if (!neighbor.HasFreeSlotForReservation()) continue;
 
             if (CalculateMinMovementCostBetweenTwoHexes(
                 allPoints,
                 unit.CurrentHexCoordinate,
                 neighbor.HexCoordinate,
                 Enums.MovementPurpose.MoveToDestination,
+                FactionOf(unit.gameObject),
                 out float cost,
                 out _) && cost <= unit.RemainingMovement && cost < bestCost)
             {
@@ -239,19 +328,8 @@ public class UnitMovementSystem : ITickable
 
     private void CommitDestination(MovingUnit movingUnit)
     {
-        HexCellData startCell = _mapDataService.GetCell(movingUnit.StartHex);
-        HexCellData destinationCell = _mapDataService.GetCell(movingUnit.DestinationHex);
-
-        if (startCell != null && startCell.GetUnit() == movingUnit.Unit.gameObject && startCell != destinationCell)
-        {
-            startCell.SetHaveUnit(false, null);
-            // 【批次 D】同步释放旧格的 Occupant
-            if (startCell.GetOccupant() == movingUnit.Unit.gameObject)
-                startCell.SetOccupant(null);
-        }
-        destinationCell?.SetHaveUnit(true, movingUnit.Unit.gameObject);
-        // 【批次 D】同步写入新格的 Occupant
-        destinationCell?.SetOccupant(movingUnit.Unit.gameObject);
+        // 最终抵达格的站位已在 CommitPathNode 中完成（释放旧格站位、把预留槽提升为站位槽），
+        // 此处只做防御性收尾：释放该任务可能残留的任何预留（正常情况下应为空）。
         ReleaseReservation(movingUnit);
     }
 
@@ -300,22 +378,45 @@ public class UnitMovementSystem : ITickable
 
     private void RestoreStartCell(MovingUnit movingUnit)
     {
-        HexCellData startCell = _mapDataService.GetCell(movingUnit.StartHex);
-        if (startCell == null || (startCell.IsHaveUnit() && startCell.GetUnit() != movingUnit.Unit.gameObject)) return;
+        GameObject unitGo = movingUnit.Unit?.gameObject;
+        if (unitGo == null) return;
 
-        movingUnit.Unit.gameObject.transform.position = startCell.RealCenterWorldCoordinate;
+        // 释放当前实际站位格（可能是起点，也可能是已 commit 的中间格）。
+        HexCellData currentCell = _mapDataService.GetCell(movingUnit.CurrentStandingHex);
+        HexCellData startCell = _mapDataService.GetCell(movingUnit.StartHex);
+        if (currentCell != null && currentCell != startCell)
+            currentCell.ReleaseStandingUnit(unitGo);
+
+        if (startCell != null)
+        {
+            // 站回起点槽（占用指定 StartSlot；槽被占则退回中心槽）。
+            Vector3 pos = startCell.RealCenterWorldCoordinate;
+            if (startCell.UnitSlots != null)
+            {
+                if (!startCell.UnitSlots.TryAcquireStandingSlotAt(unitGo, movingUnit.StartSlot, startCell.RealCenterWorldCoordinate, out pos))
+                    startCell.UnitSlots.TryAcquireStandingSlot(unitGo, startCell.RealCenterWorldCoordinate, startCell.RealCenterWorldCoordinate, out _, out pos, startCell.RealCenterWorldCoordinate, preferLine: false);
+            }
+            unitGo.transform.position = pos;
+
+            // 同步旧字段（primary owner）
+            if (!startCell.IsHaveUnit()) startCell.SetHaveUnit(true, unitGo);
+            if (startCell.GetOccupant() == null) startCell.SetOccupant(unitGo);
+        }
+
         movingUnit.Unit.RemainingMovement = movingUnit.StartRemainingMovement;
-        startCell.SetHaveUnit(true, movingUnit.Unit.gameObject);
-        // 【批次 D】恢复 Occupant
-        startCell.SetOccupant(movingUnit.Unit.gameObject);
     }
 
     private void ReleaseReservation(MovingUnit movingUnit)
     {
-        if (_reservedDestinations.TryGetValue(movingUnit.DestinationHex, out var unit) && unit == movingUnit.Unit)
+        if (movingUnit?.ReservedNodes == null) return;
+        foreach (KeyValuePair<Vector3, int> node in movingUnit.ReservedNodes)
         {
-            _reservedDestinations.Remove(movingUnit.DestinationHex);
+            HexCellData cell = _mapDataService.GetCell(node.Key);
+            cell?.UnitSlots?.ReleaseReservation(node.Value);
+            if (cell == null || cell.UnitSlots == null || !cell.UnitSlots.HasAnyReservation())
+                _reservedCells.Remove(node.Key);
         }
+        movingUnit.ReservedNodes.Clear();
     }
 
     public void ReleaseReservationByUnit(GameObject unit)
@@ -381,9 +482,9 @@ public class UnitMovementSystem : ITickable
     }
 
     /// <summary>
-    /// 弹射：把站立在不可通行格上的单位迁到最近的"可通行且无占用"格（6 向 BFS）。
+    /// 弹射：把站立在不可通行格上的【所有】单位迁到最近的"可通行且有自由站位槽"格（6 向 BFS）。
     /// 纯位置迁移——不触发 TryCaptureEnemyCell、不写归属（决策 B）。
-    /// 原子迁移四套占用状态：HaveUnit / Occupant / 攻击槽（本格）/ 目的地预占。
+    /// 原子迁移：站位槽 + HaveUnit/Occupant + 攻击槽（本格）。
     /// </summary>
     public void EjectUnitsFromImpassableCells(IReadOnlyCollection<HexCellData> cells)
     {
@@ -393,25 +494,27 @@ public class UnitMovementSystem : ITickable
         {
             if (cell == null || cell.movementCost != float.MaxValue) continue;
 
-            GameObject unit = cell.GetOccupant() ?? cell.GetUnit();
-            if (unit == null) continue;
+            List<GameObject> units = cell.GetStandingUnits();
+            foreach (GameObject unit in units)
+            {
+                if (unit == null) continue;
 
-            if (FindNearestFreePassableCell(cell, unit, out HexCellData target))
-            {
-                MigrateOccupancy(cell, target, unit);
-            }
-            else
-            {
-                // 无可用落点（极端情况）：仍释放占位，避免"格内双单位"读错状态
-                cell.SetHaveUnit(false, null);
-                if (cell.GetOccupant() == unit) cell.SetOccupant(null);
-                cell.ReleaseAttackerSlots(unit);
-                Debug.LogWarning($"[UnitMovementSystem] Eject: 找不到可弹射落点，单位 {unit.name} 释放占用（无归属迁移）。");
+                if (FindNearestFreePassableCell(cell, unit, out HexCellData target))
+                {
+                    MigrateOccupancy(cell, target, unit);
+                }
+                else
+                {
+                    // 无可用落点（极端情况）：仍释放占位，避免"格内多单位"读错状态
+                    cell.ReleaseStandingUnit(unit);
+                    cell.ReleaseAttackerSlots(unit);
+                    Debug.LogWarning($"[UnitMovementSystem] Eject: 找不到可弹射落点，单位 {unit.name} 释放占用（无归属迁移）。");
+                }
             }
         }
     }
 
-    /// <summary>6 向 BFS：从 cell 出发找最近"可通行（movementCost &lt; MaxValue）且无占用"格。</summary>
+    /// <summary>6 向 BFS：从 cell 出发找最近"可通行（movementCost &lt; MaxValue）且仍有自由站位槽"格。</summary>
     private bool FindNearestFreePassableCell(HexCellData from, GameObject unit, out HexCellData result)
     {
         result = null;
@@ -429,9 +532,8 @@ public class UnitMovementSystem : ITickable
                 if (neighbor == null || !visited.Add(neighbor.HexCoordinate)) continue;
 
                 if (neighbor.movementCost < float.MaxValue &&
-                    IsFogFree(neighbor) &&
-                    !neighbor.IsHaveUnit() &&
-                    !neighbor.HasOccupant())
+                    IsFogFree(neighbor, FactionOf(unit)) &&
+                    neighbor.HasFreeStandingSlot())
                 {
                     result = neighbor;
                     return true;
@@ -442,20 +544,25 @@ public class UnitMovementSystem : ITickable
         return false;
     }
 
-    /// <summary>把单位从 source 原子迁移到 target：占用状态 + transform.position。</summary>
+    /// <summary>把单位从 source 原子迁移到 target：站位槽 + 旧字段 + transform.position。</summary>
     private void MigrateOccupancy(HexCellData source, HexCellData target, GameObject unit)
     {
-        source.SetHaveUnit(false, null);
-        if (source.GetOccupant() == unit) source.SetOccupant(null);
+        source.ReleaseStandingUnit(unit);
         source.ReleaseAttackerSlots(unit);
 
-        target.SetHaveUnit(true, unit);
-        target.SetOccupant(unit);
-
-        unit.transform.position = target.RealCenterWorldCoordinate;
+        Vector3 from = source.RealCenterWorldCoordinate;
+        Vector3 to = target.RealCenterWorldCoordinate;
+        if (target.TryClaimStandingUnit(unit, from, to, preferLine: true, out _, out Vector3 pos))
+        {
+            unit.transform.position = pos;
+        }
+        else
+        {
+            unit.transform.position = target.RealCenterWorldCoordinate;
+        }
     }
 
-    /// <summary>变化格上的站立单位吸附到新 RealCenterWorldCoordinate（移动中单位自然逐点跟随，跳过）。</summary>
+    /// <summary>变化格上的站立单位吸附到各自槽位（Y 跟随新 RealCenterWorldCoordinate，XZ 保留槽位偏移；移动中单位跳过）。</summary>
     public void RefreshStandingUnitPositions(IReadOnlyCollection<HexCellData> changedCells)
     {
         if (changedCells == null) return;
@@ -464,11 +571,20 @@ public class UnitMovementSystem : ITickable
         {
             if (cell == null || cell.movementCost == float.MaxValue) continue;
 
-            GameObject unit = cell.GetOccupant() ?? cell.GetUnit();
-            if (unit == null) continue;
-            if (IsUnitMoving(unit)) continue;
+            List<GameObject> units = cell.GetStandingUnits();
+            foreach (GameObject unit in units)
+            {
+                if (unit == null || IsUnitMoving(unit)) continue;
 
-            unit.transform.position = cell.RealCenterWorldCoordinate;
+                Vector3 pos = cell.RealCenterWorldCoordinate;
+                if (cell.UnitSlots != null)
+                {
+                    int slotId = cell.UnitSlots.GetStandingSlot(unit);
+                    if (slotId >= 0)
+                        pos = cell.UnitSlots.GetWorldPosition(slotId, cell.RealCenterWorldCoordinate);
+                }
+                unit.transform.position = pos;
+            }
         }
     }
 
@@ -503,13 +619,16 @@ public class UnitMovementSystem : ITickable
         if (mu.CurrentPathIndex >= mu.Path.Count)
             return true;
 
-        Vector3 targetPos = _mapDataService.GetCell(mu.Path[mu.CurrentPathIndex]).RealCenterWorldCoordinate;
+        Vector3 targetPos = GetPathNodeWorldPosition(mu, mu.CurrentPathIndex);
         float distance = Vector3.Distance(trans.position, targetPos);
 
         if (distance < 0.1f)
         {
-            // 吸附到当前路径点中心，避免浮点漂移
+            // 吸附到当前路径点的槽位世界坐标，避免浮点漂移
             trans.position = targetPos;
+
+            // 抵达当前节点：站位从上一格迁移到本格（把预留槽提升为站位槽）。
+            CommitPathNode(mu, mu.CurrentPathIndex);
 
             // 【实时化】移动力配额已废除，不再扣减 RemainingMovement，也不再因耗尽而截断路径。
 
@@ -519,7 +638,7 @@ public class UnitMovementSystem : ITickable
             if (mu.CurrentPathIndex >= mu.Path.Count)
                 return true;
 
-            targetPos = _mapDataService.GetCell(mu.Path[mu.CurrentPathIndex]).RealCenterWorldCoordinate;
+            targetPos = GetPathNodeWorldPosition(mu, mu.CurrentPathIndex);
         }
 
         // 使用 MoveTowards：单帧步长若大于剩余距离，会精确落到目标点，避免越过目标后在阈值外来回振荡（导致永远无法完成移动）
@@ -534,6 +653,49 @@ public class UnitMovementSystem : ITickable
         }
 
         return false;
+    }
+
+    /// <summary>取路径节点 i 的槽位世界坐标（未烘焙格退回格心）。</summary>
+    private Vector3 GetPathNodeWorldPosition(MovingUnit mu, int pathIndex)
+    {
+        HexCellData cell = _mapDataService.GetCell(mu.Path[pathIndex]);
+        if (cell == null) return mu.Unit.gameObject.transform.position;
+        if (cell.UnitSlots == null || pathIndex < 0 || pathIndex >= mu.VisualSlots.Count)
+            return cell.RealCenterWorldCoordinate;
+        return cell.UnitSlots.GetWorldPosition(mu.VisualSlots[pathIndex], cell.RealCenterWorldCoordinate);
+    }
+
+    /// <summary>抵达路径节点 pathIndex：释放上一格站位，把该节点预留槽提升为站位槽，并同步旧字段。</summary>
+    private void CommitPathNode(MovingUnit mu, int pathIndex)
+    {
+        GameObject unitGo = mu.Unit?.gameObject;
+        if (unitGo == null) return;
+
+        // 释放上一格站位（起点或上一个已 commit 的中间格）
+        HexCellData prevCell = _mapDataService.GetCell(mu.CurrentStandingHex);
+        HexCellData curCell = _mapDataService.GetCell(mu.Path[pathIndex]);
+        if (prevCell != null && prevCell != curCell)
+            prevCell.ReleaseStandingUnit(unitGo);
+
+        if (curCell == null) return;
+
+        int slotId = pathIndex < mu.VisualSlots.Count ? mu.VisualSlots[pathIndex] : -1;
+        if (curCell.UnitSlots != null)
+        {
+            curCell.UnitSlots.PromoteReservationToStanding(mu.Unit, slotId, unitGo, curCell.RealCenterWorldCoordinate, out _);
+        }
+
+        // 同步旧字段（primary owner）
+        if (!curCell.IsHaveUnit()) curCell.SetHaveUnit(true, unitGo);
+        if (curCell.GetOccupant() == null) curCell.SetOccupant(unitGo);
+
+        // 释放本节点的预留（已提升为站位）
+        if (curCell.UnitSlots != null) curCell.UnitSlots.ReleaseReservation(slotId);
+        if (curCell.UnitSlots == null || !curCell.UnitSlots.HasAnyReservation())
+            _reservedCells.Remove(mu.Path[pathIndex]);
+
+        mu.CurrentStandingHex = mu.Path[pathIndex];
+        mu.CurrentStandingSlot = slotId;
     }
 
     /* 一、求两点间最小移动力消耗 - 正权无向图求最短路径
@@ -575,7 +737,8 @@ public class UnitMovementSystem : ITickable
         List<Vector3> allPoints,    //全部点列表
         Vector3 startHexCoordinate, //起点
         Vector3 endHexCoordinate,   //终点
-        Enums.MovementPurpose movementPurpose, //移动目的 
+        Enums.MovementPurpose movementPurpose, //移动目的
+        int factionId,              //寻路单位的阵营（迷雾判定按此阵营查可见性）
         out float totalCost,
         out List<Vector3> shortestPath
         )
@@ -687,7 +850,7 @@ public class UnitMovementSystem : ITickable
             Vector3? allowedBlockedTarget = movementPurpose == Enums.MovementPurpose.MoveToAttack
                 ? endHexCoordinate
                 : (Vector3?)null;
-            Dictionary<Vector3, float> neighbor_Cost = GetAllNeighborsAndCosts(A.Key, _mapDataService, allowedBlockedTarget);
+            Dictionary<Vector3, float> neighbor_Cost = GetAllNeighborsAndCosts(A.Key, _mapDataService, factionId, allowedBlockedTarget);
             //若A的邻接点不在allPoints内，则剔除出neighbor_Cost
             List<Vector3> neighbor_CostKeysList = new List<Vector3>(neighbor_Cost.Keys);
             List<Vector3> toRemove = new List<Vector3>();
@@ -759,7 +922,7 @@ public class UnitMovementSystem : ITickable
     6.停止迭代. 
     输出 Point_minCost.value < 花费 的Point_minCost.key
     */
-    public List<Vector3> GetAllReachableHexesFromStartHex(List<Vector3> allPoints, Vector3 startHexCoordinate, float totalCost)
+    public List<Vector3> GetAllReachableHexesFromStartHex(List<Vector3> allPoints, Vector3 startHexCoordinate, float totalCost, int factionId)
     {
         //初始设置：
         //1.设置全点列表 List<Vector3> allPoints -储存全部点
@@ -825,7 +988,7 @@ public class UnitMovementSystem : ITickable
             processedNodes.Add(A.Key); // 标记为已处理
 
             //3.获取点A的全部邻接点及其花费 Dictionary<Vector3, float> neighbor_Cost
-            Dictionary<Vector3, float> neighbor_Cost = GetAllNeighborsAndCosts(A.Key, _mapDataService, null);
+            Dictionary<Vector3, float> neighbor_Cost = GetAllNeighborsAndCosts(A.Key, _mapDataService, factionId, null);
             //若A的邻接点不在allPoints内，则剔除出neighbor_Cost
             List<Vector3> neighbor_CostKeysList = new List<Vector3>(neighbor_Cost.Keys);
             List<Vector3> toRemove = new List<Vector3>();
@@ -872,7 +1035,7 @@ public class UnitMovementSystem : ITickable
     }
 
     //获取主体(默认为起点)的全部邻接点及其花费
-    private Dictionary<Vector3, float> GetAllNeighborsAndCosts(Vector3 self, IMapDataService _mapDataService, Vector3? targetHex = null)
+    private Dictionary<Vector3, float> GetAllNeighborsAndCosts(Vector3 self, IMapDataService _mapDataService, int factionId, Vector3? targetHex = null)
     {
         Dictionary<Vector3, float> d = new Dictionary<Vector3, float>();
 
@@ -885,7 +1048,7 @@ public class UnitMovementSystem : ITickable
             if (neighborCell == null) continue;
 
             bool isTarget = targetHex.HasValue && neighborCell.HexCoordinate == targetHex.Value;
-            if (!CanEnterCell(neighborCell, null, isTarget))
+            if (!CanEnterCell(neighborCell, null, isTarget, factionId))
             {
                 if (isTarget)
                 {
@@ -900,41 +1063,65 @@ public class UnitMovementSystem : ITickable
         return d;
     }
 
-    /// <summary>全局迷雾判定：resolver 存在时按可见性（含竞技场 lease 等临时点亮），否则退回“任一阵营已探索”。</summary>
-    private bool IsFogFree(HexCellData cell)
+    /// <summary>从单位 GameObject 解析阵营 id（玩家 0 / AI 1…）。优先 UnitMovementController.PlayerIndex，缺失时退回 tag 判定。</summary>
+    private static int FactionOf(GameObject unit)
+    {
+        if (unit == null) return 0;
+        var umc = unit.GetComponent<UnitMovementController>();
+        if (umc != null && umc.PlayerIndex >= 0) return umc.PlayerIndex;
+        return unit.CompareTag("PlayerUnit") ? 0 : 1;
+    }
+
+    /// <summary>全局迷雾判定：按 <paramref name="factionId"/> 阵营查可见性（含竞技场 lease 等临时点亮），
+    /// resolver 缺失时退回“任一阵营已探索”。修复：旧实现硬编码 faction 0，导致 AI（faction 1）寻路被玩家迷雾卡住。</summary>
+    private bool IsFogFree(HexCellData cell, int factionId)
     {
         return _visibilityResolver != null
-            ? _visibilityResolver.IsVisibleToFaction(cell, 0)
+            ? _visibilityResolver.IsVisibleToFaction(cell, factionId)
             : cell.IsExploredByAnyFaction;
     }
 
-    private bool CanEnterCell(HexCellData cell, GameObject movingUnit, bool allowOccupiedTarget)
+    private bool CanEnterCell(HexCellData cell, GameObject movingUnit, bool allowOccupiedTarget, int factionId)
     {
         if (cell == null || cell.movementCost < 0f || float.IsNaN(cell.movementCost) || float.IsInfinity(cell.movementCost) || cell.movementCost == float.MaxValue)
         {
             return false;
         }
 
-        // 【迷雾决定进入】有迷雾不可进、无迷雾可进；探索只是解锁迷雾的一种手段。
-        if (!IsFogFree(cell))
+        // 山体资格必须独立于缓存的 movementCost 判断；显式代价不能覆盖有效山体的不可通行规则。
+        if (MountainCellRule.IsEffectiveMountainCell(cell))
         {
             return false;
         }
 
-        if (!cell.IsHaveUnit()) return true;
-        return cell.GetUnit() == movingUnit || allowOccupiedTarget;
+        // 【迷雾决定进入】有迷雾不可进、无迷雾可进；探索只是解锁迷雾的一种手段。
+        if (!IsFogFree(cell, factionId))
+        {
+            return false;
+        }
+
+        // 【多单位】通行改按有效容量判断：仍有自由站位槽即可进；单位自身所在格 / 攻击目标格例外。
+        if (movingUnit != null && cell.HasStandingUnit(movingUnit)) return true;
+        if (allowOccupiedTarget) return true;
+        return cell.HasFreeStandingSlot();
     }
 
     // 内部数据结构
     private class MovingUnit
     {
         public IUnitMovement Unit;
-        public List<Vector3> Path;
-        public int CurrentPathIndex;
+        public List<Vector3> Path;                 // 逻辑路径（不含起点）
+        public List<int> VisualSlots;              // 每个 Path[i] 对应的视觉槽位 id
+        public int CurrentPathIndex;               // 下一个待抵达的路径节点
         public Enums.MovementPurpose Purpose;
         public Vector3 StartHex;
+        public int StartSlot;                      // 起点站位槽（取消时恢复）
+        public Vector3 CurrentStandingHex;         // 单位当前逻辑站位格（随逐格 commit 更新）
+        public int CurrentStandingSlot;
         public Vector3 DestinationHex;
+        public int DestinationSlot;
         public float StartRemainingMovement;
-        public float MoveSpeed;       // 实时移动速度（世界单位/秒），基于 UnitData.MovementPoints * 10
+        public float MoveSpeed;                    // 实时移动速度（世界单位/秒），基于 UnitData.MovementPoints * 10
+        public List<KeyValuePair<Vector3, int>> ReservedNodes; // 本任务预留的全部 (cell, slotId)
     }
 }

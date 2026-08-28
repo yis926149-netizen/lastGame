@@ -118,6 +118,9 @@
 - `Mesh.RecalculateNormals()` 只按**顶点索引**平均，从不按位置合并；不同面片各自持有的重合边界顶点（位置相同、索引不同）法线互不相干。
 - `UVGenerator.GeneratePlanarUV` 是 XZ 平面投影，**近垂直面在 XZ 上退化**：轻则贴图竖向拉伸成条纹，重则 UV 三角形零面积 → `RecalculateTangents` 出 Inf/NaN 切线。想根治竖面贴图与切线，应按面法线选投影轴做三平面（triplanar）UV（水平面 XZ、竖面 XY/ZY）；逐面独立顶点后正好可逐面选轴。
 
+- **竞技场墙体不能复用平台的通行代价**：第二阶段突起事务会对带 `ArenaMountainPlacement` 的外环墙体写入 `HasMountain=true`。若同时显式写 `MovementCost=1`，`UnitMovementSystem` 只看移动代价就会允许单位进入有效山体；墙体必须写 `float.MaxValue`，而可通行的 `1` 只应保留给内环平台和两个入口。`HasMountain` 的派生规则也不能依赖调用方误设的代价。
+- **寻路不能只信缓存的 movementCost**：任何逻辑若能显式覆盖移动代价，仍可能留下“有效山体 + 1”的矛盾状态。进入资格应在 `CanEnterCell` 中再次调用 `MountainCellRule.IsEffectiveMountainCell`，这样寻路邻居、攻击落点和最终移动都会统一拒绝有效山格。
+
 ## Transition blend runs along the wrong edge pair
 
 - Symptom: rectangle transition should blend edge1(material1) -> edge3(material2) along the self->neighbor axis, but the blend ran perpendicular (edge2->edge4), rotated 90 degrees; triangles were worse.

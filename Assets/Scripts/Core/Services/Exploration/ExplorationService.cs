@@ -78,9 +78,10 @@ public class ExplorationService : IExplorationService, ITickable, IDisposable
         if (targetCell.IsUnexplorable)
             return ExploreResult.Unexplorable;
 
-        GameObject occupant = targetCell.GetUnit();
-        if (occupant != null)
+        // 【多单位落点】枚举格内全部站位单位做敌方判定。
+        foreach (GameObject occupant in targetCell.GetStandingUnits())
         {
+            if (occupant == null) continue;
             bool isEnemy = factionId == 0
                 ? occupant.CompareTag("EnemyUnit")
                 : occupant.CompareTag("PlayerUnit");
@@ -133,8 +134,16 @@ public class ExplorationService : IExplorationService, ITickable, IDisposable
         {
             Debug.LogError($"[Exploration] 地块 {targetCell.HexCoordinate} 缺少预生成奖励快照（factionId={factionId}），按缺失快照处理。");
         }
+        else if (factionId == 0)
+        {
+            Debug.Log($"[RewardTrace] TakeSnapshot cell={targetCell.HexCoordinate} type={rewardSnapshot.RewardType} gold={rewardSnapshot.GoldAmount} units={(rewardSnapshot.UnitConfigs?.Length ?? -1)} card={(rewardSnapshot.TacticalCard == null ? "NULL" : rewardSnapshot.TacticalCard.cardId)} building={(rewardSnapshot.BuildingConfig == null ? "NULL" : rewardSnapshot.BuildingConfig.buildingId.ToString())}");
+        }
 
         ExplorationAcquisition explored = ExplorationAcquisition.Explored(targetCell, factionId, rewardSnapshot);
+        if (factionId == 0)
+        {
+            Debug.Log($"[RewardTrace] Explored cell={targetCell.HexCoordinate} type={explored.OriginalRewardType} gold={explored.OriginalGoldAmount} units={(explored.UnitConfigs?.Count ?? -1)} card={(explored.TacticalCard == null ? "NULL" : explored.TacticalCard.cardId)} building={(explored.BuildingConfig == null ? "NULL" : explored.BuildingConfig.buildingId.ToString())}");
+        }
 
         // 玩家侧在 Explored 广播前建立 pending，防止同步广播期间状态遗漏。
         if (factionId == 0)

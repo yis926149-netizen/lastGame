@@ -207,7 +207,8 @@ public class AICardBrain
         if (_movementSystem.IsDestinationReserved(cell.HexCoordinate)) return false;
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
-        if (cell.IsHaveUnit()) return false;
+        // 【多单位落点】单位部署改按有效容量。
+        if (!cell.HasFreeStandingSlot()) return false;
         return cell.Player_City_Index.Key == AIIndex &&
                (_logisticsService == null || _logisticsService.IsLogisticsConnected(cell, AIIndex));
     }
@@ -220,7 +221,8 @@ public class AICardBrain
         if (_movementSystem.IsDestinationReserved(cell.HexCoordinate)) return false;
         if (cell.HexType == Enums.HexType.LakeOrSea) return false;
         if (cell.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) return false;
-        if (cell.IsHaveUnit()) return false;
+        // 建筑不可与任何站位单位同格。
+        if (cell.HasAnyStandingUnit()) return false;
         return cell.Player_City_Index.Key == AIIndex &&
                (_logisticsService == null || _logisticsService.IsLogisticsConnected(cell, AIIndex));
     }

@@ -110,7 +110,8 @@ public class BarracksSpawner : MonoBehaviour
             if (!MountainCellRule.CanSpawnUnitOnCell(neighbor)) continue;
             if (neighbor.HexType == Enums.HexType.LakeOrSea) continue;
             if (neighbor.BulidingTypeOnHex_Building.Key != Enums.BulidingType.NoBuilding) continue;
-            if (neighbor.IsHaveUnit()) continue;
+            // 【多单位落点】出生格选择改按有效容量：仍有自由站位槽即可。
+            if (!neighbor.HasFreeStandingSlot()) continue;
             if (_movementSystem.IsDestinationReserved(neighbor.HexCoordinate)) continue;
             if (_logisticsService != null && !_logisticsService.IsLogisticsConnected(neighbor, factionId)) continue;
             return neighbor;
@@ -180,7 +181,11 @@ public class BarracksSpawner : MonoBehaviour
         Vector3 hexCoord = _mapDataService.WorldToHexCoordinate(g.transform.position);
         HexCellData h = _mapDataService.GetCell(hexCoord);
         _unitRepository.AddPlayerUnit(g, characterData);
-        h.SetHaveUnit(true, g);
+        // 【多单位落点】按站位槽生成（满员退回旧单单位写入兜底）。
+        if (h.TryClaimStandingUnit(g, position, position, preferLine: false, out _, out Vector3 slotPos))
+            g.transform.position = slotPos;
+        else
+            h.SetHaveUnit(true, g);
 
         var brain = g.AddComponent<PlayerUnitBrain>();
         brain.Initialize(

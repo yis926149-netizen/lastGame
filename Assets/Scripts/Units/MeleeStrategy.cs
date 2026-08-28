@@ -33,7 +33,7 @@ public class MeleeStrategy : IUnitStrategy
         Vector3? directionHint = brain.FindApproximateDirectionToHiddenBuilding();
         if (directionHint.HasValue && movement.CalculateMinMovementCostBetweenTwoHexes(
                 allPoints, startHex, directionHint.Value,
-                Enums.MovementPurpose.MoveToDestination, out _, out List<Vector3> directionPath)
+                Enums.MovementPurpose.MoveToDestination, brain.FactionId, out _, out List<Vector3> directionPath)
             && directionPath != null && directionPath.Count > 0)
         {
             return new List<Vector3> { directionPath[0] };
@@ -81,7 +81,7 @@ public class MeleeStrategy : IUnitStrategy
         {
             if (movement.CalculateMinMovementCostBetweenTwoHexes(
                     allPoints, startHex, bestAlertTarget.Value,
-                    Enums.MovementPurpose.MoveToAttack, out _, out List<Vector3> path)
+                    Enums.MovementPurpose.MoveToAttack, brain.FactionId, out _, out List<Vector3> path)
                 && path != null && path.Count > 0)
             {
                 return path;
@@ -94,7 +94,7 @@ public class MeleeStrategy : IUnitStrategy
         {
             if (movement.CalculateMinMovementCostBetweenTwoHexes(
                     allPoints, startHex, chest.Value,
-                    Enums.MovementPurpose.MoveToAttack, out _, out List<Vector3> chestPath)
+                    Enums.MovementPurpose.MoveToAttack, brain.FactionId, out _, out List<Vector3> chestPath)
                 && chestPath != null && chestPath.Count > 0)
             {
                 return chestPath;
@@ -107,7 +107,7 @@ public class MeleeStrategy : IUnitStrategy
         {
             if (movement.CalculateMinMovementCostBetweenTwoHexes(
                     allPoints, startHex, enemyBuilding.Value,
-                    Enums.MovementPurpose.MoveToAttack, out _, out List<Vector3> marchPath)
+                    Enums.MovementPurpose.MoveToAttack, brain.FactionId, out _, out List<Vector3> marchPath)
                 && marchPath != null && marchPath.Count > 0)
             {
                 return marchPath;
@@ -195,9 +195,9 @@ public class MeleeStrategy : IUnitStrategy
         string enemyUnitTag = selfIsPlayer ? "EnemyUnit" : "PlayerUnit";
         string enemyBuildingTag = selfIsPlayer ? "EnemyBuilding" : "PlayerBuilding";
 
-        if (cell.IsHaveUnit())
+        // 【多单位落点】枚举格内全部站位单位。
+        foreach (GameObject unitInCell in cell.GetStandingUnits())
         {
-            GameObject unitInCell = cell.GetUnit();
             if (unitInCell != null && unitInCell.CompareTag(enemyUnitTag))
                 return (unitInCell, enemyUnitTag);
         }

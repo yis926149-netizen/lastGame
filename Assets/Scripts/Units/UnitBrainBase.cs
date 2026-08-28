@@ -29,6 +29,19 @@ public abstract class UnitBrainBase : MonoBehaviour
     // ── 忙碌标志 ──────────────────────────────────────────
     public bool IsBusy => Owner?.unitMovementController?.IsBusy ?? false;
 
+    // ── 阵营 id（寻路迷雾判定用）──────────────────────────
+    // 优先读 UnitMovementController.PlayerIndex（真相源，支持多 AI 阵营），
+    // 缺失时退回 tag 判定（PlayerUnit=0，其余=1）。
+    public int FactionId
+    {
+        get
+        {
+            var umc = Owner?.unitMovementController;
+            if (umc != null && umc.PlayerIndex >= 0) return umc.PlayerIndex;
+            return Owner?.model != null && Owner.model.CompareTag("PlayerUnit") ? 0 : 1;
+        }
+    }
+
     // ── 回血计时器（批次 C）──────────────────────────────
     // 【地图地貌配置化】农田回血参数来自当前格 MapLandFormSO（LandFormEffectRule.TryGetPeriodicHeal），
     // 不再使用硬编码常量；祭坛回血兜底间隔已迁移至 CoreGameplayConfigProvider。
@@ -244,7 +257,7 @@ public abstract class UnitBrainBase : MonoBehaviour
 
             if (Movement.CalculateMinMovementCostBetweenTwoHexes(
                     allPoints, startHex, endHex,
-                    Enums.MovementPurpose.MoveToAttack, out float cost, out _)
+                    Enums.MovementPurpose.MoveToAttack, FactionId, out float cost, out _)
                 && cost < bestCost)
             {
                 bestCost = cost;
@@ -305,7 +318,7 @@ public abstract class UnitBrainBase : MonoBehaviour
         // 预算必须有限：GetAllReachableHexesFromStartHex 的收尾判据是 minCost <= totalCost，
         // 而不可达格的 minCost 恰为 float.MaxValue —— 传 float.MaxValue 会因 MaxValue <= MaxValue
         // 成立而把全图（含水域）一并返回。单格 cost 为 1，故任何可达格代价必 <= 总格数。
-        List<Vector3> reachable = Movement.GetAllReachableHexesFromStartHex(allPoints, startHex, allPoints.Count);
+        List<Vector3> reachable = Movement.GetAllReachableHexesFromStartHex(allPoints, startHex, allPoints.Count, FactionId);
         if (reachable == null || reachable.Count == 0) return null;
 
         Vector3 best = startHex;
@@ -356,7 +369,7 @@ public abstract class UnitBrainBase : MonoBehaviour
     {
         if (Movement == null || allPoints == null || allPoints.Count == 0) return null;
 
-        List<Vector3> reachable = Movement.GetAllReachableHexesFromStartHex(allPoints, startHex, WanderRadiusHexes);
+        List<Vector3> reachable = Movement.GetAllReachableHexesFromStartHex(allPoints, startHex, WanderRadiusHexes, FactionId);
         if (reachable == null || reachable.Count == 0) return null;
 
         reachable.RemoveAll(v => v == startHex ||
@@ -397,9 +410,16 @@ public abstract class UnitBrainBase : MonoBehaviour
         return Movement != null &&
                Movement.CalculateMinMovementCostBetweenTwoHexes(
                    allPoints, startHex, targetHex,
-                   Enums.MovementPurpose.MoveToAttack, out float cost, out _)
+                   Enums.MovementPurpose.MoveToAttack, FactionId, out float cost, out _)
                && cost < float.MaxValue;
     }
+
+    /// <summary>
+    /// 【临时调试开关】隔海趋近（5a）总开关。
+    /// false = 屏蔽 5a，兜底直接落到 5b 随机游走，用于排查"双方单位隔海相望卡住"是否由本逻辑引起。
+    /// 排查结束后改回 true 即可恢复，不要删除 5a 代码。
+    /// </summary>
+    public static bool EnableIsolatedShoreApproach = true;
 
     /// <summary>
     /// 两级空闲兜底（无目标可打/可到达时）：先隔海趋近，再随机游走。
@@ -412,24 +432,28 @@ public abstract class UnitBrainBase : MonoBehaviour
         //     必须校验"确实不可达"：近战 step 2 的警戒范围（3格）门槛会让一个**可达但较远**的敌人
         //     也落到本兜底，若不校验就会变成无限追击，既越过 AlertRange 的设计意图，
         //     也抢掉了"无目标 → 随机游走"。用户的语义是「目标被隔开」，即真正不可达。
-        Vector3? isolated = FirstUnreachable(allPoints, startHex);
-        if (isolated.HasValue)
+        //     【临时屏蔽】EnableIsolatedShoreApproach=false 时整段跳过，直接走 5b 随机游走。
+        if (EnableIsolatedShoreApproach)
         {
-            Vector3? shore = FindClosestReachableCellToTarget(allPoints, startHex, isolated.Value);
-            if (!shore.HasValue)
-                return null;   // 连起点都在孤立区域外（理论上不会发生），驻守兜底
-
-            if (shore.Value == startHex)
-                return null;   // 已在最优岸格（近战海边驻扎 / 远程射程不够驻守），不再游走
-
-            if (Movement.CalculateMinMovementCostBetweenTwoHexes(
-                    allPoints, startHex, shore.Value,
-                    Enums.MovementPurpose.MoveToDestination, out _, out List<Vector3> shorePath)
-                && shorePath != null && shorePath.Count > 0)
+            Vector3? isolated = FirstUnreachable(allPoints, startHex);
+            if (isolated.HasValue)
             {
-                return shorePath;
+                Vector3? shore = FindClosestReachableCellToTarget(allPoints, startHex, isolated.Value);
+                if (!shore.HasValue)
+                    return null;   // 连起点都在孤立区域外（理论上不会发生），驻守兜底
+
+                if (shore.Value == startHex)
+                    return null;   // 已在最优岸格（近战海边驻扎 / 远程射程不够驻守），不再游走
+
+                if (Movement.CalculateMinMovementCostBetweenTwoHexes(
+                        allPoints, startHex, shore.Value,
+                        Enums.MovementPurpose.MoveToDestination, FactionId, out _, out List<Vector3> shorePath)
+                    && shorePath != null && shorePath.Count > 0)
+                {
+                    return shorePath;
+                }
+                return null;   // 岸格路径求解失败，驻守；不落入游走，避免近战离开海岸
             }
-            return null;   // 岸格路径求解失败，驻守；不落入游走，避免近战离开海岸
         }
 
         // 5b. 真无目标 → 随机游走。
@@ -438,7 +462,7 @@ public abstract class UnitBrainBase : MonoBehaviour
 
         if (Movement.CalculateMinMovementCostBetweenTwoHexes(
                 allPoints, startHex, wanderTarget.Value,
-                Enums.MovementPurpose.MoveToDestination, out _, out List<Vector3> wanderPath)
+                Enums.MovementPurpose.MoveToDestination, FactionId, out _, out List<Vector3> wanderPath)
             && wanderPath != null && wanderPath.Count > 0)
         {
             return wanderPath;

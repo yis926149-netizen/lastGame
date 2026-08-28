@@ -200,10 +200,13 @@ public class ArenaEventManager : ITickable
         _mutationService.BeginTransaction();
         foreach (HexCellData cell in _innerCells)
         {
+            cell.EnsureUnitSlots().EnableAll();
             _mutationService.Apply(cell, new HexCellPatch
             {
                 HasMovementCost = true,
                 MovementCost = 1f,
+                HasIsUnexplorable = true,
+                IsUnexplorable = false,
                 ClearRiver = true,
                 ClearLandForm = true,
                 ClearResource = true
@@ -212,6 +215,10 @@ public class ArenaEventManager : ITickable
         foreach (HexCellData cell in _ringCells)
         {
             bool isEntrance = cell == _entranceA || cell == _entranceB;
+            if (isEntrance)
+                cell.EnsureUnitSlots().EnableAll();
+            else
+                cell.EnsureUnitSlots().DisableAll();
             _mutationService.Apply(cell, new HexCellPatch
             {
                 HasMovementCost = true,
@@ -237,6 +244,10 @@ public class ArenaEventManager : ITickable
                 {
                     HasHeight = true,
                     Height = floorHeight,
+                    HasMovementCost = true,
+                    MovementCost = float.MaxValue,
+                    HasIsUnexplorable = true,
+                    IsUnexplorable = true,
                     HasMountain = true,
                     MountainLandForm = _config.mountainConfig.mountainLandForm,
                     MountainRidge = placement.Ridge,

@@ -196,7 +196,14 @@ public class AIEntityFactory
         SpawnUIWiring.WireUnitCanvas(g, characterData, Color.red, _container, _uiConfigProvider);
 
         HexCellData h = _mapDataService.GetCellByWorldPosition(position);
-        h.SetHaveUnit(true, g);
+        // 【多单位落点】按站位槽生成（满员退回旧单单位写入兜底）。
+        if (h != null)
+        {
+            if (h.TryClaimStandingUnit(g, position, position, preferLine: false, out _, out Vector3 slotPos))
+                g.transform.position = slotPos;
+            else
+                h.SetHaveUnit(true, g);
+        }
 
         // 【批次 D】挂载 AIUnitBrain，注入全部依赖（含 CombatResolver 和建城依赖），注册到 GameLoop
         var brain = g.AddComponent<AIUnitBrain>();

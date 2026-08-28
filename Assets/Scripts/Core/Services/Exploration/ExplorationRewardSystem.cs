@@ -62,6 +62,7 @@ public class ExplorationRewardSystem : IDisposable
 
         try
         {
+            Debug.Log($"[RewardTrace] Settle cell={cell.HexCoordinate} hasSnapshot={acquisition.HasRewardSnapshot} originalType={acquisition.OriginalRewardType} gold={acquisition.OriginalGoldAmount} units={(acquisition.UnitConfigs?.Count ?? -1)} card={(acquisition.TacticalCard == null ? "NULL" : acquisition.TacticalCard.cardId)} building={(acquisition.BuildingConfig == null ? "NULL" : acquisition.BuildingConfig.buildingId.ToString())}");
             if (!acquisition.HasRewardSnapshot)
             {
                 Debug.LogWarning($"[ExplorationReward] 地块 {cell.HexCoordinate} 没有预生成奖励，跳过结算");
@@ -94,6 +95,7 @@ public class ExplorationRewardSystem : IDisposable
 
                 case ExplorationRewardConfigSO.ExplorationRewardType.TacticalCard:
                     TacticalCardSO card = acquisition.TacticalCard;
+                    Debug.Log($"[RewardTrace] Settle.Tactical cell={cell.HexCoordinate} card={(card == null ? "NULL" : card.cardId)} presenter={(_tacticalCardPresenter == null ? "NULL" : "OK")}");
                     if (card != null && _tacticalCardPresenter != null)
                     {
                         _tacticalCardPresenter.AddCardWithFly(card, cell.RealCenterWorldCoordinate);
@@ -128,6 +130,8 @@ public class ExplorationRewardSystem : IDisposable
         HexCellData cell = acquisition.Cell;
         BuildingConfigSO buildingConfig = acquisition.BuildingConfig;
         int fallbackGold = acquisition.OriginalGoldAmount;
+
+        Debug.Log($"[RewardTrace] Settle.Building cell={cell.HexCoordinate} config={(buildingConfig == null ? "NULL" : buildingConfig.buildingId.ToString())} fallbackGold={fallbackGold}");
 
         if (buildingConfig == null)
         {
@@ -174,13 +178,14 @@ public class ExplorationRewardSystem : IDisposable
     /// </summary>
     private void SpawnUnitsWithOverflow(HexCellData targetCell, IReadOnlyList<UnitConfigSO> unitConfigs)
     {
+        Debug.Log($"[RewardTrace] SpawnUnits cell={targetCell.HexCoordinate} count={(unitConfigs == null ? -1 : unitConfigs.Count)}");
         for (int i = 0; i < unitConfigs.Count; i++)
         {
             Vector3 spawnPosition = targetCell.RealCenterWorldCoordinate;
             HexCellData spawnCell = targetCell;
 
-            // 目标格已有单位或为山格/水域 → 尝试溢出到邻格（决策 ①：山格不可部署）
-            if (targetCell.IsHaveUnit() || !MountainCellRule.CanSpawnUnitOnCell(targetCell))
+            // 目标格已无自由站位槽或为山格/水域 → 尝试溢出到邻格（决策 ①：山格不可部署）
+            if (!targetCell.HasFreeStandingSlot() || !MountainCellRule.CanSpawnUnitOnCell(targetCell))
             {
                 spawnCell = FindOverflowCell(targetCell);
                 if (spawnCell == null)
@@ -199,11 +204,11 @@ public class ExplorationRewardSystem : IDisposable
                 continue;
             }
             GameObject unit = _unitSpawnService.SpawnPlayerUnit(unitConfig.Id, spawnPosition);
-                if (unit != null) { }
-                else
-                {
-                    Debug.LogError($"[ExplorationReward] 生成单位失败：unitID={unitConfig.Id}, position={spawnPosition}");
-                }
+            Debug.Log($"[RewardTrace] SpawnUnits cell={targetCell.HexCoordinate} i={i} unitId={unitConfig.Id} spawned={(unit != null)}");
+            if (unit == null)
+            {
+                Debug.LogError($"[ExplorationReward] 生成单位失败：unitID={unitConfig.Id}, position={spawnPosition}");
+            }
         }
     }
 
@@ -233,7 +238,7 @@ public class ExplorationRewardSystem : IDisposable
                     if (neighbor.HexType != Enums.HexType.LakeOrSea &&
                         MountainCellRule.CanSpawnUnitOnCell(neighbor) &&
                         neighbor.BulidingTypeOnHex_Building.Key == Enums.BulidingType.NoBuilding &&
-                        !neighbor.IsHaveUnit())
+                        neighbor.HasFreeStandingSlot())
                     {
                         return neighbor;
                     }

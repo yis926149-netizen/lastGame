@@ -138,7 +138,8 @@ public abstract class PublicBuildingBase : BuildingBase
         CacheDiscoveryArea();
         foreach (var hex in _discoveryArea)
         {
-            if (hex != null && (hex.HasOccupant() || hex.IsHaveUnit()))
+            // 【多单位落点】发现判定改用“是否有任意站位单位”。
+            if (hex != null && hex.HasAnyStandingUnit())
             {
                 Reveal();
                 return;

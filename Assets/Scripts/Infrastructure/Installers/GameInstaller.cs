@@ -224,7 +224,8 @@ public class GameInstaller : MonoInstaller
         Container.Bind(typeof(GoldWallet), typeof(IPlayerResourceWallet)).To<GoldWallet>().AsSingle();
         Container.Bind<IExplorationCostProvider>().To<FixedExplorationCostProvider>().AsSingle();
         Container.BindInterfacesAndSelfTo<GoldIncomeService>().AsSingle().NonLazy();   // ITickable 被动收入
-        Container.BindInterfacesAndSelfTo<SunCycleController>().AsSingle().NonLazy(); // ITickable 太阳升降循环
+        // 【临时屏蔽昼夜循环】取消下面这行注释即可恢复
+        // Container.BindInterfacesAndSelfTo<SunCycleController>().AsSingle().NonLazy(); // ITickable 太阳升降循环
 
         // 【探索重构-阶段5.5】势力范围服务（新模型：主城固有范围 + 探索占领 + 公共建筑占领）
         Container.Bind<ITerritoryService>().To<TerritoryService>().AsSingle();

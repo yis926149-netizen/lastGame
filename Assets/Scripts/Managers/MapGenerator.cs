@@ -138,6 +138,42 @@ public class MapGenerator : MonoBehaviour
         LandFormDataGeneration(hexVertices, landFormRandom);
         RiverGenerator.RiverGeneration(x, z, minLongestLength, maxLongestLength, riverSourceGenerationProbability, _mapDataService, riverRandom);
         ResourceDataGeneration(hexVertices, resourceRandom);
+
+        // 【多单位落点】地形/地貌/资源全部确定后烘焙槽位（决策：槽位位置只随种子，整局不变）
+        BakeUnitSlots(InnerRadius, OuterRadius);
+    }
+
+    /// <summary>
+    /// 为每个地块烘焙 5 个站位槽（四角+中心，中心不抖动，种子派生）。
+    /// 生成期障碍校验：水域/有效山体整格禁用；地貌/资源/公共建筑/主城/宝箱当前无生成期占用代理，
+    /// 按计划 3.2/九.12 降级为「不禁用该槽位」并记录一次诊断日志（不假装已完成碰撞校验）。
+    /// </summary>
+    private void BakeUnitSlots(float InnerRadius, float OuterRadius)
+    {
+        float cellWidth = 2f * InnerRadius;
+        float cellDepth = 1.5f * OuterRadius;
+        bool degradedLogged = false;
+
+        foreach (HexCellData cell in _mapDataService.GetAllCells())
+        {
+            if (cell == null) continue;
+
+            cell.BakeUnitSlots(SeedService.CurrentSeed, cellWidth, cellDepth);
+
+            // 不可通行格：整格禁用（水域 / 有效山体），容量 0，永不站位。
+            if (WaterLevelConfig.IsWater(cell) || MountainCellRule.IsEffectiveMountainCell(cell))
+            {
+                cell.UnitSlots.DisableAll();
+                continue;
+            }
+
+            // 生成期障碍代理缺失的地貌/资源/建筑：按降级策略不禁用，仅诊断一次。
+            if (!degradedLogged && (cell.landForm != null || cell.resource != null))
+            {
+                degradedLogged = true;
+                Debug.Log("[MapGenerator] 槽位烘焙：地貌/资源暂无生成期占用代理，按计划 3.2 降级为不禁用该槽位（运行时模型由 MapPresentationBootstrap 分帧实例化，生成期不做碰撞校验）。");
+            }
+        }
     }
 
     private static int CountMountainCells(List<MountainRidgeData> ridges)

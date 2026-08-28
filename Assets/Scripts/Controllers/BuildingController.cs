@@ -341,16 +341,19 @@ public class BuildingController : BuildingBase
         // 【断供方案-阶段3/决策10】占领只对阵营 0/1 有效；中立与公共建筑伪阵营（Key>=2）豁免
         if (cellOwner < 0 || cellOwner >= 2) return;
 
-        if (!cell.IsHaveUnit()) return;
-        GameObject unit = cell.GetUnit();
-        if (unit == null) return;
+        // 【多单位落点】枚举格内全部站位单位，找到第一个敌方占领者。
+        foreach (GameObject unit in cell.GetStandingUnits())
+        {
+            if (unit == null) continue;
 
-        var controller = unit.GetComponent<UnitMovementController>();
-        if (controller == null) return;
+            var controller = unit.GetComponent<UnitMovementController>();
+            if (controller == null) continue;
 
-        int attackerFaction = controller.PlayerIndex;
-        if (cellOwner == attackerFaction) return;
+            int attackerFaction = controller.PlayerIndex;
+            if (cellOwner == attackerFaction) continue;
 
-        _logisticsService.TransferOwner(cell, attackerFaction);
+            _logisticsService.TransferOwner(cell, attackerFaction);
+            return;
+        }
     }
 }

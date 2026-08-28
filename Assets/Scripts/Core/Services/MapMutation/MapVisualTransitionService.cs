@@ -464,13 +464,17 @@ public class MapVisualTransitionService : ITickable
         foreach (HexCellData cell in t.ChangedCells)
         {
             if (cell == null) continue;
-            GameObject unit = cell.GetOccupant() ?? cell.GetUnit();
-            if (unit == null) continue;
-            if (_unitMovementSystem.IsUnitMoving(unit)) continue; // 移动中单位跳过（§12.5）
 
-            Vector3 pos = unit.transform.position;
-            pos.y = GetAnimatedWorldY(cell);
-            unit.transform.position = pos;
+            // 【多单位落点】枚举格内全部站位单位，只改 Y（保留各自 XZ 槽位偏移）。
+            foreach (GameObject unit in cell.GetStandingUnits())
+            {
+                if (unit == null) continue;
+                if (_unitMovementSystem.IsUnitMoving(unit)) continue; // 移动中单位跳过（§12.5）
+
+                Vector3 pos = unit.transform.position;
+                pos.y = GetAnimatedWorldY(cell);
+                unit.transform.position = pos;
+            }
         }
     }
 

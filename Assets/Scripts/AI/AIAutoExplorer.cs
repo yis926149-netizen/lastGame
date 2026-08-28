@@ -197,7 +197,7 @@ public class AIAutoExplorer : ITickable, IDisposable
             Vector3 spawnPos = targetCell.RealCenterWorldCoordinate;
 
             // 【程序化山脉-阶段 7.6】山格/水域不可部署（决策 ①）：目标格不合格时尝试溢出
-            if (spawnCell.IsHaveUnit() || !MountainCellRule.CanSpawnUnitOnCell(spawnCell))
+            if (!spawnCell.HasFreeStandingSlot() || !MountainCellRule.CanSpawnUnitOnCell(spawnCell))
             {
                 spawnCell = FindOverflowCell(spawnCell);
                 if (spawnCell == null) continue;
@@ -285,7 +285,7 @@ public class AIAutoExplorer : ITickable, IDisposable
                     if (neighbor.HexType != Enums.HexType.LakeOrSea &&
                         MountainCellRule.CanSpawnUnitOnCell(neighbor) &&
                         neighbor.BulidingTypeOnHex_Building.Key == Enums.BulidingType.NoBuilding &&
-                        !neighbor.IsHaveUnit())
+                        neighbor.HasFreeStandingSlot())
                     {
                         return neighbor;
                     }

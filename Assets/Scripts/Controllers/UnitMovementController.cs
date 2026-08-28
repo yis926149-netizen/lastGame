@@ -242,11 +242,13 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
     public List<Vector3> GetReachableHexes()
     {
-        // 调用系统的可达格子计算
+        // 调用系统的可达格子计算（按本单位阵营查可见性，避免 AI 被玩家迷雾卡住）
+        int factionId = PlayerIndex >= 0 ? PlayerIndex : (CompareTag("PlayerUnit") ? 0 : 1);
         return _movementSystem.GetAllReachableHexesFromStartHex(
             new List<Vector3>(_mapDataService.GetAllHexCoordinates()),
             CurrentHexCoordinate,
-            currentMovementPoints
+            currentMovementPoints,
+            factionId
         );
     }
 
