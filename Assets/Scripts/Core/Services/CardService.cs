@@ -17,6 +17,12 @@ public interface ICardService
     bool CanDealThisTurn();           // ?????????????
     void ResetDealOpportunity();
     void MarkDealtThisTurn();
+
+    /// <summary>
+    /// 将所有 slot 整体右移一位（slot i -> slot i+1）。
+    /// slot 0 清空供新卡使用；若末位原有内容则通过 droppedView 返回，由调用方销毁。
+    /// </summary>
+    void ShiftSlotsRight(out ICardView droppedView);
 }
 
 public class CardService : ICardService
@@ -88,4 +94,17 @@ public class CardService : ICardService
     public bool CanDealThisTurn() => !_hasDealtThisTurn;
     public void ResetDealOpportunity() => _hasDealtThisTurn = false;
     public void MarkDealtThisTurn() => _hasDealtThisTurn = true;
+
+    public void ShiftSlotsRight(out ICardView droppedView)
+    {
+        // 末位的卡牌将被挤掉
+        droppedView = _slots[MaxCardsCount - 1];
+
+        // 从末尾向前逐位右移
+        for (int i = MaxCardsCount - 1; i > 0; i--)
+            _slots[i] = _slots[i - 1];
+
+        // slot 0 留给新卡
+        _slots[0] = null;
+    }
 }

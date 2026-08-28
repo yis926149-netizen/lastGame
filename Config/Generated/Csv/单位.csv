@@ -2,6 +2,9 @@ unitId,legacyId,displayName,enabled,strategyType,hp,attack,defense,attackRange,m
 unit.angry_mushroom,1,愤怒蘑菇,true,Melee,20,15,2,1,0.5,1,1.5,10
 unit.archer,12,弓兵,true,Ranged,20,15,2,2,0.5,1,1.5,50
 unit.big_eye,9,大眼,true,Ranged,20,15,2,2,1,1,1.5,10
+unit.boss1,14,boss1,true,Melee,200,12,2,1,1.5,1,1,300
+unit.boss2,15,boss2,true,Melee,200,12,2,1,1.5,1,1,300
+unit.boss3,16,boss3,true,Melee,200,12,2,1,1.5,1,1,300
 unit.cactus,2,仙人掌,true,Melee,20,15,2,1,0.5,1,1.5,10
 unit.chest_monster,10,宝箱怪,true,Melee,20,15,2,1,1,1,1.5,10
 unit.free_lich,3,免费巫妖,true,Ranged,20,15,2,2,1,1,1.5,10

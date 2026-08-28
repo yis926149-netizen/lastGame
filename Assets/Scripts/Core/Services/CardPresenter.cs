@@ -652,6 +652,64 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
     }
 
     /// <summary>
+    /// 将指定卡牌强制插入手牌第一位（slot 0）。
+    /// 现有卡牌整体右移一位；若手牌已满，末位卡牌被销毁。
+    /// 不走 next-card 流程，直接入手。
+    /// </summary>
+    public void InsertCardAtFront(NormalCardConfigSO config)
+    {
+        if (config == null) return;
+
+        var placeholder = _uiConfig?.NextCardPlaceholder;
+        if (placeholder == null) return;
+        RectTransform placeholderRect = placeholder.GetComponent<RectTransform>();
+        if (placeholderRect == null) return;
+
+        // 1. CardService 层整体右移，取出被挤掉的末位卡（满手牌时才非 null）
+        _cardService.ShiftSlotsRight(out ICardView droppedView);
+
+        // 2. 更新所有现有手牌的 PlacementID 并滑动到新位置
+        foreach (ICardView cardView in _cardViews)
+        {
+            int newSlot = cardView.PlacementID + 1;
+            cardView.PlacementID = newSlot;
+            Vector2 newOffset = _cardService.GetSlotOffset(newSlot);
+            Vector3 newPos = (Vector3)placeholderRect.anchoredPosition
+                           + new Vector3(newOffset.x, newOffset.y, 0);
+            cardView.OriginPosition = newPos;
+            cardView.RectTransform.DOKill();
+            cardView.RectTransform.DOAnchorPos(newPos, 0.2f).SetEase(Ease.OutQuad);
+        }
+
+        // 3. 销毁被挤掉的末位卡
+        if (droppedView != null)
+        {
+            _cardViews.Remove(droppedView);
+            GameObject.Destroy((droppedView as MonoBehaviour)?.gameObject);
+        }
+
+        // 4. 在 slot 0 实例化新卡，直接落位（暂无入场动效）
+        CardData cardData = BuildCardData(config);
+        GameObject prefab = _uiConfig.GetCardPrefab();
+        GameObject cardObj = _container.InstantiatePrefab(prefab, _handRoot);
+        RectTransform cardRect = cardObj.GetComponent<RectTransform>();
+        cardRect.localScale = _uiConfig.CardSize;
+
+        ICardView view = cardObj.GetComponent<ICardView>() ?? cardObj.AddComponent<CardController>();
+
+        Vector2 slot0Offset = _cardService.GetSlotOffset(0);
+        Vector3 slot0Pos = (Vector3)placeholderRect.anchoredPosition
+                         + new Vector3(slot0Offset.x, slot0Offset.y, 0);
+
+        view.SetData(cardData, 0, slot0Pos);
+        view.IsNextCard = false;
+        cardRect.anchoredPosition = slot0Pos;
+
+        _cardService.RegisterCardView(0, view);
+        _cardViews.Add(view);
+    }
+
+    /// <summary>
     /// 次卡槽为空时立即抽一张新卡（与回合无关）
     /// </summary>
     private void DrawNewNextCard()

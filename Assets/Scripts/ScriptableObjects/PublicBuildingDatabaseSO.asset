@@ -13,4 +13,19 @@ MonoBehaviour:
   m_Name: PublicBuildingDatabaseSO
   m_EditorClassIdentifier: 
   markerPrefab: {fileID: 4126988599795236846, guid: 7bf42e4a65549e545b432f28366a92da, type: 3}
-  buildings: []
+  buildings:
+  - prefab: {fileID: 177841905923460461, guid: f3b5d4b925a9e2e4a90d46ce7a80e0f1, type: 3}
+    markerIcon: {fileID: 0}
+    captureHp: 100
+    defenseHp: 100
+    subHexDirections: 
+  - prefab: {fileID: 177841905923460461, guid: 30bd653aca2c8214cadb412ae20e33d3, type: 3}
+    markerIcon: {fileID: 0}
+    captureHp: 100
+    defenseHp: 100
+    subHexDirections: 
+  - prefab: {fileID: 177841905923460461, guid: cddb508ad92b53e4b8752daeb6e66515, type: 3}
+    markerIcon: {fileID: 0}
+    captureHp: 100
+    defenseHp: 150100
+    subHexDirections: 

@@ -13,10 +13,24 @@ MonoBehaviour:
   m_Name: PublicBuildingBalanceDatabase
   m_EditorClassIdentifier: 
   buildings:
-  - buildingId: public.fort
+  - buildingId: collectible_01
     legacyId: 0
-    buildingName: "\u5821\u5792"
+    buildingName: boss1
     enabled: 1
     captureHp: 100
-    defenseHp: 150
-    subHexDirections: NE,E,SE
+    defenseHp: 100
+    subHexDirections: 
+  - buildingId: collectible_02
+    legacyId: 1
+    buildingName: boss2
+    enabled: 1
+    captureHp: 100
+    defenseHp: 100
+    subHexDirections: 
+  - buildingId: collectible_03
+    legacyId: 2
+    buildingName: boss3
+    enabled: 1
+    captureHp: 100
+    defenseHp: 100
+    subHexDirections: 

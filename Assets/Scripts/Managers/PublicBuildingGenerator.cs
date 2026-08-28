@@ -95,9 +95,13 @@ public class PublicBuildingGenerator
             {
                 Debug.Log($"<color=cyan>[PublicBuildingGenerator] 建筑 #{playerIndexCounter - startPlayerIndex} 成功, buildingId={buildingId}, rootHex=({rootHex.HexCoordinate.x:F0},{rootHex.HexCoordinate.y:F0},{rootHex.HexCoordinate.z:F0})</color>");
                 PublicBuildingBase publicBuilding = rootHex.publicBuildingRoot;
-                _markerManager.CreateMarker(publicBuilding, markerRandom,
-                    _dataProvider.GetMarkerPrefab(),
-                    _dataProvider.GetMarkerIcon(buildingId));
+                // 生成即激活的建筑不需要迷雾标记
+                if (publicBuilding.StartsHidden)
+                {
+                    _markerManager.CreateMarker(publicBuilding, markerRandom,
+                        _dataProvider.GetMarkerPrefab(),
+                        _dataProvider.GetMarkerIcon(buildingId));
+                }
 
                 // 成功生成，分配下一个 PlayerIndex
                 _enemyModelManager.PublicBuildingPlayerIndexes.Add(playerIndexCounter);
@@ -235,10 +239,14 @@ public class PublicBuildingGenerator
         _gameLoop.RegisterPublicBuilding(pb);
 
         // 10. 【决策#42】标记公共建筑占位格+周围一环为不可探索
-        MarkUnexplorableArea(pb.OccupiedHexes);
+        // 生成即激活的建筑（如 PublicBuilding_Collectible）跳过隐藏和不可探索标记
+        if (pb.StartsHidden)
+        {
+            MarkUnexplorableArea(pb.OccupiedHexes);
 
-        // 11. 开局仅保留数据占位，隐藏建筑模型及其子级血条。
-        instance.SetActive(false);
+            // 11. 开局仅保留数据占位，隐藏建筑模型及其子级血条。
+            instance.SetActive(false);
+        }
 
         Debug.Log($"[PublicBuildingGenerator] Spawned public building ID={buildingId} at {rootHex.HexCoordinate}, PlayerIndex={assignedPlayerIndex}");
         return true;

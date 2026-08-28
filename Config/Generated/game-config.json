@@ -72,6 +72,57 @@
         },
         {
           "values": [
+            "unit.boss1",
+            "14",
+            "boss1",
+            "true",
+            "Melee",
+            "200",
+            "12",
+            "2",
+            "1",
+            "1.5",
+            "1",
+            "1",
+            "300"
+          ]
+        },
+        {
+          "values": [
+            "unit.boss2",
+            "15",
+            "boss2",
+            "true",
+            "Melee",
+            "200",
+            "12",
+            "2",
+            "1",
+            "1.5",
+            "1",
+            "1",
+            "300"
+          ]
+        },
+        {
+          "values": [
+            "unit.boss3",
+            "16",
+            "boss3",
+            "true",
+            "Melee",
+            "200",
+            "12",
+            "2",
+            "1",
+            "1.5",
+            "1",
+            "1",
+            "300"
+          ]
+        },
+        {
+          "values": [
             "unit.cactus",
             "2",
             "仙人掌",
@@ -913,13 +964,35 @@
       "rows": [
         {
           "values": [
-            "public.fort",
+            "collectible_01",
             "0",
-            "堡垒",
+            "boss1",
             "true",
             "100",
-            "150",
-            "NE,E,SE"
+            "100",
+            null
+          ]
+        },
+        {
+          "values": [
+            "collectible_02",
+            "1",
+            "boss2",
+            "true",
+            "100",
+            "100",
+            null
+          ]
+        },
+        {
+          "values": [
+            "collectible_03",
+            "2",
+            "boss3",
+            "true",
+            "100",
+            "100",
+            null
           ]
         }
       ]

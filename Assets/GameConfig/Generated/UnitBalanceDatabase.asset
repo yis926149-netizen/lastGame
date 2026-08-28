@@ -52,6 +52,45 @@ MonoBehaviour:
     viewPoints: 1
     attackIntervalSeconds: 1.5
     cardCost: 10
+  - unitId: unit.boss1
+    legacyId: 14
+    displayName: boss1
+    enabled: 1
+    strategyType: Melee
+    hp: 200
+    attack: 12
+    defense: 2
+    attackRange: 1
+    movementPoints: 1.5
+    viewPoints: 1
+    attackIntervalSeconds: 1
+    cardCost: 300
+  - unitId: unit.boss2
+    legacyId: 15
+    displayName: boss2
+    enabled: 1
+    strategyType: Melee
+    hp: 200
+    attack: 12
+    defense: 2
+    attackRange: 1
+    movementPoints: 1.5
+    viewPoints: 1
+    attackIntervalSeconds: 1
+    cardCost: 300
+  - unitId: unit.boss3
+    legacyId: 16
+    displayName: boss3
+    enabled: 1
+    strategyType: Melee
+    hp: 200
+    attack: 12
+    defense: 2
+    attackRange: 1
+    movementPoints: 1.5
+    viewPoints: 1
+    attackIntervalSeconds: 1
+    cardCost: 300
   - unitId: unit.cactus
     legacyId: 2
     displayName: "\u4ED9\u4EBA\u638C"

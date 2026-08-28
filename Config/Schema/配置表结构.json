@@ -397,7 +397,7 @@
         { "name": "enabled", "type": "bool", "required": true, "note": "是否启用" },
         { "name": "captureHp", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "首次夺取所需血量" },
         { "name": "defenseHp", "type": "float", "required": true, "min": 0, "minExclusive": true, "note": "归属后防守血量" },
-        { "name": "subHexDirections", "type": "string", "required": true, "note": "子格偏移方向，逗号分隔（如 NE,E,SE，3个方向固定形状）" }
+        { "name": "subHexDirections", "type": "string", "required": false, "note": "子格偏移方向，逗号分隔（如 NE,E,SE，3个方向固定形状；留空表示只占根格一格）" }
       ],
       "rules": [],
       "seed": [

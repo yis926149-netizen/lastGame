@@ -41,6 +41,12 @@ public abstract class PublicBuildingBase : BuildingBase
         CurrentDiscoveryState = DiscoveryState.Revealed;
     }
 
+    /// <summary>
+    /// 生成时是否默认隐藏。
+    /// 默认 true（隐藏在迷雾中）；生成即激活的建筑（如 PublicBuilding_Collectible）覆写为 false。
+    /// </summary>
+    public virtual bool StartsHidden => true;
+
     // ── 多格坐标（决策#34/#4）──────────────────────────
     /// <summary>根格（持有 HP 和 Controller 的中心格）</summary>
     public HexCellData RootHex { get; private set; }
@@ -229,7 +235,7 @@ public abstract class PublicBuildingBase : BuildingBase
     /// 易主流程：移除旧势力范围 → 切换 PlayerIndex → 切换血量阶段（首次时）→ 回满 → 扩展新势力范围 → 更新视觉
     /// 【断供方案-阶段3】triggerRecalculate=false 供区域吞并批量调用（吞并后统一一次重算，见 AnnexationService）。
     /// </summary>
-    public void OnCaptured(int newOwnerPlayerIndex, bool triggerRecalculate = true)
+    public virtual void OnCaptured(int newOwnerPlayerIndex, bool triggerRecalculate = true)
     {
         int oldPlayerIndex = PlayerIndex;
 

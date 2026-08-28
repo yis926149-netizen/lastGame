@@ -2,11 +2,11 @@
   "schemaVersion": "1.0.0",
   "exporterVersion": "0.1.0",
   "workbook": "游戏数值配置.xlsx",
-  "workbookSha256": "46cbdf53a0564dfab0b884538f570736b664a4c8055f4f911e5c7abe9e03b323",
+  "workbookSha256": "85a47db31e87c156a00a6856d53efbaadcf98812819766cc5e68d61cac94086e",
   "tables": [
     {
       "sheetName": "单位",
-      "rowCount": 14
+      "rowCount": 17
     },
     {
       "sheetName": "建筑",
@@ -54,7 +54,7 @@
     },
     {
       "sheetName": "公共建筑",
-      "rowCount": 1
+      "rowCount": 3
     },
     {
       "sheetName": "经济配置",
@@ -94,10 +94,10 @@
       "sha256": "1866bd003f97c28bdaa88acc903f7de25ead75aa6d6f1ec88722c44be5ed343e"
     },
     "Csv/公共建筑.csv": {
-      "sha256": "585b4c092a41c55f39104a891d237d3aca4ec573a0f37542197d7820754e3e8e"
+      "sha256": "a3668e3c01b703e1ebe67fdb452d0d318cbee912fb4e25f5f228708b9b8756a3"
     },
     "Csv/单位.csv": {
-      "sha256": "6147d4c73f508625744083e09c1ed5f7fadb3003bece32ddcfbf954f16400ce7"
+      "sha256": "174e354361bbd053ed3c051ada9b4d74c5e72a0a172bc6f72cafafc79c3c5f32"
     },
     "Csv/地图地貌.csv": {
       "sha256": "b967c6349db9f56f459961be5c2068eacb52621cfe04d819dbffdabe7dbef4ed"
@@ -154,7 +154,7 @@
       "sha256": "f3990a7e23f2a9e32ac6685e7f291297aba6f8f8bcf1fb21b1f9573df9949fcf"
     },
     "game-config.json": {
-      "sha256": "3b347e2f9aea410976f4b3fe13dd389c4ecf29e63111f562006c977d4f8f894a"
+      "sha256": "fd58254e7f3de5250f0144871819fdc280bcc30db88c1a8c614e8df8306cd644"
     }
   }
 }
