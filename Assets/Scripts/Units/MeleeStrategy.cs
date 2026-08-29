@@ -26,7 +26,8 @@ public class MeleeStrategy : IUnitStrategy
 
         var mapData = brain.MapData;
         var movement = brain.Movement;
-        List<Vector3> allPoints = new List<Vector3>(mapData.GetAllHexCoordinates());
+        // 直接用缓存表：寻路只读 allPoints，不需要防御性拷贝
+        List<Vector3> allPoints = mapData.GetAllHexCoordinates();
         Vector3 startHex = mapData.WorldToHexCoordinate(brain.Owner.model.transform.position);
 
         // 1. 公共建筑方向提示（已发现但未占领）
@@ -41,10 +42,16 @@ public class MeleeStrategy : IUnitStrategy
 
         // 2. 警戒范围（3格）内有任何敌方目标（单位/宝箱/建筑）→ 追击最近者
         //    （索敌链第二优先级：敌方单位 > 宝箱 > 敌方建筑，玩法文档 §4.2）
+        //    三个查询各只执行一次，第 3/4 步复用同一结果：
+        //    旧实现 FindNearestChest / FindNearestEnemyBuilding 各被调用两次，
+        //    每次调用都是多候选全图寻路 —— 本决策内输入不变，结果无需重算。
+        Vector3? nearestEnemy = brain.FindNearestEnemy();
+        Vector3? nearestChest = brain.FindNearestChest();
+        Vector3? nearestBuilding = brain.FindNearestEnemyBuilding();
+
         Vector3? bestAlertTarget = null;
         float bestAlertDist = float.MaxValue;
 
-        Vector3? nearestEnemy = brain.FindNearestEnemy();
         if (nearestEnemy.HasValue)
         {
             float dist = HexDistance(startHex, nearestEnemy.Value);
@@ -55,7 +62,6 @@ public class MeleeStrategy : IUnitStrategy
             }
         }
 
-        Vector3? nearestChest = brain.FindNearestChest();
         if (nearestChest.HasValue)
         {
             float dist = HexDistance(startHex, nearestChest.Value);
@@ -66,7 +72,6 @@ public class MeleeStrategy : IUnitStrategy
             }
         }
 
-        Vector3? nearestBuilding = brain.FindNearestEnemyBuilding();
         if (nearestBuilding.HasValue)
         {
             float dist = HexDistance(startHex, nearestBuilding.Value);
@@ -89,11 +94,10 @@ public class MeleeStrategy : IUnitStrategy
         }
 
         // 3. 无警戒范围内目标 → 向宝箱行军（宝箱 > 敌方建筑）
-        Vector3? chest = brain.FindNearestChest();
-        if (chest.HasValue)
+        if (nearestChest.HasValue)
         {
             if (movement.CalculateMinMovementCostBetweenTwoHexes(
-                    allPoints, startHex, chest.Value,
+                    allPoints, startHex, nearestChest.Value,
                     Enums.MovementPurpose.MoveToAttack, brain.FactionId, out _, out List<Vector3> chestPath)
                 && chestPath != null && chestPath.Count > 0)
             {
@@ -102,11 +106,10 @@ public class MeleeStrategy : IUnitStrategy
         }
 
         // 4. 无宝箱/无法到达 → 向最近敌方建筑（主城等）行军
-        Vector3? enemyBuilding = brain.FindNearestEnemyBuilding();
-        if (enemyBuilding.HasValue)
+        if (nearestBuilding.HasValue)
         {
             if (movement.CalculateMinMovementCostBetweenTwoHexes(
-                    allPoints, startHex, enemyBuilding.Value,
+                    allPoints, startHex, nearestBuilding.Value,
                     Enums.MovementPurpose.MoveToAttack, brain.FactionId, out _, out List<Vector3> marchPath)
                 && marchPath != null && marchPath.Count > 0)
             {

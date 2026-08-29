@@ -247,6 +247,13 @@ public class PublicBuildingGenerator
             // 11. 开局仅保留数据占位，隐藏建筑模型及其子级血条。
             instance.SetActive(false);
         }
+        else
+        {
+            // 生成即激活：用 VisibilityLease 点亮占位格迷雾，但不写探索位。
+            // 这些格仍是未探索状态，探索系统可正常探索（Collectible 正是靠根格被探索触发效果）。
+            // GenerateAll 早于迷雾首次初始化，租约会被 UpdateFogTransitionTargets 首帧直接 Snap 成可见。
+            pb.AcquireSpawnVisibility();
+        }
 
         Debug.Log($"[PublicBuildingGenerator] Spawned public building ID={buildingId} at {rootHex.HexCoordinate}, PlayerIndex={assignedPlayerIndex}");
         return true;

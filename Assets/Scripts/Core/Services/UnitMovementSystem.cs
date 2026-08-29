@@ -16,7 +16,6 @@ public class UnitMovementSystem : ITickable
     private List<MovingUnit> _movingUnits = new List<MovingUnit>();
     // 格级预留查询（任一槽被预留即视为该格已预留）；槽级状态存于 HexCellData.UnitSlots.ReservedBy
     private readonly HashSet<Vector3> _reservedCells = new HashSet<Vector3>();
-    private List<Vector3> _cachedAllPoints;
 
     // ── 【阶段 3】表现层避让参数（纯表现，不影响逻辑格/槽位/占用）────────
     // 错峰出发：同批移动单位 0~0.2s 递增延迟，错开「同槽位号汇合/交叉路口」的瞬时重合。
@@ -35,15 +34,13 @@ public class UnitMovementSystem : ITickable
         _visibilityResolver = visibilityResolver;
     }
 
-    public IReadOnlyList<Vector3> AllHexCoordinates
-    {
-        get
-        {
-            if (_cachedAllPoints == null)
-                _cachedAllPoints = _mapDataService.GetAllHexCoordinates();
-            return _cachedAllPoints;
-        }
-    }
+    /// <summary>
+    /// 全图六边形坐标（缓存表，只读语义）。
+    /// 直接把此列表传给寻路：寻路只读不改，且按引用缓存成员判定集，重复调用零分配。
+    /// 不再本地二次缓存 —— HexMapService 内部已缓存，且它会在地图重建时失效自己的表；
+    /// 本类若另存一份就会在重建后指向旧地图。调用方不得修改返回的列表。
+    /// </summary>
+    public List<Vector3> AllHexCoordinates => _mapDataService.GetAllHexCoordinates();
 
     /// <summary>
     /// 请求单位移动
@@ -91,7 +88,7 @@ public class UnitMovementSystem : ITickable
 
         // 1. 计算原始最短路径
         if (!CalculateMinMovementCostBetweenTwoHexes(
-            new List<Vector3>(AllHexCoordinates),
+            AllHexCoordinates,
             startHex,
             destinationHex,
             purpose,
@@ -296,7 +293,7 @@ public class UnitMovementSystem : ITickable
             return true;
         }
 
-        List<Vector3> allPoints = new List<Vector3>(_mapDataService.GetAllHexCoordinates());
+        List<Vector3> allPoints = AllHexCoordinates;
         float bestCost = float.MaxValue;
         bool found = false;
         HexCellData targetCell = _mapDataService.GetCell(targetHex);
@@ -698,41 +695,57 @@ public class UnitMovementSystem : ITickable
         mu.CurrentStandingSlot = slotId;
     }
 
-    /* 一、求两点间最小移动力消耗 - 正权无向图求最短路径
-    初始设置：
-    1.设置全点列表 List<Vector3> allPoints - 储存全部点
-    2.设置一个字典 Dictionary<point,pre> point_pre - 保存每个点及其前驱 - 初始化为空
-    3.设置一个字典 Dictionary<Vector3,float> Point_minCost - 保存每个点及其到达花费 - 初始化：起点到起点花费为0,即(起点,0). 到其他点花费为float.MaxValue,即(allPoints[i],float.MaxValue)
-    4.设置一个优先队列 PriorityQueue<KeyValuePair<Vector3,float>, float> candidates - PriorityQueue<KeyValuePair<点,到达时花费>, 到达时花费(优先级)>
-     - 起点入队(初始唯一候选).
-    5.设置已访列表 List<Vector3> processedNodes - 保存已访问的点
+    /* 一、求两点间最小移动力消耗 - 正权无向图求最短路径（Dijkstra）
 
-    流程：(获取新点 - 全局比较 - 选择新点)
-    0.若起点 == 终点,进入7.
+    【性能重写】原实现每次调用都：
+      - 用 allPoints 建一个全图 HashSet + 两个全图 Dictionary，并做 600 次 MaxValue 初始化；
+      - 没有目标提前退出，即使终点就在隔壁也要把全图展开完；
+      - 成功后还跑一个「已注释掉 Debug.Log」的遗留循环（两次全图 List 拷贝 + 600 次 GetCell）；
+      - 每展开一个节点就 new 一个邻居 Dictionary + 2~3 个临时 List。
+    现在改为：
+      - 复用实例级缓冲区（字典/堆/已访集合），只 Clear 不重建；
+      - 代价字典惰性写入（未访问 == 不在字典 == 无穷大），去掉全图初始化；
+      - allPoints 成员集按引用缓存（调用方传缓存列表即全程命中）；
+      - 出队即终点 → 立即回溯返回；
+      - 邻居展开写进定长栈上缓冲区，零分配。
 
-    1.检查candidates.Count
-    若不为0：进入2.
-    若为0：进入6.
-    2.candidates元素出队获取点A. 
-    若 Point_minCost[A.key] < A.value,则回到1.的开头
-    3.获取点A的全部邻接点及其花费 Dictionary<Vector3,float> neighbor_Cost
-        若A的邻接点不在allPoints内，则剔除出neighbor_Cost
-    4.Point_minCost[K] = (neighbor_Cost[K] + Point_minCost[A.key]) < Point_minCost[K]?(neighbor_Cost[K] + Point_minCost[A.key]):Point_minCost[K]
-             若(neighbor_Cost[K] + Point_minCost[A.key]) < Point_minCost[K]时：point_pre[neighbor_Cost的K值] = A.key
-    5.将neighbor_Cost中的元素,构造((neighbor_Cost的K值,neighbor_Cost[k] + Point_minCost[A.key]),neighbor_Cost[k] + Point_minCost[A.key])全部加入candidates
-
-    6.停止迭代. 
-    if(Point_minCost[终点] != float.MaxValue){
-        输出Point_minCost[终点]
-        回溯的最短路径
-    }
-    else{
-        输出-1
-        最短路径为null
-        Debug.Log("目标点不可达")
-    }
-    7.停止迭代. 输出0,最短路径为null,Debug.Log("起点即为目标点,无需移动")
+    流程：出队最小代价节点 → 松弛其邻居 → 重复，直到取到终点或队列耗尽。
     */
+    // ── 寻路复用缓冲区（主线程单线程使用；两个搜索互不嵌套调用，可安全共用）──
+    private readonly Dictionary<Vector3, Vector3> _pfPrev = new Dictionary<Vector3, Vector3>();
+    private readonly Dictionary<Vector3, float> _pfCost = new Dictionary<Vector3, float>();
+    private readonly HashSet<Vector3> _pfProcessed = new HashSet<Vector3>();
+    private readonly MinPriorityQueue _pfQueue = new MinPriorityQueue();
+    private readonly Vector3[] _pfNeighborHex = new Vector3[6];
+    private readonly float[] _pfNeighborCost = new float[6];
+
+    // allPoints 成员判定集：按传入列表的引用缓存，调用方传 IMapDataService 的缓存列表时全程命中。
+    // 附带 Count 校验，捕捉「同一列表被原地增删」的情形（地图重建走的是换引用，同样会失效）。
+    private HashSet<Vector3> _pfAllPointsSet;
+    private List<Vector3> _pfAllPointsSource;
+    private int _pfAllPointsCount;
+
+    private HashSet<Vector3> GetAllPointsSet(List<Vector3> allPoints)
+    {
+        if (ReferenceEquals(_pfAllPointsSource, allPoints) &&
+            _pfAllPointsSet != null &&
+            _pfAllPointsCount == allPoints.Count)
+        {
+            return _pfAllPointsSet;
+        }
+
+        _pfAllPointsSet = new HashSet<Vector3>(allPoints);
+        _pfAllPointsSource = allPoints;
+        _pfAllPointsCount = allPoints.Count;
+        return _pfAllPointsSet;
+    }
+
+    /// <summary>已知代价，未访问节点视为无穷大。</summary>
+    private float CostOf(Vector3 hex)
+    {
+        return _pfCost.TryGetValue(hex, out float c) ? c : float.MaxValue;
+    }
+
     public bool CalculateMinMovementCostBetweenTwoHexes(
         List<Vector3> allPoints,    //全部点列表
         Vector3 startHexCoordinate, //起点
@@ -743,306 +756,163 @@ public class UnitMovementSystem : ITickable
         out List<Vector3> shortestPath
         )
     {
-        //初始设置：
-        //1.设置全点列表 List<Vector3> allPoints -储存全部点
-        // allPoints 转 HashSet，使后续邻居有效性判断从 O(N) 线性查找降为 O(1)
-        HashSet<Vector3> allPointsSet = new HashSet<Vector3>(allPoints);
-        //2.设置一个字典 Dictionary<point, pre> point_pre -保存每个点及其前驱 - 初始化为空
-        Dictionary<Vector3, Vector3> point_pre = new Dictionary<Vector3, Vector3>();
-        Vector3 over = new Vector3(-111111111111111, -111111111111111111, -11111111111111111);
-        point_pre.Add(startHexCoordinate, over);
-        //3.设置一个字典 Dictionary<Vector3, float> Point_minCost -保存每个点及其到达花费 
-        Dictionary<Vector3, float> Point_minCost = new Dictionary<Vector3, float>();
-        //初始化：起点到起点花费为0,即(起点, 0).到其他点花费为float.MaxValue,即(allPoints[i], float.MaxValue)
-        foreach (Vector3 point in allPoints)
+        // 0.起点即终点：无需搜索
+        if (startHexCoordinate == endHexCoordinate)
         {
-            if (point == startHexCoordinate)
-            {
-                Point_minCost.Add(startHexCoordinate, 0);
-                continue;
-            }
-            Point_minCost.Add(point, float.MaxValue);
+            totalCost = 0;
+            shortestPath = null;
+            //Debug.Log("起点即为目标点,无需移动");
+            return true;
         }
-        //4.设置一个优先队列 PriorityQueue<KeyValuePair<Vector3, float>, float> candidates -PriorityQueue < KeyValuePair<点, 到达时花费>, 到达时花费(优先级) >
-        MinPriorityQueue candidates = new MinPriorityQueue();
-        //起点入队(初始唯一候选).
-        KeyValuePair<Vector3, float> startKeyValue = new KeyValuePair<Vector3, float>(startHexCoordinate, 0);
-        candidates.Enqueue(startKeyValue, 0);
-        //5.设置已访列表 HashSet<Vector3> processedNodes - 保存已访问的点 - 用HashSet提高查找效率
-        HashSet<Vector3> processedNodes = new HashSet<Vector3>();
 
-        //流程：(获取新点 - 全局比较 - 选择新点)
-        while (true)
+        if (allPoints == null || allPoints.Count == 0)
         {
-            //repeatTimes++;
-            //0.若起点 == 终点,进入7.
-            if (startHexCoordinate == endHexCoordinate)
+            totalCost = -1;
+            shortestPath = null;
+            return false;
+        }
+
+        HashSet<Vector3> allPointsSet = GetAllPointsSet(allPoints);
+
+        // 复用缓冲区：只清空，不重建
+        _pfPrev.Clear();
+        _pfCost.Clear();
+        _pfProcessed.Clear();
+        _pfQueue.Clear();
+
+        _pfCost[startHexCoordinate] = 0f;
+        _pfQueue.Enqueue(startHexCoordinate, 0f);
+
+        // 攻击移动允许把「被占据的终点」当作可进入目标
+        Vector3? allowedBlockedTarget = movementPurpose == Enums.MovementPurpose.MoveToAttack
+            ? endHexCoordinate
+            : (Vector3?)null;
+
+        while (_pfQueue.TryDequeue(out Vector3 current, out float currentPriority))
+        {
+            // 陈旧副本（无 decrease-key，同一节点可能多次入队）：跳过
+            if (_pfProcessed.Contains(current)) continue;
+            if (currentPriority > CostOf(current)) continue;
+            _pfProcessed.Add(current);
+
+            // 【提前退出】最小堆保证出队即最终代价，取到终点就不必再展开剩余全图
+            if (current == endHexCoordinate)
             {
-                totalCost = 0;
-                shortestPath = null;
-                //Debug.Log("起点即为目标点,无需移动");
+                totalCost = _pfCost[current];
+                shortestPath = BuildPath(startHexCoordinate, endHexCoordinate);
                 return true;
             }
 
-            //1.检查candidates.Count
-            //若不为0：进入2.
-            //若为0：进入6.
-            if (candidates.Count == 0)
+            float ownCost = _pfCost[current];
+            int n = ExpandNeighbors(current, factionId, allowedBlockedTarget);
+            for (int i = 0; i < n; i++)
             {
-                //6.停止迭代.
-                if (Point_minCost[endHexCoordinate] != float.MaxValue)
-                {
-                    //输出花费
-                    totalCost = Point_minCost[endHexCoordinate];
-                    //回溯最短路径
-                    List<Vector3> VisitedPoint_minCostKeysList = new List<Vector3>(Point_minCost.Keys);
-                    List<float> VisitedPoint_minCostValueList = new List<float>(Point_minCost.Values);
+                Vector3 next = _pfNeighborHex[i];
+                if (!allPointsSet.Contains(next)) continue;   // 邻居不在搜索域内
+                if (_pfProcessed.Contains(next)) continue;
 
-                    //测试 - 输出全部VisitedPoint_minCost
-                    for (int i = 0; i < Point_minCost.Count; i++)
-                    {
-                        int g = _mapDataService.GetCell(VisitedPoint_minCostKeysList[i]).GenerateOrder;
-                        //Debug.Log($"第{g}个地块：总最小花费是{VisitedPoint_minCostValueList[i]}");
-                    }
+                float newCost = ownCost + _pfNeighborCost[i];
+                if (newCost >= CostOf(next)) continue;
 
-                    shortestPath = new List<Vector3>();
-                    Vector3 indexPoint = endHexCoordinate;
-                    shortestPath.Add(endHexCoordinate);
-                    while (point_pre[indexPoint] != over)
-                    {
-                        shortestPath.Add(point_pre[indexPoint]);
-                        indexPoint = point_pre[indexPoint];
-                    }
-                    shortestPath.Reverse();
-                    shortestPath.RemoveAt(0);
-
-                    // 攻击移动时截断最后一个格子
-                    /*
-                    if (movementPurpose == Enums.MovementPurpose.MoveToAttack && shortestPath.Count > 1)
-                    {
-                        shortestPath.RemoveAt(shortestPath.Count - 1);
-                    }
-                    */
-                    return true;  
-                }
-                else
-                {
-                    totalCost = -1;
-                    shortestPath = null;
-                    return false;
-                }
-
-            }
-
-            //2.candidates元素出队获取点A.
-            //若 Point_minCost[A.key] < A.value,则回到1.的开头
-            KeyValuePair<Vector3, float> A = new KeyValuePair<Vector3, float>();
-            while (candidates.Count > 0)
-            {
-                A = candidates.Dequeue();
-                if (processedNodes.Contains(A.Key)) continue; // 跳过已处理节点
-                if (!(Point_minCost[A.Key] < A.Value)) break;
-            }
-            if (processedNodes.Contains(A.Key)) continue; // 再次检查，避免空队列情况
-            processedNodes.Add(A.Key); // 标记为已处理
-
-            //3.获取点A的全部邻接点及其花费 Dictionary<Vector3, float> neighbor_Cost
-            Vector3? allowedBlockedTarget = movementPurpose == Enums.MovementPurpose.MoveToAttack
-                ? endHexCoordinate
-                : (Vector3?)null;
-            Dictionary<Vector3, float> neighbor_Cost = GetAllNeighborsAndCosts(A.Key, _mapDataService, factionId, allowedBlockedTarget);
-            //若A的邻接点不在allPoints内，则剔除出neighbor_Cost
-            List<Vector3> neighbor_CostKeysList = new List<Vector3>(neighbor_Cost.Keys);
-            List<Vector3> toRemove = new List<Vector3>();
-            foreach (var key in neighbor_Cost.Keys)
-            {
-                if (!allPointsSet.Contains(key))
-                {
-                    toRemove.Add(key);
-                }
-            }
-            foreach (var key in toRemove)
-            {
-                neighbor_Cost.Remove(key);
-            }
-            //获取剔除后,有效邻居的Keys
-            neighbor_CostKeysList = new List<Vector3>(neighbor_Cost.Keys);
-
-            //4.Point_minCost[K] = (neighbor_Cost[K] + Point_minCost[A.key]) < Point_minCost[K] ? (neighbor_Cost[K] + Point_minCost[A.key]) : Point_minCost[K]            
-            float ownCost = Point_minCost[A.Key];
-            for (int i = neighbor_CostKeysList.Count - 1; i >= 0; i--)
-            {
-                Vector3 index = neighbor_CostKeysList[i];
-                float newCost = neighbor_Cost[index] + ownCost;
-                float oldCost = Point_minCost[index];
-
-                Point_minCost[index] = newCost < oldCost ? newCost : Point_minCost[index];
-                if (newCost < oldCost)
-                {
-                    //若(neighbor_Cost[K] + Point_minCost[A.key]) < Point_minCost[K]时：point_pre[neighbor_Cost的K值] = A.key
-                    point_pre[index] = A.Key;
-                }
-            }
-
-            //5.将neighbor_Cost中的元素,构造((neighbor_Cost的K值, neighbor_Cost[k] + Point_minCost[A.key]), neighbor_Cost[k] + Point_minCost[A.key])全部加入candidates
-            for (int i = 0; i < neighbor_Cost.Count; i++)
-            {
-                KeyValuePair<Vector3, float> keyValue = new KeyValuePair<Vector3, float>(
-                    neighbor_CostKeysList[i],
-                    neighbor_Cost[neighbor_CostKeysList[i]] + ownCost
-                );
-                candidates.Enqueue(keyValue, neighbor_Cost[neighbor_CostKeysList[i]] + ownCost);
+                _pfCost[next] = newCost;
+                _pfPrev[next] = current;
+                _pfQueue.Enqueue(next, newCost);
             }
         }
 
+        // 队列耗尽仍未取到终点 == 不可达
+        totalCost = -1;
+        shortestPath = null;
+        return false;
+    }
+
+    /// <summary>按 <see cref="_pfPrev"/> 回溯 start→end 的路径。返回值**不含起点**，含终点。</summary>
+    private List<Vector3> BuildPath(Vector3 startHex, Vector3 endHex)
+    {
+        List<Vector3> path = new List<Vector3>();
+        Vector3 cursor = endHex;
+        while (cursor != startHex)
+        {
+            path.Add(cursor);
+            if (!_pfPrev.TryGetValue(cursor, out cursor)) break;  // 防御：前驱链断裂
+        }
+        path.Reverse();
+        return path;
     }
 
 
     /*二、正权无向图，在花费固定且非负的情况下，求所有从起点开始能够到达的点 - 返回的是六边形坐标
-    初始设置：
-    1.设置全点列表 List<Vector3> allPoints - 储存全部点
-    3.设置一个字典 Dictionary<point,pre> point_pre - 保存每个点及其前驱 - 初始化为空
-    4.设置一个字典 Dictionary<Vector3,float> Point_minCost - 保存每个点及其到达花费 - 初始化：起点到起点花费为0,即(起点,0). 到其他点花费为float.MaxValue,即(allPoints[i],float.MaxValue)
-    5.设置一个优先队列 PriorityQueue<KeyValuePair<Vector3,float>, float> candidates - PriorityQueue<KeyValuePair<点,到达时花费>, 到达时花费(优先级)>
-     - 起点入队(初始唯一候选).
 
+    【性能重写】与上面的两点寻路同源，共用复用缓冲区与零分配邻居展开。
+    另外增加**预算剪枝**：代价已超过 totalCost 的节点不再入队/展开 —— 最小堆保证一旦
+    出队代价超预算，后续全部超预算，可直接停止。游走（半径 3）这类小预算调用因此
+    从「全图洪泛后过滤」降为「只展开半径内的几十格」。
 
-    流程：(获取新点 - 全局比较 - 选择新点)
-    1.检查candidates.Count
-    若不为0：进入2.
-    若为0：进入6.
-    2.candidates元素出队获取点A. 
-    若 Point_minCost[A.key] < A.value,则回到1.的开头
-    3.获取点A的全部邻接点及其花费 Dictionary<Vector3,float> neighbor_Cost
-        若A的邻接点不在allPoints内，则剔除出neighbor_Cost
-    4.Point_minCost[K] = (neighbor_Cost[K] + Point_minCost[A.key]) < Point_minCost[K]?(neighbor_Cost[K] + Point_minCost[A.key]):Point_minCost[K]
-             若(neighbor_Cost[K] + Point_minCost[A.key]) < Point_minCost[K]时：point_pre[neighbor_Cost的K值] = A.key
-    5.将neighbor_Cost中的元素,构造((neighbor_Cost的K值,neighbor_Cost[k] + Point_minCost[A.key]),neighbor_Cost[k] + Point_minCost[A.key])全部加入candidates
-
-    6.停止迭代. 
-    输出 Point_minCost.value < 花费 的Point_minCost.key
+    返回顺序为 Dijkstra 发现顺序（按代价递增），确定且可复现；
+    注意与旧实现（allPoints 原序）不同 —— PickRandomWanderTarget 的随机取样因此会落到
+    不同的格上，但仍是同种子同结果，可复现性不受影响。
     */
     public List<Vector3> GetAllReachableHexesFromStartHex(List<Vector3> allPoints, Vector3 startHexCoordinate, float totalCost, int factionId)
     {
-        //初始设置：
-        //1.设置全点列表 List<Vector3> allPoints -储存全部点
-        // allPoints 转 HashSet，使后续邻居有效性判断从 O(N) 线性查找降为 O(1)
-        HashSet<Vector3> allPointsSet = new HashSet<Vector3>(allPoints);
-        //2.设置一个字典 Dictionary<point, pre> point_pre -保存每个点及其前驱 - 初始化为空
-        Dictionary<Vector3, Vector3> point_pre = new Dictionary<Vector3, Vector3>();
-        Vector3 over = new Vector3(-111111111111111, -111111111111111111, -11111111111111111);
-        point_pre.Add(startHexCoordinate, over);
-        //3.设置一个字典 Dictionary<Vector3, float> Point_minCost -保存每个点及其到达花费 
-        Dictionary<Vector3, float> Point_minCost = new Dictionary<Vector3, float>();
-        //初始化：起点到起点花费为0,即(起点, 0).到其他点花费为float.MaxValue,即(allPoints[i], float.MaxValue)
-        foreach (Vector3 point in allPoints)
+        List<Vector3> reachableHexes = new List<Vector3>();
+        if (allPoints == null || allPoints.Count == 0) return reachableHexes;
+
+        HashSet<Vector3> allPointsSet = GetAllPointsSet(allPoints);
+        if (!allPointsSet.Contains(startHexCoordinate)) return reachableHexes;
+
+        _pfPrev.Clear();
+        _pfCost.Clear();
+        _pfProcessed.Clear();
+        _pfQueue.Clear();
+
+        _pfCost[startHexCoordinate] = 0f;
+        _pfQueue.Enqueue(startHexCoordinate, 0f);
+
+        while (_pfQueue.TryDequeue(out Vector3 current, out float currentPriority))
         {
-            if (point == startHexCoordinate)
-            {
-                Point_minCost.Add(startHexCoordinate, 0);
-                continue;
-            }
-            Point_minCost.Add(point, float.MaxValue);
-        }
-        //4.设置一个优先队列 PriorityQueue<KeyValuePair<Vector3, float>, float> candidates -PriorityQueue < KeyValuePair<点, 到达时花费>, 到达时花费(优先级) >
-        MinPriorityQueue candidates = new MinPriorityQueue();
-        //起点入队(初始唯一候选).
-        KeyValuePair<Vector3, float> startKeyValue = new KeyValuePair<Vector3, float>(startHexCoordinate, 0);
-        candidates.Enqueue(startKeyValue, 0);
-        //5.设置已访列表 HashSet<Vector3> processedNodes - 保存已访问的点 - 用HashSet提高查找效率
-        HashSet<Vector3> processedNodes = new HashSet<Vector3>();
+            if (_pfProcessed.Contains(current)) continue;
+            if (currentPriority > CostOf(current)) continue;
 
-        //流程：(获取新点 - 全局比较 - 选择新点)
-        while (true)
-        {
-            //1.检查candidates.Count
-            //若不为0：进入2.
-            //若为0：进入6.
-            if (candidates.Count == 0)
-            {
-                //6.停止迭代 - 输出 Point_minCost.value < 花费 的Point_minCost.key
-                List<float> Point_minCostValuesList = new List<float>(Point_minCost.Values);
-                List<Vector3> Point_minCostKeysList = new List<Vector3>(Point_minCost.Keys);
-                List<Vector3> reachableHexes = new List<Vector3>();
+            // 最小堆出队即代价单调不减：首个超预算节点之后不可能再有合格节点
+            if (currentPriority > totalCost) break;
 
-                for (int i = 0; i < Point_minCostKeysList.Count; i++)
-                {
-                    if (Point_minCostValuesList[i] <= totalCost)
-                    {
-                        reachableHexes.Add(Point_minCostKeysList[i]);
-                    }
-                }
-                return reachableHexes;
-            }
+            _pfProcessed.Add(current);
+            reachableHexes.Add(current);
 
-            //2.candidates元素出队获取点A.
-            //若 Point_minCost[A.key] < A.value,则回到1.的开头
-            KeyValuePair<Vector3, float> A = new KeyValuePair<Vector3, float>();
-            while (candidates.Count > 0)
+            float ownCost = currentPriority;
+            int n = ExpandNeighbors(current, factionId, null);
+            for (int i = 0; i < n; i++)
             {
-                A = candidates.Dequeue();
-                if (processedNodes.Contains(A.Key)) continue; // 跳过已处理节点
-                if (!(Point_minCost[A.Key] < A.Value)) break;
-            }
-            if (processedNodes.Contains(A.Key)) continue; // 再次检查，避免空队列情况
-            processedNodes.Add(A.Key); // 标记为已处理
+                Vector3 next = _pfNeighborHex[i];
+                if (!allPointsSet.Contains(next)) continue;
+                if (_pfProcessed.Contains(next)) continue;
 
-            //3.获取点A的全部邻接点及其花费 Dictionary<Vector3, float> neighbor_Cost
-            Dictionary<Vector3, float> neighbor_Cost = GetAllNeighborsAndCosts(A.Key, _mapDataService, factionId, null);
-            //若A的邻接点不在allPoints内，则剔除出neighbor_Cost
-            List<Vector3> neighbor_CostKeysList = new List<Vector3>(neighbor_Cost.Keys);
-            List<Vector3> toRemove = new List<Vector3>();
-            foreach (var key in neighbor_Cost.Keys)
-            {
-                if (!allPointsSet.Contains(key))
-                {
-                    toRemove.Add(key);
-                }
-            }
-            foreach (var key in toRemove)
-            {
-                neighbor_Cost.Remove(key);
-            }
-            //获取剔除后,有效邻居的Keys
-            neighbor_CostKeysList = new List<Vector3>(neighbor_Cost.Keys);
+                float newCost = ownCost + _pfNeighborCost[i];
+                if (newCost > totalCost) continue;            // 预算剪枝
+                if (newCost >= CostOf(next)) continue;
 
-            //4.Point_minCost[K] = (neighbor_Cost[K] + Point_minCost[A.key]) < Point_minCost[K] ? (neighbor_Cost[K] + Point_minCost[A.key]) : Point_minCost[K]            
-            float ownCost = Point_minCost[A.Key];
-            for (int i = neighbor_CostKeysList.Count - 1; i >= 0; i--)
-            {
-                Vector3 index = neighbor_CostKeysList[i];
-                float newCost = neighbor_Cost[index] + ownCost;
-                float oldCost = Point_minCost[index];
-
-                Point_minCost[index] = newCost < oldCost ? newCost : Point_minCost[index];
-                if (newCost < oldCost)
-                {
-                    //若(neighbor_Cost[K] + Point_minCost[A.key]) < Point_minCost[K]时：point_pre[neighbor_Cost的K值] = A.key
-                    point_pre[index] = A.Key;
-                }
-            }
-
-            //5.将neighbor_Cost中的元素,构造((neighbor_Cost的K值, neighbor_Cost[k] + Point_minCost[A.key]), neighbor_Cost[k] + Point_minCost[A.key])全部加入candidates
-            for (int i = 0; i < neighbor_Cost.Count; i++)
-            {
-                KeyValuePair<Vector3, float> keyValue = new KeyValuePair<Vector3, float>(
-                    neighbor_CostKeysList[i],
-                    neighbor_Cost[neighbor_CostKeysList[i]] + ownCost
-                );
-                candidates.Enqueue(keyValue, neighbor_Cost[neighbor_CostKeysList[i]] + ownCost);
+                _pfCost[next] = newCost;
+                _pfPrev[next] = current;
+                _pfQueue.Enqueue(next, newCost);
             }
         }
+
+        return reachableHexes;
     }
 
-    //获取主体(默认为起点)的全部邻接点及其花费
-    private Dictionary<Vector3, float> GetAllNeighborsAndCosts(Vector3 self, IMapDataService _mapDataService, int factionId, Vector3? targetHex = null)
+    /// <summary>
+    /// 展开 <paramref name="self"/> 的 6 个邻居，写入 <see cref="_pfNeighborHex"/> / <see cref="_pfNeighborCost"/>，
+    /// 返回有效邻居数量。零分配（原 GetAllNeighborsAndCosts 每次 new 一个 Dictionary）。
+    /// </summary>
+    private int ExpandNeighbors(Vector3 self, int factionId, Vector3? targetHex)
     {
-        Dictionary<Vector3, float> d = new Dictionary<Vector3, float>();
+        int count = 0;
+        HexCellData selfCell = _mapDataService.GetCell(self);
+        if (selfCell == null) return 0;
 
-        Enums.HexDirection[] hexDirections = { Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE, Enums.HexDirection.SW, Enums.HexDirection.W, Enums.HexDirection.NW };
-        foreach (Enums.HexDirection h in hexDirections)
+        for (int dir = 0; dir < 6; dir++)   // NE, E, SE, SW, W, NW —— 与 Enums.HexDirection 前 6 项一致
         {
-            var neighborCell = _mapDataService.GetNeighbor(_mapDataService.GetCell(self), h);
+            HexCellData neighborCell = _mapDataService.GetNeighbor(selfCell, (Enums.HexDirection)dir);
 
             // 不存在邻居
             if (neighborCell == null) continue;
@@ -1050,17 +920,22 @@ public class UnitMovementSystem : ITickable
             bool isTarget = targetHex.HasValue && neighborCell.HexCoordinate == targetHex.Value;
             if (!CanEnterCell(neighborCell, null, isTarget, factionId))
             {
+                // 攻击移动的终点格即使不可进入也要可达（走到即开打），代价按 1 计
                 if (isTarget)
                 {
-                    d.Add(neighborCell.HexCoordinate, 1f);
+                    _pfNeighborHex[count] = neighborCell.HexCoordinate;
+                    _pfNeighborCost[count] = 1f;
+                    count++;
                 }
                 continue;
             }
 
-            d.Add(neighborCell.HexCoordinate, neighborCell.movementCost);
+            _pfNeighborHex[count] = neighborCell.HexCoordinate;
+            _pfNeighborCost[count] = neighborCell.movementCost;
+            count++;
         }
 
-        return d;
+        return count;
     }
 
     /// <summary>从单位 GameObject 解析阵营 id（玩家 0 / AI 1…）。优先 UnitMovementController.PlayerIndex，缺失时退回 tag 判定。</summary>

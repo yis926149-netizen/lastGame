@@ -59,13 +59,12 @@ public class PlayerUnitBrain : UnitBrainBase
     {
         if (Owner?.model == null || MapData == null || Movement == null) return null;
 
-        List<Vector3> allPoints = new List<Vector3>(MapData.GetAllHexCoordinates());
+        // 直接用缓存表：寻路只读 allPoints，不需要防御性拷贝
+        List<Vector3> allPoints = MapData.GetAllHexCoordinates();
         Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
         if (startHex == default) return null;
 
-        Vector3? best = null;
-        float bestCost = float.MaxValue;
-
+        // 收集候选 → 升序 → 限量寻路（旧实现对每个敌方单位跑一次完整 Dijkstra）
         foreach (var group in _unitRepository.AllEnemyUnitGroups)
         {
             if (group == null) continue;
@@ -75,35 +74,24 @@ public class PlayerUnitBrain : UnitBrainBase
 
                 var enemyMC = cd.unitMovementController;
                 if (enemyMC == null) continue;
-                Vector3 endHex = enemyMC.CurrentHexCoordinate;
 
-                if (HexDistance(startHex, endHex) >= bestCost) continue;
-
-                if (Movement.CalculateMinMovementCostBetweenTwoHexes(
-                        allPoints, startHex, endHex,
-                        Enums.MovementPurpose.MoveToAttack, FactionId, out float cost, out _)
-                    && cost < bestCost)
-                {
-                    bestCost = cost;
-                    best = endHex;
-                }
+                AddTargetCandidate(startHex, enemyMC.CurrentHexCoordinate);
             }
         }
 
-        return best;
+        return PickNearestByPathCost(allPoints, startHex);
     }
 
     public override Vector3? FindNearestEnemyBuilding()
     {
         if (Owner?.model == null || MapData == null || Movement == null) return null;
 
-        List<Vector3> allPoints = new List<Vector3>(MapData.GetAllHexCoordinates());
+        // 直接用缓存表：寻路只读 allPoints，不需要防御性拷贝
+        List<Vector3> allPoints = MapData.GetAllHexCoordinates();
         Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
         if (startHex == default) return null;
 
-        Vector3? best = null;
-        float bestCost = float.MaxValue;
-
+        // 收集候选 → 升序 → 限量寻路（旧实现对每个建筑格跑一次完整 Dijkstra）
         foreach (var cell in MapData.GetAllCells())
         {
             // 【探索重构-阶段6】敌方建筑始终可见，不再检查 IsVisible
@@ -132,21 +120,10 @@ public class PlayerUnitBrain : UnitBrainBase
             bool isNeutral = building.CompareTag("NeutralBuilding");
             if (!isEnemy && !isNeutral) continue;
 
-            Vector3 endHex = cell.HexCoordinate;
-
-            if (HexDistance(startHex, endHex) >= bestCost) continue;
-
-            if (Movement.CalculateMinMovementCostBetweenTwoHexes(
-                    allPoints, startHex, endHex,
-                    Enums.MovementPurpose.MoveToAttack, FactionId, out float cost, out _)
-                && cost < bestCost)
-            {
-                bestCost = cost;
-                best = endHex;
-            }
+            AddTargetCandidate(startHex, cell.HexCoordinate);
         }
 
-        return best;
+        return PickNearestByPathCost(allPoints, startHex);
     }
 
     // ── 隔绝目标查询（忽略可达性）────────────────────────

@@ -78,10 +78,27 @@ public class PublicBuildingDataProvider : IPublicBuildingDataProvider
 
     public int GetBuildingCount() => RequireBalance().EnabledBuildings.Count;
 
+    private static readonly Enums.HexDirection[] DefaultSubHexDirections =
+        { Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE };
+
+    // 解析结果会被 PublicBuildingBase.SubHexDirections 长期持有，默认形状必须发副本，
+    // 避免某个建筑就地改写数组影响到其他建筑。
+    private static Enums.HexDirection[] NewDefaultDirections() =>
+        (Enums.HexDirection[])DefaultSubHexDirections.Clone();
+
+    /// <summary>
+    /// 解析 Excel 的 subHexDirections 列。
+    /// 空值 = 沿用历史默认的三子格形状（NE,E,SE）；"None" = 显式声明单格建筑（无子格）。
+    /// 注意不能用空值表达单格：现有多格建筑（Fort 等）都依赖空值取默认形状。
+    /// </summary>
     private static Enums.HexDirection[] ParseDirections(string csv)
     {
         if (string.IsNullOrWhiteSpace(csv))
-            return new Enums.HexDirection[] { Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE };
+            return NewDefaultDirections();
+
+        // 显式单格标记：根格之外不占任何子格
+        if (csv.Trim().Equals("None", System.StringComparison.OrdinalIgnoreCase))
+            return System.Array.Empty<Enums.HexDirection>();
 
         var parts = csv.Split(',');
         var result = new System.Collections.Generic.List<Enums.HexDirection>(parts.Length);
@@ -90,8 +107,16 @@ public class PublicBuildingDataProvider : IPublicBuildingDataProvider
             if (System.Enum.TryParse<Enums.HexDirection>(p.Trim(), out var dir))
                 result.Add(dir);
         }
-        return result.Count > 0
-            ? result.ToArray()
-            : new Enums.HexDirection[] { Enums.HexDirection.NE, Enums.HexDirection.E, Enums.HexDirection.SE };
+
+        if (result.Count == 0)
+        {
+            // 静默退回默认形状会让配置笔误变成“莫名其妙的 4 格建筑”，这里必须暴露出来。
+            Debug.LogError(
+                $"[PublicBuilding] subHexDirections=\"{csv}\" 无法解析出任何合法方向，已退回默认形状 NE,E,SE。" +
+                "请检查 Excel 拼写；若本意是单格建筑，应填 \"None\"。");
+            return NewDefaultDirections();
+        }
+
+        return result.ToArray();
     }
 }

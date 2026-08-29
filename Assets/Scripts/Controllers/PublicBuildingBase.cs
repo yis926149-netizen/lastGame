@@ -18,6 +18,8 @@ public abstract class PublicBuildingBase : BuildingBase
     [Inject] private ExplorationPillarPool _explorationEffectPool;
     // 【地图资源配置化】资源统一消费服务（替代原本地收割 switch + _goldWallet 直接发币）
     [Inject] private MapResourceCollectionService _collectionService;
+    // 生成即激活的建筑用它点亮占位格迷雾（不写探索位）；隐藏型建筑不申请。
+    [InjectOptional] private TemporaryVisibilityService _visibilityService;
 
     public enum DiscoveryState
     {
@@ -39,6 +41,30 @@ public abstract class PublicBuildingBase : BuildingBase
     protected void MarkRevealedWithoutExploration()
     {
         CurrentDiscoveryState = DiscoveryState.Revealed;
+    }
+
+    // ── 生成即激活建筑的迷雾点亮（不写探索位）──────────────
+    /// <summary>本建筑持有的可见性租约；仅 StartsHidden == false 的建筑在生成时申请。</summary>
+    private VisibilityLease _visibilityLease;
+
+    /// <summary>
+    /// 生成即激活的建筑用来点亮占位格迷雾：申请 VisibilityLease 覆盖 OccupiedHexes。
+    /// 只影响视觉可见性，不写 IsExplored、不改归属，探索系统仍可正常探索这些格。
+    /// 由 PublicBuildingGenerator 在 Initialize 之后调用；重复调用是幂等的。
+    /// </summary>
+    public void AcquireSpawnVisibility()
+    {
+        if (_visibilityLease != null || _visibilityService == null) return;
+        if (OccupiedHexes == null || OccupiedHexes.Count == 0) return;
+
+        _visibilityLease = _visibilityService.AcquireLease("PublicBuildingSpawn", OccupiedHexes);
+    }
+
+    /// <summary>释放生成时申请的可见性租约（占位格回落到普通可见性判定）。幂等。</summary>
+    protected void ReleaseSpawnVisibility()
+    {
+        _visibilityLease?.Release();
+        _visibilityLease = null;
     }
 
     /// <summary>
@@ -436,6 +462,7 @@ public abstract class PublicBuildingBase : BuildingBase
     {
         base.OnDestroy(); // 【断供方案-阶段5】退订血条可见性事件
 
+        ReleaseSpawnVisibility();
         _markerManager?.RemoveMarker(this);
 
         // 清空占位格引用，防止野指针

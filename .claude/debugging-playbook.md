@@ -358,3 +358,17 @@
 - **修复（以 `archer_blue` 为 0 号参照，照抄**正确**文件）**：血条锚点改回接近 Canvas 原点的做法——`archer_red`/`swordsman_blue` 的滑块 `anch=(x:20,y:0)`（即 `localPosition (1.2, 0, 0)`×0.06 世界单位）且 `localPosition.z=0`；竖向偏移放在**外层 Canvas 节点**的 `anchoredPosition=(0, 2.5)`。别再把血条 z 拉成 `-357.8`、也别把锚点挪到 `(3.6,-36.2)`。
 - **可迁移判据**：**带 Animator 的 Prefab，凡是在 Prefab 视图里能看到"模型位置与节点不一致、且绑定姿势数值巨大（±几十、尺度 4）"的，千万别拿 Prefab 视图当运行时参考**。判定"改对了没"要进 Play 看；或者用一个运行时不重绑骨骼的参考物（如 Cube）做对齐参照。**要复用别的 Prefab 的布局，直接对比这几项**：血条 `anchoredPosition`（是否 ≈原点）、血条 `localPosition.z`（是否为 0）、外层 `Canvas.anchoredPosition`（竖向偏移是否放在这）、`Canvas` 的 `scale`（是否 `0.015`）——4 项都和正确文件一致，Play 姿态自然对得上。
 - **附带**：两个文件都改了导致回归。`archer_blue.prefab` 未提交改动（`model` 指到 `y=2.23`、血条锚点 `(3.6,-36.2)`、`localPosition.z=-357.8`）与 `archer_red`（`anch=(x:20,y:0)`、`z=0`）互为反例——**改血条前先 `git diff` 看两侧是否都被动过**。
+
+## `void` 的下游拒绝会让上游的退避/节流永远不生效（20+ 单位卡顿的直接触发器）
+
+- **现象**：单位数少时流畅，到 20+ 附近**突然**卡顿（而非平滑劣化）。`UnitBrainBase` 明明有 `_pathfindFailed` + `SearchInterval` 节流，Profiler 里却看到大量单位每帧都在跑完整决策链（索敌 + Dijkstra）。
+- **根因**：节流位只在 `ChooseNextPath` **返回 null**（找不到路）时置位。但拥挤时真正的失败形态是「找到了路、但抢不到槽位」：`RequestMove → ReservePathSlots` 整路径原子预留失败 → `RequestMove` 返回 false → `UnitMovementController.MoveTo` 是 `void`，把这个 false 就地吞掉直接 `return` → `isMoving` 保持 false → brain 下一帧仍空闲 → 无节流重跑全链。于是形成正反馈：**单位越多 → 格子越满 → 预留失败越多 → 越多单位每帧全速重算 → 更卡**，阈值感就是这么来的。
+- **修复**：`IUnitMovement.MoveTo` / `UnitMovementController.MoveTo` 由 `void` 改 `bool`，brain 收到 false 时 `InvalidatePath()`（目标格已被别人占住，沿旧路径继续只会一步步撞同一堵墙）+ 置 `_pathfindFailed`，让既有节流介入。
+- **可迁移判据**：**凡是「上游有退避/节流机制、下游有可能拒绝请求」的组合，先检查这条拒绝信号有没有真的传回上游**。`void` 的提交接口 + 内部 `if (!success) return;` 是最典型的信号黑洞——静默失败不会报错，只会让重试变成满速空转。症状签名：**有节流却观测不到节流生效，且失败率随负载上升**。写这类接口时，「请求被拒」必须是返回值/回调，不能只是一个提前 return。
+
+## 兜底分支往往是最热的路径：可达性判定要与"取可达域"共用同一次洪泛
+
+- **现象**：同上卡顿分析。`ChooseFallbackPath`（无目标/隔海时的兜底）一次要跑「最多 3 次 `MoveToAttack` 全图 Dijkstra（判目标是否被隔绝）+ 1 次全图洪泛（选岸格）+ 1 次求路 Dijkstra」= **单个空闲单位单帧 5 次以上全图搜索**。而「没目标 / 挤不进去 / 隔海相望」恰恰是单位多时**最常见**的状态——最贵的分支被走得最勤。
+- **修复**：在兜底入口只跑**一次** `GetAllReachableHexesFromStartHex`，结果一鱼两吃：灌进复用的 `HashSet` 让可达性判定退化成 O(1) 查表；同一份 `List` 直接用来选最近岸格。
+- **等价性陷阱**：旧判定用 `MovementPurpose.MoveToAttack`，该模式**允许终点被占据**（走到邻格即可开打）；而洪泛的 `allowedBlockedTarget` 为 null，站着敌人的格子不在可达域里。直接换成查表会把近身敌人误判成「被隔绝」，错误触发隔海趋近。补法：目标格本身在集合内 **或其 6 个邻格任一在集合内** 即算可达。
+- **可迁移判据**：优化前先问「**这条分支是异常路径还是常态路径**」——名字叫 fallback/兜底/异常处理的代码，在高负载下常常反而是主路径。另外，**把 N 次「单点可达性查询」换成 1 次「全可达域计算 + 查表」时，必须逐一核对两者的可进入性语义**（是否允许终点被占据/阻挡、是否允许起点、代价预算），语义差一点就会在边界场景静默改变行为。

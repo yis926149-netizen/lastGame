@@ -12,7 +12,7 @@ public interface IUnitMovement
     bool IsBusy { get; }                           // �ƶ��������������Ƿ����ڽ���
 
     /// <summary>�ƶ���Ŀ��������</summary>
-    void MoveTo(Vector3 targetHex, Enums.MovementPurpose purpose = Enums.MovementPurpose.MoveToDestination);
+    bool MoveTo(Vector3 targetHex, Enums.MovementPurpose purpose = Enums.MovementPurpose.MoveToDestination);
     /// <summary>ȡ����ǰ�ƶ�</summary>
     void CancelMove();
     /// <summary>�����ƶ������»غ�ʱ���ã�</summary>

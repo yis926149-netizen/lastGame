@@ -19,18 +19,18 @@ MonoBehaviour:
     enabled: 1
     captureHp: 100
     defenseHp: 100
-    subHexDirections: 
+    subHexDirections: None
   - buildingId: collectible_02
     legacyId: 1
     buildingName: boss2
     enabled: 1
     captureHp: 100
     defenseHp: 100
-    subHexDirections: 
+    subHexDirections: None
   - buildingId: collectible_03
     legacyId: 2
     buildingName: boss3
     enabled: 1
     captureHp: 100
     defenseHp: 100
-    subHexDirections: 
+    subHexDirections: None

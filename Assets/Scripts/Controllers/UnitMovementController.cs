@@ -165,14 +165,21 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
     // UnitMovementController.cs
 
-    public void MoveTo(Vector3 targetHex, Enums.MovementPurpose purpose = Enums.MovementPurpose.MoveToDestination)
+    /// <summary>
+    /// 请求移动到目标格。
+    /// 【卡顿分析·第五节修复】返回值不再吞掉：false = 本次移动请求被拒（死亡调度中 / 攻击目标已失效 /
+    /// RequestMove 失败，最常见的是拥挤时整路径槽位预留失败）。调用方（brain）据此置节流位，
+    /// 否则单位下一帧仍空闲，会无节流地重跑整条决策链 —— 这正是 20+ 单位卡顿的直接触发器。
+    /// true 也包含「MoveToAttack 且路径为空 → 同步 OnMoveFinished 并触发攻击」这一支：请求本身是成功的。
+    /// </summary>
+    public bool MoveTo(Vector3 targetHex, Enums.MovementPurpose purpose = Enums.MovementPurpose.MoveToDestination)
     {
-        if (_isDeathScheduled) return;
+        if (_isDeathScheduled) return false;
         // 【实时化】移动力配额概念已废除，不再用 currentMovementPoints 作为移动许可判断。
 
         if (purpose == Enums.MovementPurpose.MoveToAttack)
         {
-            if (attackedUnit == null) return;
+            if (attackedUnit == null) return false;
             attackTargetPosition = attackedUnit.transform.position;
         }
 
@@ -188,7 +195,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             movementPurpose = Enums.MovementPurpose.None;
             attackedUnit = null;
             // Move request rejected — 正常情况（目标不可达/已被占用），不记录日志避免刷屏。
-            return;
+            return false;
         }
 
         // RequestMove 成功后，若 movementPurpose 尚未被同步的 OnMoveFinished 重置为 None，
@@ -196,6 +203,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         // 这样避免原来"先设 true 再失败改回 false"在同帧完成、Update() 观测不到动画切换的问题。
         if (movementPurpose != Enums.MovementPurpose.None)
             isMoving = true;
+
+        return true;
     }
 
     public void CancelMove()
@@ -245,7 +254,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         // 调用系统的可达格子计算（按本单位阵营查可见性，避免 AI 被玩家迷雾卡住）
         int factionId = PlayerIndex >= 0 ? PlayerIndex : (CompareTag("PlayerUnit") ? 0 : 1);
         return _movementSystem.GetAllReachableHexesFromStartHex(
-            new List<Vector3>(_mapDataService.GetAllHexCoordinates()),
+            _mapDataService.GetAllHexCoordinates(),
             CurrentHexCoordinate,
             currentMovementPoints,
             factionId

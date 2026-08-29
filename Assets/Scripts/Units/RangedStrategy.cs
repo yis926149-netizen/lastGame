@@ -23,7 +23,8 @@ public class RangedStrategy : IUnitStrategy
 
         var mapData = brain.MapData;
         var movement = brain.Movement;
-        List<Vector3> allPoints = new List<Vector3>(mapData.GetAllHexCoordinates());
+        // 直接用缓存表：寻路只读 allPoints，不需要防御性拷贝
+        List<Vector3> allPoints = mapData.GetAllHexCoordinates();
         Vector3 startHex = mapData.WorldToHexCoordinate(brain.Owner.model.transform.position);
 
         Vector3? directionHint = brain.FindApproximateDirectionToHiddenBuilding();

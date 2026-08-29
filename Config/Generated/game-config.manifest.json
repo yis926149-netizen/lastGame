@@ -2,7 +2,7 @@
   "schemaVersion": "1.0.0",
   "exporterVersion": "0.1.0",
   "workbook": "游戏数值配置.xlsx",
-  "workbookSha256": "85a47db31e87c156a00a6856d53efbaadcf98812819766cc5e68d61cac94086e",
+  "workbookSha256": "4a20a22ef95f8182600266c422aa8def6333759a1587776b194ca513c790a7aa",
   "tables": [
     {
       "sheetName": "单位",
@@ -94,7 +94,7 @@
       "sha256": "1866bd003f97c28bdaa88acc903f7de25ead75aa6d6f1ec88722c44be5ed343e"
     },
     "Csv/公共建筑.csv": {
-      "sha256": "a3668e3c01b703e1ebe67fdb452d0d318cbee912fb4e25f5f228708b9b8756a3"
+      "sha256": "3b047157f25c080c811c10433f0d63dd69c89f26b1ae27a2aa97de439c415a1a"
     },
     "Csv/单位.csv": {
       "sha256": "174e354361bbd053ed3c051ada9b4d74c5e72a0a172bc6f72cafafc79c3c5f32"
@@ -154,7 +154,7 @@
       "sha256": "f3990a7e23f2a9e32ac6685e7f291297aba6f8f8bcf1fb21b1f9573df9949fcf"
     },
     "game-config.json": {
-      "sha256": "fd58254e7f3de5250f0144871819fdc280bcc30db88c1a8c614e8df8306cd644"
+      "sha256": "8585a9af09bc452f09d9f121559c2a6c7bbe26787ca61b0735ff468dbb3fc24a"
     }
   }
 }

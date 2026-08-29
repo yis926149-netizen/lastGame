@@ -1,34 +1,36 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
 /// 自定义最小优先队列（按优先级升序出队）
-/// 适配：KeyValuePair<Vector3, float> 数据类型（点 + 到达代价），优先级为到达代价
-/// 
+/// 适配：(Vector3 点, float 到达代价) 数据，优先级为到达代价
+///
 /// 公共方法
 /// 1、构造函数：public MinPriorityQueue()
-/// 2、入队方法：public void Enqueue(KeyValuePair<Vector3, float> data, float priority)
-/// 3、出队方法：public KeyValuePair<Vector3, float> Dequeue()
+/// 2、入队方法：public void Enqueue(Vector3 hex, float priority)
+/// 3、出队方法：public bool TryDequeue(out Vector3 hex, out float priority)
 /// 4、清空队列：public void Clear()
+///
+/// 【性能】堆内最热的 UpHeapify/DownHeapify 直接用 float 比较，
+///   不再经 IComparer&lt;float&gt; 委托（原实现每次比较都是一次接口 + 委托调用）。
+///   数据也从 KeyValuePair 装进结构体字段，出入队不再构造中间对象。
 /// </summary>
 public class MinPriorityQueue
 {
     // 堆节点结构体：存储数据和优先级
     private struct HeapNode
     {
-        public KeyValuePair<Vector3, float> Data; // 数据：(点, 到达该点的代价)
-        public float Priority; // 优先级：与到达代价一致（升序）
+        public Vector3 Hex;      // 数据：点
+        public float Priority;   // 优先级：到达该点的代价（升序）
 
-        public HeapNode(KeyValuePair<Vector3, float> data, float priority)
+        public HeapNode(Vector3 hex, float priority)
         {
-            Data = data;
+            Hex = hex;
             Priority = priority;
         }
     }
 
     private readonly List<HeapNode> _heap; // 底层存储：List实现堆结构
-    private readonly IComparer<float> _comparer; // 优先级比较器（最小堆）
 
     /// <summary>
     /// 队列元素个数
@@ -46,32 +48,33 @@ public class MinPriorityQueue
     public MinPriorityQueue()
     {
         _heap = new List<HeapNode>();
-        // 最小堆比较器：a.Priority < b.Priority 时，a 应排在前面
-        _comparer = Comparer<float>.Create((a, b) => a.CompareTo(b));
     }
 
     /// <summary>
     /// 入队：添加元素到堆，并上浮调整堆结构
     /// </summary>
-    /// <param name="data">数据：KeyValuePair<Vector3, float>（点 + 到达代价）</param>
+    /// <param name="hex">数据：点</param>
     /// <param name="priority">优先级（必须与到达代价一致，算法中已保证）</param>
-    public void Enqueue(KeyValuePair<Vector3, float> data, float priority)
+    public void Enqueue(Vector3 hex, float priority)
     {
         // 添加到堆尾
-        _heap.Add(new HeapNode(data, priority));
+        _heap.Add(new HeapNode(hex, priority));
         // 上浮调整：从最后一个节点向上维护堆结构
         UpHeapify(_heap.Count - 1);
     }
 
     /// <summary>
-    /// 出队：移除并返回优先级最高（最小）的元素，下沉调整堆结构
+    /// 出队：移除并返回优先级最高（最小）的元素，下沉调整堆结构。
+    /// 队列为空时返回 false（不再抛异常，调用方无需先查 Count）。
     /// </summary>
-    /// <returns>优先级最高的元素</returns>
-    /// <exception cref="InvalidOperationException">队列为空时抛出</exception>
-    public KeyValuePair<Vector3, float> Dequeue()
+    public bool TryDequeue(out Vector3 hex, out float priority)
     {
-        if (IsEmpty)
-            throw new InvalidOperationException("优先队列为空，无法执行出队操作");
+        if (_heap.Count == 0)
+        {
+            hex = default;
+            priority = 0f;
+            return false;
+        }
 
         // 取出堆顶（优先级最高）元素
         HeapNode topNode = _heap[0];
@@ -84,7 +87,9 @@ public class MinPriorityQueue
         if (_heap.Count > 0)
             DownHeapify(0);
 
-        return topNode.Data;
+        hex = topNode.Hex;
+        priority = topNode.Priority;
+        return true;
     }
 
     /// <summary>
@@ -97,7 +102,7 @@ public class MinPriorityQueue
             int parentIndex = (index - 1) / 2; // 父节点索引
 
             // 若当前节点优先级 ≥ 父节点，堆结构已合法，退出
-            if (_comparer.Compare(_heap[index].Priority, _heap[parentIndex].Priority) >= 0)
+            if (_heap[index].Priority >= _heap[parentIndex].Priority)
                 break;
 
             // 交换当前节点与父节点
@@ -122,13 +127,13 @@ public class MinPriorityQueue
 
             // 找到左、右子节点中优先级最小的
             if (leftChildIndex < heapSize &&
-                _comparer.Compare(_heap[leftChildIndex].Priority, _heap[smallestChildIndex].Priority) < 0)
+                _heap[leftChildIndex].Priority < _heap[smallestChildIndex].Priority)
             {
                 smallestChildIndex = leftChildIndex;
             }
 
             if (rightChildIndex < heapSize &&
-                _comparer.Compare(_heap[rightChildIndex].Priority, _heap[smallestChildIndex].Priority) < 0)
+                _heap[rightChildIndex].Priority < _heap[smallestChildIndex].Priority)
             {
                 smallestChildIndex = rightChildIndex;
             }
@@ -155,7 +160,7 @@ public class MinPriorityQueue
     }
 
     /// <summary>
-    /// 清空队列（可选，方便复用）
+    /// 清空队列（复用同一实例时调用，保留已分配的底层数组容量）
     /// </summary>
     public void Clear()
     {

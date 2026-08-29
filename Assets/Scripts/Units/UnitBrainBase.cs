@@ -195,7 +195,8 @@ public abstract class UnitBrainBase : MonoBehaviour
             _pathfindFailed = false;
             Vector3 step = _cachedPath[_cachedPathIndex];
             _cachedPathIndex++;
-            umc.MoveTo(step, Enums.MovementPurpose.MoveToDestination);
+            if (!umc.MoveTo(step, Enums.MovementPurpose.MoveToDestination))
+                OnMoveRejected();
             return;
         }
 
@@ -219,7 +220,8 @@ public abstract class UnitBrainBase : MonoBehaviour
 
             Vector3 step = _cachedPath[_cachedPathIndex];
             _cachedPathIndex++;
-            umc.MoveTo(step, Enums.MovementPurpose.MoveToDestination);
+            if (!umc.MoveTo(step, Enums.MovementPurpose.MoveToDestination))
+                OnMoveRejected();
         }
         else
         {
@@ -228,9 +230,89 @@ public abstract class UnitBrainBase : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 【卡顿分析·第五节修复】移动请求被拒时的收尾。
+    ///
+    /// 20+ 单位时的失败形态不是「找不到路」，而是「找到了路但抢不到槽位」
+    /// （RequestMove → ReservePathSlots 整路径原子预留失败）。旧代码里 MoveTo 是 void，
+    /// 这类失败对 brain 完全不可见：isMoving 保持 false，下一帧仍然空闲，
+    /// 于是无节流地重跑整条决策链 —— 单位越多 → 格子越满 → 预留失败越多 → 越卡，形成正反馈。
+    ///
+    /// 这里做两件事：
+    ///   - 作废缓存路径：目标格已被别人占住，沿着旧路径继续只会一步步撞同一堵墙；
+    ///   - 置 _pathfindFailed：让既有的 SearchInterval 节流真正介入，把重试摊到若干帧。
+    /// </summary>
+    private void OnMoveRejected()
+    {
+        InvalidatePath();
+        _pathfindFailed = true;
+        _idleSearchCounter = 0;
+    }
+
     // ── 子类必须实现 ──────────────────────────────────────
     public abstract Vector3? FindNearestEnemy();
     public abstract Vector3? FindNearestEnemyBuilding();
+
+    // ── 索敌寻路预算（卡顿分析·第三节修复）────────────────
+    // 旧实现：FindNearestEnemy/Building/Chest 对每一个候选跑一次完整 Dijkstra，
+    // 整体 O(候选数) 次全图搜索，N 个单位 × N 个敌人 = O(N²)，是 20+ 卡顿的核心原因。
+    // 现改为：候选先按六边形距离升序，只对最近的前 MaxPathfindCandidates 个跑寻路。
+    //   - 六边形距离是移动代价的下界（单格 cost ≥ 1），升序处理时既有剪枝
+    //     （hexDist ≥ bestCost 即停）会让 bestCost 在一两次寻路后收敛，绝大多数远端候选被直接剪掉；
+    //   - 寻路本身已有「弹出终点即退出」，近邻候选的搜索成本正比于真实距离而非全图；
+    //   - 上限只兜住「最近几个候选全不可达 / 全绕远」的病态场景（如隔海相望、迷宫），
+    //     把最坏情况从 O(候选数) 次全图扫描压成常数次。
+    // 刻意写成常量：与 WanderRadiusHexes 同理，后续若需可配再提升到 Excel（游戏数值配置.xlsx）。
+    private const int MaxPathfindCandidates = 6;
+
+    // 三个 FindNearest* 查询共用的候选收集缓冲，避免每次查询 new List。
+    // 查询间串行调用、各自「收集 → 排序 → 寻路选优」一次消费完毕，无嵌套/并发使用，可安全复用。
+    private readonly List<(Vector3 hex, float hexDist)> _targetCandidates = new List<(Vector3 hex, float hexDist)>(32);
+
+    private static readonly System.Comparison<(Vector3 hex, float hexDist)> TargetCandidateComparison =
+        (a, b) => a.hexDist.CompareTo(b.hexDist);
+
+    /// <summary>收集一个已通过过滤的候选目标（记录六边形距离，供随后排序选优）。</summary>
+    protected void AddTargetCandidate(Vector3 startHex, Vector3 targetHex)
+    {
+        _targetCandidates.Add((targetHex, HexDistance(startHex, targetHex)));
+    }
+
+    /// <summary>
+    /// 对已收集的候选按真实寻路代价选优：先按六边形距离升序排序，再对最近的
+    /// 前 <see cref="MaxPathfindCandidates"/> 个候选跑 Dijkstra，返回可达且代价最小者。
+    /// 调用后缓冲即清空，可立即用于下一次查询。
+    /// </summary>
+    protected Vector3? PickNearestByPathCost(List<Vector3> allPoints, Vector3 startHex)
+    {
+        if (_targetCandidates.Count == 0) return null;
+
+        _targetCandidates.Sort(TargetCandidateComparison);
+
+        Vector3? best = null;
+        float bestCost = float.MaxValue;
+        int budget = MaxPathfindCandidates;
+
+        for (int i = 0; i < _targetCandidates.Count && budget > 0; i++)
+        {
+            (Vector3 hex, float hexDist) = _targetCandidates[i];
+            // 升序：一旦六边形距离都不小于当前最优代价，其后候选只会更远，一并剪掉
+            if (hexDist >= bestCost) break;
+
+            budget--;   // 无论寻路成败都消耗预算：不可达候选的全图扫描正是要限制的开销
+            if (Movement.CalculateMinMovementCostBetweenTwoHexes(
+                    allPoints, startHex, hex,
+                    Enums.MovementPurpose.MoveToAttack, FactionId, out float cost, out _)
+                && cost < bestCost)
+            {
+                bestCost = cost;
+                best = hex;
+            }
+        }
+
+        _targetCandidates.Clear();
+        return best;
+    }
 
     /// <summary>
     /// 【竞技场-阶段二】最近中央宝箱（索敌链第二优先级：敌方单位 > 宝箱 > 敌方建筑，玩法文档 §4.2）。
@@ -240,32 +322,21 @@ public abstract class UnitBrainBase : MonoBehaviour
     {
         if (Owner?.model == null || MapData == null || Movement == null) return null;
 
-        List<Vector3> allPoints = new List<Vector3>(MapData.GetAllHexCoordinates());
+        // 直接用缓存表：寻路只读 allPoints，不需要防御性拷贝（拷贝会让 HexMapService 的缓存白做）
+        List<Vector3> allPoints = MapData.GetAllHexCoordinates();
         Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
         if (startHex == default) return null;
 
-        Vector3? best = null;
-        float bestCost = float.MaxValue;
-
+        // 收集候选 → 升序 → 限量寻路（旧实现对每个宝箱跑一次完整 Dijkstra）
         foreach (var cell in MapData.GetAllCells())
         {
             GameObject building = cell.BulidingTypeOnHex_Building.Value;
             if (building == null || building.GetComponent<CentralChest>() == null) continue;
 
-            Vector3 endHex = cell.HexCoordinate;
-            if (HexDistance(startHex, endHex) >= bestCost) continue;
-
-            if (Movement.CalculateMinMovementCostBetweenTwoHexes(
-                    allPoints, startHex, endHex,
-                    Enums.MovementPurpose.MoveToAttack, FactionId, out float cost, out _)
-                && cost < bestCost)
-            {
-                bestCost = cost;
-                best = endHex;
-            }
+            AddTargetCandidate(startHex, cell.HexCoordinate);
         }
 
-        return best;
+        return PickNearestByPathCost(allPoints, startHex);
     }
 
     // ── 隔绝目标查询（忽略可达性）────────────────────────
@@ -319,6 +390,15 @@ public abstract class UnitBrainBase : MonoBehaviour
         // 而不可达格的 minCost 恰为 float.MaxValue —— 传 float.MaxValue 会因 MaxValue <= MaxValue
         // 成立而把全图（含水域）一并返回。单格 cost 为 1，故任何可达格代价必 <= 总格数。
         List<Vector3> reachable = Movement.GetAllReachableHexesFromStartHex(allPoints, startHex, allPoints.Count, FactionId);
+        return FindClosestCellToTargetIn(reachable, startHex, targetHex);
+    }
+
+    /// <summary>
+    /// 同上，但复用调用方已算好的可达域，不再重复洪泛。
+    /// <see cref="ChooseFallbackPath"/> 走这条：它的可达性判定与岸格选取共用同一次洪泛。
+    /// </summary>
+    private Vector3? FindClosestCellToTargetIn(List<Vector3> reachable, Vector3 startHex, Vector3 targetHex)
+    {
         if (reachable == null || reachable.Count == 0) return null;
 
         Vector3 best = startHex;
@@ -384,34 +464,61 @@ public abstract class UnitBrainBase : MonoBehaviour
         return chosen;
     }
 
+    // ── 兜底可达性判定（卡顿分析·第四节修复）──────────────
+    // 旧实现：FirstUnreachable 对三个候选各跑一次 MoveToAttack 全图 Dijkstra（最多 3 次），
+    // 随后 FindClosestReachableCellToTarget 再跑一次全图洪泛 —— 单个空闲单位单帧 4 次全图搜索，
+    // 而「隔海相望 / 没目标」正是单位多时最常见的状态。
+    // 现改为：整个兜底只跑**一次**洪泛，得到可达域集合后所有可达性判定退化为 O(1) 查表。
+
+    // 六边形立方坐标的 6 个方向偏移，与 HexMapService.GetNeighbor 的 NE/E/SE/SW/W/NW 一一对应。
+    private static readonly Vector3[] CubeNeighborOffsets =
+    {
+        new Vector3(0, -1,  1),  // NE
+        new Vector3(1, -1,  0),  // E
+        new Vector3(1,  0, -1),  // SE
+        new Vector3(0,  1, -1),  // SW
+        new Vector3(-1, 1,  0),  // W
+        new Vector3(-1, 0,  1),  // NW
+    };
+
+    // 可达域查表集合，按实例复用（兜底串行执行，无嵌套/并发）。
+    private readonly HashSet<Vector3> _reachableSet = new HashSet<Vector3>();
+
+    /// <summary>
+    /// 目标是否「可攻击到达」。等价于旧的 MoveToAttack 寻路判定：
+    /// MoveToAttack 允许把被占据的终点当作可进入目标，即走到任一邻格即可开打，
+    /// 故「目标格本身可达」或「目标格任一邻格可达」二者之一成立即为可达。
+    /// 少了这层邻格判定，站着敌人的格子会因不可进入而被误判成「被隔绝」，把近身敌人错送进隔海趋近。
+    /// </summary>
+    private bool IsReachableForAttack(Vector3 targetHex)
+    {
+        if (_reachableSet.Contains(targetHex)) return true;
+
+        for (int i = 0; i < CubeNeighborOffsets.Length; i++)
+        {
+            if (_reachableSet.Contains(targetHex + CubeNeighborOffsets[i])) return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// 在索敌链（单位 > 宝箱 > 建筑）内取第一个"存在但不可达"的目标 —— 即被水域/山体完全隔绝。
     /// 只挑忽略可达性查询有结果、而对应可达性查询无结果者。null 表示无任何被隔绝目标。
+    /// 可达性一律查 <see cref="_reachableSet"/>，调用前必须已填充。
+    /// 三个查询保持惰性：前一级命中就不再扫后一级（建筑查询要遍历全图格）。
     /// </summary>
-    private Vector3? FirstUnreachable(List<Vector3> allPoints, Vector3 startHex)
+    private Vector3? FirstUnreachable()
     {
         Vector3? enemy = FindNearestEnemyIgnoringReachability();
-        if (enemy.HasValue && !IsReachable(allPoints, startHex, enemy.Value))
-            return enemy;
+        if (enemy.HasValue && !IsReachableForAttack(enemy.Value)) return enemy;
 
         Vector3? chest = FindNearestChestIgnoringReachability();
-        if (chest.HasValue && !IsReachable(allPoints, startHex, chest.Value))
-            return chest;
+        if (chest.HasValue && !IsReachableForAttack(chest.Value)) return chest;
 
         Vector3? building = FindNearestBuildingIgnoringReachability();
-        if (building.HasValue && !IsReachable(allPoints, startHex, building.Value))
-            return building;
+        if (building.HasValue && !IsReachableForAttack(building.Value)) return building;
 
         return null;
-    }
-
-    private bool IsReachable(List<Vector3> allPoints, Vector3 startHex, Vector3 targetHex)
-    {
-        return Movement != null &&
-               Movement.CalculateMinMovementCostBetweenTwoHexes(
-                   allPoints, startHex, targetHex,
-                   Enums.MovementPurpose.MoveToAttack, FactionId, out float cost, out _)
-               && cost < float.MaxValue;
     }
 
     /// <summary>
@@ -428,17 +535,34 @@ public abstract class UnitBrainBase : MonoBehaviour
     /// <returns>完整到达路径；已在最优岸格/游走无解时返回 null（由节流机制驻守）。</returns>
     public List<Vector3> ChooseFallbackPath(List<Vector3> allPoints, Vector3 startHex)
     {
+        if (Movement == null || allPoints == null || allPoints.Count == 0) return null;
+
         // 5a. 隔海趋近：目标存在但被水/山隔绝，走到最接近目标的可达格。
         //     必须校验"确实不可达"：近战 step 2 的警戒范围（3格）门槛会让一个**可达但较远**的敌人
         //     也落到本兜底，若不校验就会变成无限追击，既越过 AlertRange 的设计意图，
         //     也抢掉了"无目标 → 随机游走"。用户的语义是「目标被隔开」，即真正不可达。
         //     【临时屏蔽】EnableIsolatedShoreApproach=false 时整段跳过，直接走 5b 随机游走。
+        //
+        //     【卡顿分析·第四节修复】可达性判定与岸格选取共用**同一次**洪泛：
+        //     先算一次可达域 → 灌进 _reachableSet 供 O(1) 查表 → 岸格直接在同一份列表里挑。
+        //     旧实现是「最多 3 次 MoveToAttack 全图 Dijkstra + 1 次全图洪泛」。
         if (EnableIsolatedShoreApproach)
         {
-            Vector3? isolated = FirstUnreachable(allPoints, startHex);
+            // 预算必须有限：GetAllReachableHexesFromStartHex 的收尾判据是 minCost <= totalCost，
+            // 而不可达格的 minCost 恰为 float.MaxValue —— 传 float.MaxValue 会因 MaxValue <= MaxValue
+            // 成立而把全图（含水域）一并返回。单格 cost 为 1，故任何可达格代价必 <= 总格数。
+            List<Vector3> reachable = Movement.GetAllReachableHexesFromStartHex(allPoints, startHex, allPoints.Count, FactionId);
+
+            _reachableSet.Clear();
+            if (reachable != null)
+            {
+                for (int i = 0; i < reachable.Count; i++) _reachableSet.Add(reachable[i]);
+            }
+
+            Vector3? isolated = FirstUnreachable();
             if (isolated.HasValue)
             {
-                Vector3? shore = FindClosestReachableCellToTarget(allPoints, startHex, isolated.Value);
+                Vector3? shore = FindClosestCellToTargetIn(reachable, startHex, isolated.Value);
                 if (!shore.HasValue)
                     return null;   // 连起点都在孤立区域外（理论上不会发生），驻守兜底
 

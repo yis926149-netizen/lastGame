@@ -39,6 +39,11 @@ public class HexMapService : IMapDataService
 
         _hexVertices = hexVertices;
 
+        // 重新生成地图时必须失效旧缓存：调用方（寻路等）现在直接持有这两个列表的引用，
+        // 不再逐次拷贝，残留旧表会让新地图沿用上一张图的坐标集。
+        _cachedAllCells = null;
+        _cachedAllHexCoords = null;
+
         _cachedCellRadius = ComputeCellRadius();
     }
 

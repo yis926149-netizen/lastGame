@@ -66,8 +66,12 @@ public class PublicBuilding_Collectible : PublicBuildingBase
         const int playerFaction = 0;
         if (triggeringPlayerIndex == playerFaction)
         {
-            // 玩家阵营：通过 CardPresenter 插入带 UI 的手牌
-            _cardPresenter.InsertCardAtFront(_rewardCard);
+            // 玩家阵营：通过 CardPresenter 插入带 UI 的手牌。
+            // RootHex 是生成流程不变量；意外为空时退回同步插牌（飞入起点不可得）。
+            if (RootHex != null)
+                _cardPresenter.InsertCardAtFrontWithFly(_rewardCard, RootHex.RealCenterWorldCoordinate);
+            else
+                _cardPresenter.InsertCardAtFront(_rewardCard);
         }
         else
         {

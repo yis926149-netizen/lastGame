@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using Zenject;
@@ -30,7 +31,9 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
 
     private ICardView _nextCardView;
     private List<ICardView> _cardViews = new List<ICardView>();
-    private Transform _handRoot;          
+    private Transform _handRoot;
+    // 飞入特效互斥标志：不排队，飞行中再次触发直接同步结算。
+    private bool _cardFlyInProgress;
     private bool _isDealing = false;
     private Queue<CardData> _initialDealQueue = new Queue<CardData>();
 
@@ -652,25 +655,78 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
     }
 
     /// <summary>
-    /// 将指定卡牌强制插入手牌第一位（slot 0）。
-    /// 现有卡牌整体右移一位；若手牌已满，末位卡牌被销毁。
-    /// 不走 next-card 流程，直接入手。
+    /// 将指定卡牌强制插入手牌第一位（slot 0）的兼容入口。
+    /// 现有卡牌整体右移一位；若手牌已满，末位卡牌被销毁。失败时仅记录日志，不抛出异常。
     /// </summary>
     public void InsertCardAtFront(NormalCardConfigSO config)
     {
-        if (config == null) return;
+        TryInsertCardAtFront(config);
+    }
 
-        var placeholder = _uiConfig?.NextCardPlaceholder;
-        if (placeholder == null) return;
+    /// <summary>
+    /// 同步插牌的安全入口：完整校验依赖与实例化结果，任一无效即返回 false 且不部分移动 slot。
+    /// 全部通过后原子执行「ShiftSlotsRight → 旧卡右移/末位挤出销毁 → 新卡落位 slot 0」。
+    /// </summary>
+    private bool TryInsertCardAtFront(NormalCardConfigSO config)
+    {
+        if (config == null) return false;
+
+        if (_cardService == null || _container == null || _uiConfig == null || _handRoot == null)
+        {
+            Debug.LogError("[CardPresenter] TryInsertCardAtFront: 环境依赖缺失（cardService/container/uiConfig/handRoot），无法同步插入卡牌。");
+            return false;
+        }
+
+        GameObject placeholder = _uiConfig.NextCardPlaceholder;
+        if (placeholder == null)
+        {
+            Debug.LogWarning("[CardPresenter] TryInsertCardAtFront: NextCardPlaceholder 缺失，无法同步插入卡牌。");
+            return false;
+        }
         RectTransform placeholderRect = placeholder.GetComponent<RectTransform>();
-        if (placeholderRect == null) return;
+        if (placeholderRect == null)
+        {
+            Debug.LogWarning("[CardPresenter] TryInsertCardAtFront: NextCardPlaceholder 无 RectTransform，无法同步插入卡牌。");
+            return false;
+        }
+
+        GameObject prefab = _uiConfig.GetCardPrefab();
+        if (prefab == null)
+        {
+            Debug.LogError("[CardPresenter] TryInsertCardAtFront: 卡牌 prefab 缺失，无法同步插入卡牌。");
+            return false;
+        }
+
+        // 先实例化新卡作为「实例化结果」校验：失败时不移动任何既有 slot。
+        GameObject cardObj = _container.InstantiatePrefab(prefab, _handRoot);
+        if (cardObj == null)
+        {
+            Debug.LogError("[CardPresenter] TryInsertCardAtFront: 卡牌实例化失败，无法同步插入卡牌。");
+            return false;
+        }
+        RectTransform cardRect = cardObj.GetComponent<RectTransform>();
+        ICardView view = cardObj.GetComponent<ICardView>() ?? cardObj.AddComponent<CardController>();
+        if (cardRect == null || view == null)
+        {
+            Debug.LogError("[CardPresenter] TryInsertCardAtFront: 卡牌实例缺少 RectTransform 或 ICardView。");
+            if (cardObj != null) GameObject.Destroy(cardObj);
+            return false;
+        }
 
         // 1. CardService 层整体右移，取出被挤掉的末位卡（满手牌时才非 null）
         _cardService.ShiftSlotsRight(out ICardView droppedView);
 
-        // 2. 更新所有现有手牌的 PlacementID 并滑动到新位置
-        foreach (ICardView cardView in _cardViews)
+        // 2. 更新所有现有手牌的 PlacementID 并滑动到新位置（只遍历有效 view，清除已销毁 view）
+        for (int i = _cardViews.Count - 1; i >= 0; i--)
         {
+            ICardView cardView = _cardViews[i];
+            MonoBehaviour viewBehaviour = cardView as MonoBehaviour;
+            if (viewBehaviour == null)
+            {
+                _cardViews.RemoveAt(i);
+                continue;
+            }
+
             int newSlot = cardView.PlacementID + 1;
             cardView.PlacementID = newSlot;
             Vector2 newOffset = _cardService.GetSlotOffset(newSlot);
@@ -688,14 +744,9 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
             GameObject.Destroy((droppedView as MonoBehaviour)?.gameObject);
         }
 
-        // 4. 在 slot 0 实例化新卡，直接落位（暂无入场动效）
+        // 4. 在 slot 0 落位新卡
         CardData cardData = BuildCardData(config);
-        GameObject prefab = _uiConfig.GetCardPrefab();
-        GameObject cardObj = _container.InstantiatePrefab(prefab, _handRoot);
-        RectTransform cardRect = cardObj.GetComponent<RectTransform>();
         cardRect.localScale = _uiConfig.CardSize;
-
-        ICardView view = cardObj.GetComponent<ICardView>() ?? cardObj.AddComponent<CardController>();
 
         Vector2 slot0Offset = _cardService.GetSlotOffset(0);
         Vector3 slot0Pos = (Vector3)placeholderRect.anchoredPosition
@@ -707,6 +758,292 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
 
         _cardService.RegisterCardView(0, view);
         _cardViews.Add(view);
+        return true;
+    }
+
+    /// <summary>
+    /// 将指定卡牌以飞入表现插入手牌第一位（slot 0）。
+    /// 飞行从 worldStartPos 起飞；落地瞬间才执行同步插牌和旧卡右移。
+    /// 飞行中再次触发时，本次直接同步结算，不进入队列。
+    /// </summary>
+    public void InsertCardAtFrontWithFly(NormalCardConfigSO config, Vector3 worldStartPos)
+    {
+        if (config == null) return;
+
+        // 互斥不是队列：飞行中再次触发直接同步结算，不取消当前飞行。
+        if (_cardFlyInProgress)
+        {
+            TryInsertCardAtFront(config);
+            return;
+        }
+
+        // 动画环境校验：任一缺失即降级为同步插牌。
+        if (_cardService == null || _container == null || _uiConfig == null || _handRoot == null)
+        {
+            TryInsertCardAtFront(config);
+            return;
+        }
+
+        GameObject placeholder = _uiConfig.NextCardPlaceholder;
+        RectTransform placeholderRect = placeholder != null ? placeholder.GetComponent<RectTransform>() : null;
+        if (placeholderRect == null)
+        {
+            TryInsertCardAtFront(config);
+            return;
+        }
+
+        RectTransform handRootRect = _handRoot as RectTransform;
+        if (handRootRect == null)
+        {
+            TryInsertCardAtFront(config);
+            return;
+        }
+
+        GameObject prefab = _uiConfig.GetCardPrefab();
+        if (prefab == null)
+        {
+            TryInsertCardAtFront(config);
+            return;
+        }
+
+        Camera camera = Camera.main;
+        if (camera == null)
+        {
+            TryInsertCardAtFront(config);
+            return;
+        }
+
+        Vector3 screenPos = camera.WorldToScreenPoint(worldStartPos);
+        // 起点在相机背后：不 clamp 后从错误位置飞出，直接降级同步插牌。
+        if (screenPos.z <= 0f)
+        {
+            TryInsertCardAtFront(config);
+            return;
+        }
+
+        GameObject flyGO = null;
+        Tween driver = null;
+        bool flyCompleted = false;
+        bool animationStarted = false;
+
+        // 唯一幂等结束函数：正常抵达/对象销毁/坐标失败/创建异常/终止 driver 都只能经过这里。
+        void FinishFly(bool settleCard)
+        {
+            if (flyCompleted) return;
+            flyCompleted = true;
+
+            if (driver != null)
+            {
+                driver.Kill();
+                driver = null;
+            }
+
+            if (flyGO != null)
+            {
+                flyGO.SetActive(false);
+                GameObject.Destroy(flyGO);
+                flyGO = null;
+            }
+
+            _cardFlyInProgress = false;
+
+            // 即使飞行卡已被销毁，也必须尝试一次同步结算。
+            if (settleCard) TryInsertCardAtFront(config);
+        }
+
+        try
+        {
+            flyGO = _container.InstantiatePrefab(prefab, _handRoot);
+            if (flyGO == null)
+            {
+                FinishFly(true);
+                return;
+            }
+
+            RectTransform flyRect = flyGO.GetComponent<RectTransform>();
+            if (flyRect == null)
+            {
+                FinishFly(true);
+                return;
+            }
+
+            // ── 视觉初始化（普通卡 prefab 带费用节点与透明大 Button，必须全部关闭交互）──
+            CardController controller = flyGO.GetComponent<CardController>();
+            if (controller != null) controller.enabled = false;
+
+            Image image = flyGO.GetComponent<Image>();
+            if (image != null)
+            {
+                image.sprite = config.cardSprite;
+                image.raycastTarget = false;
+            }
+
+            WriteFlyCardCost(flyGO, config);
+
+            foreach (Graphic graphic in flyGO.GetComponentsInChildren<Graphic>(true))
+            {
+                if (graphic != null) graphic.raycastTarget = false;
+            }
+            foreach (Button button in flyGO.GetComponentsInChildren<Button>(true))
+            {
+                if (button != null) button.interactable = false;
+            }
+
+            flyRect.anchorMin = new Vector2(0.5f, 0.5f);
+            flyRect.anchorMax = new Vector2(0.5f, 0.5f);
+            flyGO.transform.SetAsLastSibling();
+
+            CanvasGroup canvasGroup = flyGO.GetComponent<CanvasGroup>();
+            if (canvasGroup == null) canvasGroup = flyGO.AddComponent<CanvasGroup>();
+            canvasGroup.alpha = 0f;
+
+            // ── 坐标换算（slot0 落点与 revealLocal 必须同属 _handRoot 坐标系）──
+            Vector2 slot0Offset = _cardService.GetSlotOffset(0);
+            Vector2 slot0Pos = placeholderRect.anchoredPosition + slot0Offset;
+
+            // 卡牌实际渲染尺寸（本地单位 × 缩放 × Canvas 缩放 → 屏幕像素），用于屏幕边缘安全区。
+            float canvasScale = handRootRect.lossyScale.x;
+            if (canvasScale <= 0f) canvasScale = 1f;
+            Vector2 cardRenderSize = Vector2.Scale(flyRect.rect.size, (Vector2)_uiConfig.CardSize) * canvasScale;
+            if (cardRenderSize.x <= 0f || cardRenderSize.y <= 0f)
+                cardRenderSize = new Vector2(120f, 170f);
+            float marginX = cardRenderSize.x * 0.5f + 8f;
+            float marginY = cardRenderSize.y * 0.5f + 8f;
+            screenPos.x = Mathf.Clamp(screenPos.x, marginX, Screen.width - marginX);
+            screenPos.y = Mathf.Clamp(screenPos.y, marginY, Screen.height - marginY);
+
+            Vector2 revealLocal;
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(handRootRect, screenPos, null, out revealLocal))
+            {
+                FinishFly(true);
+                return;
+            }
+
+            Vector3 displayScale = _uiConfig.CardSize;
+            float appearTime = 0.50f;   // 阶段① 上升 + 放大
+            float flyTime = 0.25f;      // 阶段② 俯冲入位
+            float totalTime = appearTime + flyTime;
+
+            float arcBump = Mathf.Min(UIScreenHelper.ReferenceHeight * 0.12f, 120f);
+            Vector2 liftPos = revealLocal + new Vector2(0f, arcBump);                 // 阶段①顶点
+            Vector2 dashControl = liftPos * 0.5f + new Vector2(0f, -arcBump * 0.25f); // 阶段②俯冲弧线控制点
+
+            // 初始状态：出现点、小尺寸、微倾斜、透明
+            flyRect.anchoredPosition = revealLocal;
+            flyRect.localScale = displayScale * 0.35f;
+            flyRect.localRotation = Quaternion.Euler(0f, 0f, -3f);
+            canvasGroup.alpha = 0f;
+
+            // 进度由 GameLoop.GameTime 驱动（暂停即冻结），driver 只承载每帧 OnUpdate。
+            // SetLoops(-1) 使其永不自然结束，避免暂停时 DOTween 自身时钟走完而提前结算。
+            float startGameTime = _gameLoop != null ? _gameLoop.GameTime : Time.time;
+
+            driver = DOTween.To(() => 0f, _ => { }, 1f, totalTime)
+                .SetEase(Ease.Linear)
+                .SetLoops(-1)
+                .OnUpdate(() =>
+                {
+                    if (flyGO == null)
+                    {
+                        FinishFly(true);
+                        return;
+                    }
+
+                    float current = _gameLoop != null ? _gameLoop.GameTime : Time.time;
+                    float elapsed = current - startGameTime;
+                    if (elapsed < 0f) return;
+
+                    if (elapsed < appearTime)
+                    {
+                        // 阶段① 上升 + 放大：到达最高点（liftPos）时缩放到最大，同步淡入、倾斜归正
+                        float p = Mathf.Clamp01(elapsed / appearTime);
+                        flyRect.anchoredPosition = Vector2.Lerp(revealLocal, liftPos, EaseOutQuad(p));
+                        flyRect.localScale = displayScale * Mathf.Lerp(0.35f, 1f, EaseOutBack(p));
+                        flyRect.localRotation = Quaternion.Euler(0f, 0f, Mathf.Lerp(-3f, 0f, p));
+                        canvasGroup.alpha = Mathf.Clamp01(p * 5f);
+                    }
+                    else
+                    {
+                        // 阶段② 从最高点沿俯冲弧线加速飞向 slot0
+                        float p = Mathf.Clamp01((elapsed - appearTime) / flyTime);
+                        float eased = EaseInCubic(p);
+                        flyRect.anchoredPosition = QuadraticBezier(liftPos, dashControl, slot0Pos, eased);
+                        flyRect.localScale = displayScale * Mathf.Lerp(1f, 0.97f, p);
+                        flyRect.localRotation = Quaternion.Euler(0f, 0f, Mathf.Lerp(0f, 2f, Mathf.Sin(p * Mathf.PI)));
+                        canvasGroup.alpha = 1f;
+                    }
+
+                    if (elapsed >= totalTime)
+                    {
+                        FinishFly(true);
+                    }
+                })
+                .OnComplete(() => FinishFly(true));
+
+            // 仅当实例化、坐标换算、driver 建立全部成功后才置忙碌标志。
+            animationStarted = true;
+            _cardFlyInProgress = true;
+        }
+        catch (System.Exception exception)
+        {
+            Debug.LogException(exception);
+            FinishFly(true);
+        }
+        finally
+        {
+            // 只有未成功进入动画时才清除忙碌标志；成功路径由 FinishFly 统一清理。
+            if (!animationStarted) _cardFlyInProgress = false;
+        }
+    }
+
+    /// <summary>写入飞行卡费用：命中费用 TMP 则写入真实卡费；否则隐藏 cost 子节点避免默认费用错误。</summary>
+    private void WriteFlyCardCost(GameObject flyGO, NormalCardConfigSO config)
+    {
+        if (flyGO == null) return;
+        int cost = GetCardCost(config);
+
+        // 与 CardController.SetData 同一费用节点：第 2 个子物体（cost）的第 1 个子物体（Text (TMP)）
+        if (flyGO.transform.childCount > 1)
+        {
+            Transform costRoot = flyGO.transform.GetChild(1);
+            if (costRoot != null && costRoot.childCount > 0)
+            {
+                TextMeshProUGUI costText = costRoot.GetChild(0).GetComponent<TextMeshProUGUI>();
+                if (costText != null)
+                {
+                    costText.text = cost.ToString();
+                    return;
+                }
+            }
+
+            if (costRoot != null) costRoot.gameObject.SetActive(false);
+        }
+    }
+
+    // ── 飞行卡动画用缓动与曲线 ──────────────────────────────
+
+    private static float EaseOutQuad(float t)
+    {
+        return 1f - (1f - t) * (1f - t);
+    }
+
+    private static float EaseInCubic(float t)
+    {
+        return t * t * t;
+    }
+
+    private static float EaseOutBack(float t)
+    {
+        const float c1 = 1.70158f;
+        const float c3 = c1 + 1f;
+        return 1f + c3 * Mathf.Pow(t - 1f, 3f) + c1 * Mathf.Pow(t - 1f, 2f);
+    }
+
+    /// <summary>二次贝塞尔曲线采样（用于收槽弧线）。</summary>
+    private static Vector2 QuadraticBezier(Vector2 a, Vector2 b, Vector2 c, float t)
+    {
+        float u = 1f - t;
+        return u * u * a + 2f * u * t * b + t * t * c;
     }
 
     /// <summary>

@@ -31,6 +31,19 @@ public class GameLoop : IInitializable, ITickable
     // 注册到循环的所有单位 Brain
     private readonly List<UnitBrainBase> _brains = new List<UnitBrainBase>();
 
+    // ── 每帧决策预算（轮转调度）────────────────────────────
+    // 单次决策会触发完整寻路（Dijkstra），成本远高于一帧的其它工作。
+    // 旧实现在同一帧内驱动全部空闲 brain，使「单位数」直接乘进每帧成本，
+    // 20+ 单位时成为主要卡顿放大器。改为轮转：每帧最多驱动 BrainDecisionBudgetPerFrame
+    // 个 brain，游标跨帧推进，保证公平且无饥饿（每个 brain 至多等 ceil(N/K) 帧）。
+    private const int DefaultBrainDecisionsPerFrame = 8;
+
+    /// <summary>每帧最多执行决策的 brain 数量。&lt;= 0 表示不限制（退回旧的全员驱动行为）。</summary>
+    public int BrainDecisionBudgetPerFrame { get; set; } = DefaultBrainDecisionsPerFrame;
+
+    // 轮转游标：指向下一个待检查的 brain 下标，跨帧保留。
+    private int _brainCursor;
+
     // 【公共建筑系统-决策#26/#41】公共建筑列表（单独遍历，不改 UnitBrainBase）
     private readonly List<PublicBuildingBase> _publicBuildings = new List<PublicBuildingBase>();
 
@@ -53,21 +66,50 @@ public class GameLoop : IInitializable, ITickable
         if (IsPaused) return;
         GameTime += Time.deltaTime;
 
-        // 顺序遍历：同一帧内按遍历顺序决策，先到先得（见 5.6 决策顺序化）
+        // 先清理已销毁的 brain，使下面的轮转可以按稳定下标推进
         for (int i = _brains.Count - 1; i >= 0; i--)
         {
-            var brain = _brains[i];
-            if (brain == null)
+            if (_brains[i] == null) _brains.RemoveAt(i);
+        }
+
+        // 轮转决策：从 _brainCursor 起最多扫一圈，累计执行 budget 次决策后停止。
+        // 同一帧内仍按扫描顺序**顺序**决策，先到先得（见 5.6 决策顺序化）；
+        // 只是把"全员/帧"改成了"K 个/帧"，把 N 的乘数从每帧成本里摘掉。
+        int count = _brains.Count;
+        if (count > 0)
+        {
+            int budget = BrainDecisionBudgetPerFrame > 0 ? BrainDecisionBudgetPerFrame : count;
+            if (_brainCursor >= count) _brainCursor = 0;
+
+            int executed = 0;
+            for (int scanned = 0; scanned < count && executed < budget; scanned++)
             {
-                _brains.RemoveAt(i);
-                continue;
+                int index = _brainCursor + scanned;
+                if (index >= count) index -= count;
+
+                var brain = _brains[index];
+                // 决策过程中可能销毁单位（战斗结算），已销毁者下帧清理
+                if (brain == null) continue;
+
+                // 跳过暂停或忙碌的单位。忙碌不消耗预算：它本来就不会做决策，
+                // 若计入预算会让"移动中的单位多"变相饿死真正需要决策的单位。
+                if (brain.IsPaused) continue;
+                if (brain.IsBusy) continue;
+
+                brain.OnStepFinished();
+                executed++;
+
+                // 游标推进到刚执行者的下一位，保证下帧从未处理的 brain 继续
+                _brainCursor = index + 1;
+                if (_brainCursor >= count) _brainCursor = 0;
             }
 
-            // 跳过已销毁、暂停或忙碌的单位
-            if (brain.IsPaused) continue;
-            if (brain.IsBusy) continue;
-
-            brain.OnStepFinished();
+            // 一圈扫完仍未用尽预算（全员忙碌/暂停）：游标整体前移一格，避免固定起点带来的偏置
+            if (executed == 0)
+            {
+                _brainCursor++;
+                if (_brainCursor >= count) _brainCursor = 0;
+            }
         }
 
         // 【公共建筑系统】检测公共建筑死亡（易主），替代 Update() 轮询
