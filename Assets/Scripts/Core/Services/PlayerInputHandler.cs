@@ -109,7 +109,10 @@ public class PlayerInputHandler : ITickable, System.IDisposable
 
     private void HighlightGridOnMouseHover()
     {
-        if (_mapRaycastService.RaycastMap(_input.MousePosition, out RaycastHit hit))
+        Vector2 dragLogicPosition = CardController.GetCardDragLogicPosition(
+            _input.MousePosition);
+
+        if (_mapRaycastService.RaycastMap(dragLogicPosition, out RaycastHit hit))
         {
             var cell = _mapData.GetCellByWorldPosition(hit.point);
             if (cell != null && cell != _lastDraggingHighlightCell)

@@ -1,2 +1,2 @@
 configId,fogRefreshInterval,cameraShakeFrequency,unaffordableCardDim,talentScreenShakeStrength,talentScreenShakeDuration,cardDragStage1Ratio,cardDragStage2Ratio,cardDragCardMinScale,cardDragCardFadeStart,cardDragModelMinScale,cardDragModelFadeIn,cardDragPreviewRTSize,cardDragPreviewWindowSize,cardDragPreviewCameraDistance,cardDragPreviewPadding
-feel.main,0.05,50,0.45,0.15,0.3,0.2,0.4,0.1,0.6,0.1,0.2,512,512,10,1.25
+feel.main,0.05,50,0.45,0.15,0.3,0.13,0.25,0.1,0.6,0.1,0.2,512,512,10,1.25

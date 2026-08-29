@@ -38,8 +38,8 @@ SHEET_NAME = "表现配置"
 
 # (列名, 中文说明, 值, 是否整数)；顺序必须与 Config/Schema/配置表结构.json 的列顺序一致。
 NEW_COLUMNS = [
-    ("cardDragStage1Ratio", "拖拽阶段一满程距离 / Canvas参考高度（D1）", "0.2"),
-    ("cardDragStage2Ratio", "拖拽阶段二满程距离 / Canvas参考高度（D2，必须大于D1）", "0.4"),
+    ("cardDragStage1Ratio", "拖拽阶段一满程距离 / Canvas参考高度（D1）", "0.13"),
+    ("cardDragStage2Ratio", "拖拽阶段二满程距离 / Canvas参考高度（D2，必须大于D1）", "0.25"),
     ("cardDragCardMinScale", "阶段一末卡牌最小缩放（0~1）", "0.1"),
     ("cardDragCardFadeStart", "卡牌开始淡出的 cardProgress 阈值（0~1）", "0.6"),
     ("cardDragModelMinScale", "阶段二起始模型预览缩放（0~1）", "0.1"),

@@ -44,6 +44,16 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     private float _cardProgress;
     private float _modelProgress;
 
+    /// <summary>高亮 / 落点相对触点向上的屏幕高度比例（视觉不使用此偏移）。</summary>
+    private const float CardDragLogicOffsetRatio = 0.065f;
+
+    /// <summary>返回用于地图射线的逻辑位置（触点上方，屏幕像素坐标）。
+    /// 仅用于高亮与落点，卡牌 / 模型视觉仍使用原始触点。</summary>
+    public static Vector2 GetCardDragLogicPosition(Vector2 pointerPosition)
+    {
+        return pointerPosition + Vector2.up * (Screen.height * CardDragLogicOffsetRatio);
+    }
+
     /// <summary>允许外部覆盖 drop handler（战术卡等非默认材质）。应在 Zenject 注入之后、首次拖拽之前调用。</summary>
     public void OverrideDropHandler(ICardDropHandler handler) => _dropHandler = handler;
 
@@ -364,17 +374,18 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         RectTransform handPanelRect = _rectTransform.parent as RectTransform;
         if (handPanelRect == null) return;
 
-        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            handPanelRect,
-            eventData.position,
-            null,
-            out Vector2 handPanelLocalPos))
-        {
-            OnDragUpdate(handPanelLocalPos, _originPosition);
+        // 卡牌 / 幽灵卡位置与模型预览都跟随原始触点（v3：视觉不上移）。
+        // 手牌 Canvas 为 ScreenSpaceOverlay，传 null 正确；若未来改为
+        // ScreenSpaceCamera，此处需改为 canvas.worldCamera。
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            handPanelRect, eventData.position, null, out Vector2 pointerLocalPos))
+            return;
 
-            // 进度已在 OnDragUpdate 中算好，这里只做转发（每帧不重复计算）。
-            _dragVisual?.OnCardDragUpdate(this, eventData.position, _upwardDistance, _cardProgress, _modelProgress);
-        }
+        OnDragUpdate(pointerLocalPos, (Vector2)_originPosition);
+
+        // 进度已在 OnDragUpdate 中算好，这里只做转发（每帧不重复计算）。
+        _dragVisual?.OnCardDragUpdate(this, eventData.position,
+            _upwardDistance, _cardProgress, _modelProgress);
     }
 
     public void OnEndDrag(PointerEventData eventData)
@@ -395,17 +406,31 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
             return;
         }
 
-        Ray ray = Camera.main.ScreenPointToRay(eventData.position);
+        Vector2 dragLogicPosition = GetCardDragLogicPosition(eventData.position);
+
         RaycastHit hit;
         bool isMapHit;
         if (_mapRaycastService != null)
         {
             // 统一射线服务：命中 Chunk 的 MapChunkView 后代。
-            isMapHit = _mapRaycastService.RaycastMap(eventData.position, out hit);
+            isMapHit = _mapRaycastService.RaycastMap(dragLogicPosition, out hit);
         }
         else
         {
-            isMapHit = Physics.Raycast(ray, out hit) && hit.transform.gameObject == _mapDataService.MapGameObject;
+            // 备用路径：必须使用同一个 dragLogicPosition，
+            // 否则高亮与最终落点不一致；相机为空时按失败落点流程处理。
+            Camera mainCamera = Camera.main;
+            if (mainCamera == null)
+            {
+                EndDragVisual();
+                _dropHandler?.OnCardDragCancel(this);
+                ResetToOrigin();
+                return;
+            }
+
+            Ray ray = mainCamera.ScreenPointToRay(dragLogicPosition);
+            isMapHit = Physics.Raycast(ray, out hit)
+                && hit.transform.gameObject == _mapDataService.MapGameObject;
         }
         if (isMapHit)
         {
