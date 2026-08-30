@@ -639,14 +639,15 @@ public class UnitMovementSystem : ITickable
         }
 
         // 使用 MoveTowards：单帧步长若大于剩余距离，会精确落到目标点，避免越过目标后在阈值外来回振荡（导致永远无法完成移动）
-        float step = moveSpeed * Time.deltaTime;
+        float deltaTime = _gameLoop != null ? _gameLoop.ScaledDeltaTime : Time.deltaTime;
+        float step = moveSpeed * deltaTime;
         Vector3 direction = targetPos - trans.position;
         trans.position = Vector3.MoveTowards(trans.position, targetPos, step);
 
         if (direction != Vector3.zero)
         {
             Quaternion targetRot = Quaternion.LookRotation(new Vector3(direction.x, 0, direction.z));
-            trans.rotation = Quaternion.Slerp(trans.rotation, targetRot, rotationSpeed * Time.deltaTime);
+            trans.rotation = Quaternion.Slerp(trans.rotation, targetRot, rotationSpeed * deltaTime);
         }
 
         return false;

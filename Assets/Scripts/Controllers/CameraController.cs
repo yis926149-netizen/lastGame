@@ -178,7 +178,7 @@ public class CameraController : MonoBehaviour, ITickable
         if (float.IsInfinity(_minX)) return;
 
         float edgePaddingX = _config.OuterRadius + _config.fogCoverWidth;
-        float edgePaddingZ = _config.OuterRadius + _config.fogCoverWidth * 0.5f;
+        float edgePaddingZ = _config.OuterRadius + _config.fogCoverWidth * 1f;
         _minX -= edgePaddingX;
         _maxX += edgePaddingX;
         _minZ -= edgePaddingZ;

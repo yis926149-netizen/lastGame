@@ -20,12 +20,18 @@ MonoBehaviour:
     talentScreenShakeStrength: 0.15
     talentScreenShakeDuration: 0.3
     cardDragStage1Ratio: 0.13
-    cardDragStage2Ratio: 0.25
     cardDragCardMinScale: 0.1
     cardDragCardFadeStart: 0.6
+    cardDragStage2Ratio: 0.25
     cardDragModelMinScale: 0.1
     cardDragModelFadeIn: 0.2
     cardDragPreviewRTSize: 512
     cardDragPreviewWindowSize: 512
     cardDragPreviewCameraDistance: 10
     cardDragPreviewPadding: 1.25
+    cardDragPreviewHoverHeight: 1
+    cardDragPreviewSnapDuration: 0.2
+    cardDragPreviewAppearDuration: 0.08
+    cardDragTargetIconHeight: 3.5
+    cardDragTargetIconScale: 1
+    cardDragLinkWidth: 6

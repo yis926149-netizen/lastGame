@@ -79,11 +79,11 @@ MonoBehaviour:
   fogEdgeSoftness: 3
   fogEdgeAnimSpeed: 2
   fogEdgeTransparency: 0
-  fogUnexploredBlend: 1
-  fogUnexploredDesaturate: 1
+  fogUnexploredBlend: 0
+  fogUnexploredDesaturate: 0
   fogCoverOcean: 0
-  fogCoverRiver: 1
-  fogCoverOceanBlend: 1
+  fogCoverRiver: 0
+  fogCoverOceanBlend: 0
   mountainConfig: {fileID: 11400000, guid: 93c6c6aa29bc24946a1fde8cdd47afb9, type: 2}
   mountainHeightScale: 3
   ArenaActivateTime: 5

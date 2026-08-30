@@ -812,15 +812,24 @@ namespace GameConfig.Editor
                     talentScreenShakeStrength = GetFloat(v, col, "talentScreenShakeStrength", 0.15f),
                     talentScreenShakeDuration = GetFloat(v, col, "talentScreenShakeDuration", 0.3f),
                     cardDragStage1Ratio = GetFloat(v, col, "cardDragStage1Ratio", 0.13f),
-                    cardDragStage2Ratio = GetFloat(v, col, "cardDragStage2Ratio", 0.25f),
                     cardDragCardMinScale = GetFloat(v, col, "cardDragCardMinScale", 0.1f),
                     cardDragCardFadeStart = GetFloat(v, col, "cardDragCardFadeStart", 0.6f),
+                    // ── deprecated：两阶段/RT 预览遗留列，仅保留配置链稳定，代码侧不再读取 ──
+                    cardDragStage2Ratio = GetFloat(v, col, "cardDragStage2Ratio", 0.25f),
                     cardDragModelMinScale = GetFloat(v, col, "cardDragModelMinScale", 0.1f),
                     cardDragModelFadeIn = GetFloat(v, col, "cardDragModelFadeIn", 0.2f),
                     cardDragPreviewRTSize = GetInt(v, col, "cardDragPreviewRTSize", 512),
                     cardDragPreviewWindowSize = GetFloat(v, col, "cardDragPreviewWindowSize", 512f),
                     cardDragPreviewCameraDistance = GetFloat(v, col, "cardDragPreviewCameraDistance", 10f),
                     cardDragPreviewPadding = GetFloat(v, col, "cardDragPreviewPadding", 1.25f),
+                    // ── 卡牌拖拽世界空间预览（改造计划 §7.1）──
+                    cardDragPreviewHoverHeight = GetFloat(v, col, "cardDragPreviewHoverHeight", 1f),
+                    cardDragPreviewSnapDuration = GetFloat(v, col, "cardDragPreviewSnapDuration", 0.2f),
+                    cardDragPreviewAppearDuration = GetFloat(v, col, "cardDragPreviewAppearDuration", 0.08f),
+                    // ── 卡牌拖拽落点提示（落点图标与连线计划 §5.5）──
+                    cardDragTargetIconHeight = GetFloat(v, col, "cardDragTargetIconHeight", 3.5f),
+                    cardDragTargetIconScale = GetFloat(v, col, "cardDragTargetIconScale", 1f),
+                    cardDragLinkWidth = GetFloat(v, col, "cardDragLinkWidth", 6f),
                 });
             }
 

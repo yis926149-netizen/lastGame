@@ -2,7 +2,7 @@
   "schemaVersion": "1.0.0",
   "exporterVersion": "0.1.0",
   "workbook": "游戏数值配置.xlsx",
-  "workbookSha256": "4a20a22ef95f8182600266c422aa8def6333759a1587776b194ca513c790a7aa",
+  "workbookSha256": "47f7fc7c0000ffa6e66717a3d41e8ab49ab78d6573e81d60e3a4b9771aef9495",
   "tables": [
     {
       "sheetName": "单位",
@@ -151,10 +151,10 @@
       "sha256": "52816a7cf9b1bcd2321b713002293da9ec0f88b5bb0ebf737984ec8a2d03cb12"
     },
     "Csv/表现配置.csv": {
-      "sha256": "f3990a7e23f2a9e32ac6685e7f291297aba6f8f8bcf1fb21b1f9573df9949fcf"
+      "sha256": "78c2e9daa4273354a0d22cc97229d1d463e634d806e89df983e24e16aa208c0e"
     },
     "game-config.json": {
-      "sha256": "8585a9af09bc452f09d9f121559c2a6c7bbe26787ca61b0735ff468dbb3fc24a"
+      "sha256": "15b6895d5a9fb2b7ab2177493939052a1ad616d4077fd07f3dee92855106f1d1"
     }
   }
 }

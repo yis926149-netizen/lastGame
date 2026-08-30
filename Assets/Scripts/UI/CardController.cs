@@ -39,19 +39,36 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     /// <summary>本卡所在 Canvas 的参考高度；OnBeginDrag 缓存一次，避免逐帧 GetComponentInParent。</summary>
     private float _canvasHeight = UIScreenHelper.ReferenceHeight;
 
-    /// <summary>逐帧缓存的两阶段进度，供 OnDrag 通知视觉通道时复用（避免重复计算）。</summary>
+    /// <summary>逐帧缓存的进度，供 OnDrag 通知视觉通道时复用（避免重复计算）。</summary>
     private float _upwardDistance;
     private float _cardProgress;
-    private float _modelProgress;
 
-    /// <summary>高亮 / 落点相对触点向上的屏幕高度比例（视觉不使用此偏移）。</summary>
-    private const float CardDragLogicOffsetRatio = 0.065f;
+    /// <summary>拖拽增益倍率：落点位移 = 触点相对起点的位移 × 本值（纵向与横向同倍率）。
+    /// 1 = 恒等（落点跟手，即无遮挡缓解）。第一版恒定，不随行程变化。
+    /// 【临时改动】横向本应按效果文档 §4.4 直通（1×），此处临时改为与纵向同倍率，真机验证后决定去留。</summary>
+    private const float CardDragLogicGain = 2.0f;
 
-    /// <summary>返回用于地图射线的逻辑位置（触点上方，屏幕像素坐标）。
-    /// 仅用于高亮与落点，卡牌 / 模型视觉仍使用原始触点。</summary>
+    /// <summary>本次拖拽的增益映射起点（屏幕像素）。OnBeginDrag 采样，ReleaseDragCapture 清除。
+    /// 必须是静态的：PlayerInputHandler（轮询式）与 CardDragWorldPreviewController（只持 token）
+    /// 都拿不到卡牌实例，却都要调 GetCardDragLogicPosition。</summary>
+    private static Vector2 _dragOriginScreenPoint;
+    private static bool _hasDragOrigin;
+
+    /// <summary>
+    /// 【落点图标与连线计划 §3.2】卡牌拖拽地图射线统一最大距离。
+    /// 最大缩放下屏幕上缘射线到地面约 160 世界单位，显式传 300 保证全屏可用；
+    /// 模型预览 / 高亮 / 落点判定三处共用，避免高缩放下高亮与落点先于模型“打不到”地面。
+    /// </summary>
+    public const float CardDragRaycastMaxDistance = 300f;
+
+    /// <summary>返回用于地图射线的逻辑位置（屏幕像素坐标）。
+    /// 以拖拽起点为原点，纵向与横向位移同倍率放大 CardDragLogicGain。
+    /// 起点未就绪时退化为恒等映射。</summary>
     public static Vector2 GetCardDragLogicPosition(Vector2 pointerPosition)
     {
-        return pointerPosition + Vector2.up * (Screen.height * CardDragLogicOffsetRatio);
+        if (!_hasDragOrigin) return pointerPosition;
+
+        return _dragOriginScreenPoint + (pointerPosition - _dragOriginScreenPoint) * CardDragLogicGain;
     }
 
     /// <summary>允许外部覆盖 drop handler（战术卡等非默认材质）。应在 Zenject 注入之后、首次拖拽之前调用。</summary>
@@ -80,6 +97,21 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     private static CardController _activeDraggingCard;
 
     public static bool IsAnyCardDragging => _activeDraggingCard != null;
+
+    /// <summary>
+    /// 当前拖拽中的卡牌视觉 RectTransform（战术卡为幽灵代理 _dragProxy，否则卡牌本体）；无拖拽时为 null。
+    /// 【落点图标与连线计划 §5.2】供 CardDragLinkView 取连线下端点（卡牌顶边中点），
+    /// 战术卡必须取幽灵卡而非原卡，否则连线指向留在原位的卡面。
+    /// </summary>
+    public static RectTransform ActiveDragVisualRect
+    {
+        get
+        {
+            CardController active = _activeDraggingCard;
+            if (active == null) return null;
+            return active._dragProxy != null ? active._dragProxy : active._rectTransform;
+        }
+    }
 
 
     private int originalSiblingIndex;  
@@ -262,7 +294,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         RectTransform target = _dragProxy != null ? _dragProxy : _rectTransform;
         target.anchoredPosition = localPoint;
 
-        // 只有向上拖才推进两阶段进度；向下拖进度按 0 处理（§0.5），不取绝对值。
+        // 只有向上拖才推进进度；向下拖进度按 0 处理（§0.5），不取绝对值。
         _upwardDistance = Mathf.Max(0f, localPoint.y - originPos.y);
 
         if (!SupportsModelPreview)
@@ -274,15 +306,13 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
             target.localScale = _uiConfig.CardSize * legacyRatio;
 
             _cardProgress = 0f;
-            _modelProgress = 0f;
             return;
         }
 
+        // 单阶段（§六）：模型在拎起瞬间即出现，卡牌自身按阶段一比例缩放并淡出。
         float d1 = Mathf.Max(1f, _canvasHeight * FeelConfigProvider.CardDragStage1Ratio);
-        float d2 = Mathf.Max(d1 + 1f, _canvasHeight * FeelConfigProvider.CardDragStage2Ratio);
 
         _cardProgress = Mathf.Clamp01(_upwardDistance / d1);
-        _modelProgress = Mathf.Clamp01((_upwardDistance - d1) / (d2 - d1));
 
         // 阶段一：卡牌 100% → CardMinScale，并在 CardFadeStart 之后淡出。
         float cardScale = Mathf.Lerp(1f, FeelConfigProvider.CardDragCardMinScale, _cardProgress);
@@ -294,7 +324,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         ApplyGraphicAlpha();
     }
 
-    /// <summary>是否走「卡牌→模型」两阶段表现：仅普通卡（持有 NormalCardConfig）且非代理拖拽。</summary>
+    /// <summary>是否走世界空间模型预览：仅普通卡（持有 NormalCardConfig）且非代理拖拽。</summary>
     private bool SupportsModelPreview => _dragProxy == null && _data != null && _data.NormalCardConfig != null;
 
     public void ResetToOrigin()
@@ -314,7 +344,6 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _dragAlpha = 1f;
         _upwardDistance = 0f;
         _cardProgress = 0f;
-        _modelProgress = 0f;
         ApplyGraphicAlpha();
     }
 
@@ -342,11 +371,16 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        if (IsNextCard || !_isAffordable || (_gameLoop != null && _gameLoop.IsPaused))
+        if (IsNextCard || !_isAffordable)
         {
             eventData.pointerDrag = null;
             return;
         }
+        // 增益映射起点。必须早于 OnCardDragBegin：世界空间预览的 Begin 内部会立即
+        // Follow + TrySnapToTerrain 做一次初始吸附，那一刻就要读到起点。
+        _dragOriginScreenPoint = eventData.position;
+        _hasDragOrigin = true;
+
         _playerInputHandler.Value.ForceDeselectUnit();
         _isDragging = true;
         _activeDraggingCard = this;
@@ -356,13 +390,12 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _dragAlpha = 1f;
         _upwardDistance = 0f;
         _cardProgress = 0f;
-        _modelProgress = 0f;
 
         _dropHandler?.OnCardDragBegin(this);
 
         // OnCardDragBegin 可能设置幽灵代理（战术卡），因此在其之后再判定是否走模型预览。
         _dragVisual = SupportsModelPreview ? _dropHandler as ICardDragVisualHandler : null;
-        _dragVisual?.OnCardDragUpdate(this, eventData.position, 0f, 0f, 0f);
+        _dragVisual?.OnCardDragUpdate(this, eventData.position);
     }
 
     public void OnDrag(PointerEventData eventData)
@@ -374,7 +407,8 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         RectTransform handPanelRect = _rectTransform.parent as RectTransform;
         if (handPanelRect == null) return;
 
-        // 卡牌 / 幽灵卡位置与模型预览都跟随原始触点（v3：视觉不上移）。
+        // 卡牌 / 幽灵卡位置跟随原始触点（v3：视觉不上移）；世界空间预览转发原始触点，
+        // 由持握控制器内部换算逻辑射线坐标（GetCardDragLogicPosition）。
         // 手牌 Canvas 为 ScreenSpaceOverlay，传 null 正确；若未来改为
         // ScreenSpaceCamera，此处需改为 canvas.worldCamera。
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
@@ -383,14 +417,18 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
         OnDragUpdate(pointerLocalPos, (Vector2)_originPosition);
 
-        // 进度已在 OnDragUpdate 中算好，这里只做转发（每帧不重复计算）。
-        _dragVisual?.OnCardDragUpdate(this, eventData.position,
-            _upwardDistance, _cardProgress, _modelProgress);
+        // 只转发原始触点；世界空间预览的逐帧跟随由持握控制器自行驱动。
+        _dragVisual?.OnCardDragUpdate(this, eventData.position);
     }
 
     public void OnEndDrag(PointerEventData eventData)
     {
         if (IsNextCard || !_isDragging) return;
+
+        // 必须在 ReleaseDragCapture 之前算：后者清除增益映射起点，
+        // 之后再调 GetCardDragLogicPosition 会退化为恒等映射，
+        // 落点将落回手指处、与松手瞬间的高亮格不一致。
+        Vector2 dragLogicPosition = GetCardDragLogicPosition(eventData.position);
 
         transform.SetSiblingIndex(originalSiblingIndex);   
         _isDragging = false;
@@ -398,22 +436,13 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
         ClearHighlights();
 
-        if (_gameLoop != null && _gameLoop.IsPaused)
-        {
-            EndDragVisual();
-            _dropHandler?.OnCardDragCancel(this);
-            ResetToOrigin();
-            return;
-        }
-
-        Vector2 dragLogicPosition = GetCardDragLogicPosition(eventData.position);
-
         RaycastHit hit;
         bool isMapHit;
         if (_mapRaycastService != null)
         {
             // 统一射线服务：命中 Chunk 的 MapChunkView 后代。
-            isMapHit = _mapRaycastService.RaycastMap(dragLogicPosition, out hit);
+            // 显式传 CardDragRaycastMaxDistance（§3.2），与高亮 / 模型预览同一射程。
+            isMapHit = _mapRaycastService.RaycastMap(dragLogicPosition, out hit, CardDragRaycastMaxDistance);
         }
         else
         {
@@ -484,7 +513,10 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     private void ReleaseDragCapture()
     {
         if (_activeDraggingCard == this)
+        {
             _activeDraggingCard = null;
+            _hasDragOrigin = false;
+        }
     }
 
     private void CancelDrag()

@@ -22,6 +22,16 @@ public class TalentCardSelectionUI : MonoBehaviour
     [SerializeField] private GameObject _cardSlotPrefab;
     [SerializeField] private Transform _slotsParent;
 
+    [Header("刷新按钮")]
+    [Tooltip("点击后按与初次发牌相同的规则重新抽一组候选卡（第一版无代价、不限次数）")]
+    [SerializeField] private Button _refreshButton;
+    [Tooltip("选中卡牌后，刷新按钮淡出的时长（秒）")]
+    [SerializeField] private float _refreshFadeOutSec = 0.35f;
+    [Tooltip("面板弹出时，刷新按钮淡入的时长（秒）")]
+    [SerializeField] private float _refreshFadeInSec = 0.35f;
+    [Tooltip("刷新按钮淡入的延迟（秒），略晚于卡牌入场更自然")]
+    [SerializeField] private float _refreshFadeInDelaySec = 0.15f;
+
     [Header("横排布局")]
     [SerializeField] private float _cardWidth = 452f;
     [SerializeField] private float _cardSpacing = 40f;
@@ -70,6 +80,9 @@ public class TalentCardSelectionUI : MonoBehaviour
     private int _originalSortOrder;
     private bool _hadCanvasOriginally;
 
+    // 刷新按钮的淡出控制（Awake 时确保存在）
+    private CanvasGroup _refreshCanvasGroup;
+
     private struct SlotRef
     {
         public GameObject   Root;
@@ -109,6 +122,15 @@ public class TalentCardSelectionUI : MonoBehaviour
             SetupPanelCanvas();
         }
         BuildSlots();
+
+        if (_refreshButton != null)
+        {
+            _refreshButton.onClick.AddListener(OnRefreshClicked);
+            // 淡出用 CanvasGroup 统一控制按钮及其子物体（图标/文字），没有就补一个
+            _refreshCanvasGroup = _refreshButton.GetComponent<CanvasGroup>();
+            if (_refreshCanvasGroup == null)
+                _refreshCanvasGroup = _refreshButton.gameObject.AddComponent<CanvasGroup>();
+        }
     }
 
     // 确保面板有独立 Canvas（可单独设置 sortingOrder），若无则动态添加。
@@ -257,8 +279,50 @@ public class TalentCardSelectionUI : MonoBehaviour
         Debug.Log($"[TalentCardUI] HandleOffer received, cards: {args.Cards?.Count ?? 0}");
         _wasPausedBeforeOffer = _gameLoop != null ? _gameLoop.IsPaused : false;
         if (_gameLoop != null) _gameLoop.SetPaused(true);
-        _currentCards = args.Cards;
+
+        // 暗幕先激活（raycastTarget 拦截所有穿透点击），再播入场动画
+        if (_darkOverlay != null)
+        {
+            _darkOverlay.raycastTarget = true;
+            _darkOverlay.gameObject.SetActive(true);
+            _darkOverlay.color = new Color(0f, 0f, 0f, 0f);
+            _darkOverlay.DOKill();
+            _darkOverlay.DOFade(0.7f, 0.4f).SetEase(Ease.OutQuad).SetLink(gameObject);
+        }
+        SetPanelOnTop(true); // 提升面板 Canvas 层级盖住手牌等，暗幕即可拦截所有背景点击
+        _panelRoot?.SetActive(true);
+        FadeInRefreshButton();
+
+        PopulateAndShow(args.Cards);
+    }
+
+    // ---------- 刷新按钮 ----------
+    // 按与初次发牌完全相同的规则重新抽一组候选并就地替换。
+    // 第一版：无代价、不限次数、不排除当前候选。
+    private void OnRefreshClicked()
+    {
+        if (_duringEntrance) return;                       // 入场/刷新动画期间忽略，避免 Sequence 反复 Kill 导致卡牌停在中间态
+        if (_panelRoot == null || !_panelRoot.activeSelf) return;
+        if (_trigger == null) return;
+
+        var cards = _trigger.DrawOfferCards();
+        if (cards == null || cards.Count == 0)
+        {
+            Debug.LogWarning("[TalentCardUI] Refresh drew 0 cards, keeping current offer.");
+            return;
+        }
+
+        Debug.Log($"[TalentCardUI] Refresh: {cards.Count} new cards.");
+        PopulateAndShow(cards);
+    }
+
+    // 填充卡槽 + 布局 + 播卡牌动画。首次发牌与刷新共用，可重入。
+    // 不触碰暂停态/暗幕/Canvas 层级——那些只在 HandleOffer 里做一次。
+    private void PopulateAndShow(List<TalentCardConfigSO> cards)
+    {
+        _currentCards = cards;
         _duringEntrance = true;
+        if (_refreshButton != null) _refreshButton.interactable = false;
 
         // 候选超过预建槽位时按需补建
         while (_slots.Count < _currentCards.Count)
@@ -291,27 +355,14 @@ public class TalentCardSelectionUI : MonoBehaviour
         // 按“每行最多 _cardsPerRow 张、行内横向居中、整体纵向居中”重新摆放
         LayoutSlots(_currentCards.Count);
 
-        // 暗幕先激活（raycastTarget 拦截所有穿透点击），再播入场动画
-        if (_darkOverlay != null)
-        {
-            _darkOverlay.raycastTarget = true;
-            _darkOverlay.gameObject.SetActive(true);
-            _darkOverlay.color = new Color(0f, 0f, 0f, 0f);
-        }
-        SetPanelOnTop(true); // 提升面板 Canvas 层级盖住手牌等，暗幕即可拦截所有背景点击
-        _panelRoot?.SetActive(true);
         PlayEntranceAnimation();
     }
 
+    // 卡牌错开弹入。刷新时会重复调用，故不含暗幕淡入（那个只在 HandleOffer 里做一次）。
     private void PlayEntranceAnimation()
     {
         _entranceSequence?.Kill();
         _entranceSequence = DOTween.Sequence();
-
-        if (_darkOverlay != null)
-        {
-            _entranceSequence.Join(_darkOverlay.DOFade(0.7f, 0.4f).SetEase(Ease.OutQuad));
-        }
 
         // 卡牌错开弹入
         for (int i = 0; i < _slots.Count; i++)
@@ -341,6 +392,7 @@ public class TalentCardSelectionUI : MonoBehaviour
                 cg.blocksRaycasts = true;
             }
             _duringEntrance = false;
+            if (_refreshButton != null) _refreshButton.interactable = true;
         });
     }
 
@@ -356,6 +408,10 @@ public class TalentCardSelectionUI : MonoBehaviour
         {
             _slots[i].CanvasGroup.interactable = false;
         }
+        // 选中结算期间不允许刷新，否则候选会被换掉而结算的仍是旧卡
+        if (_refreshButton != null) _refreshButton.interactable = false;
+        // 刷新按钮随未选中的卡一起逐渐隐藏
+        FadeOutRefreshButton();
 
         // 隐藏未选中的卡
         for (int i = 0; i < _slots.Count; i++)
@@ -369,7 +425,7 @@ public class TalentCardSelectionUI : MonoBehaviour
         Debug.Log($"[TalentCardUI] Card clicked: {card.talentName} (id={card.talentId})");
 
         // 播放选中动画 → 结算
-        _slots[index].Visual.PlaySelectAnimation(() =>
+        _slots[index].Visual.PlaySelectAnimation(_baseScale, () =>
         {
             Debug.Log($"[TalentCardUI] ApplyCard: {card.talentName}");
             _trigger.ApplyCard(0, card);
@@ -378,6 +434,31 @@ public class TalentCardSelectionUI : MonoBehaviour
             if (_gameLoop != null) _gameLoop.SetPaused(_wasPausedBeforeOffer);
             if (_timer != null) _timer.StartTimer(_timer.DefaultDuration);
         });
+    }
+
+    // 选中卡牌后让刷新按钮逐渐隐藏（与卡牌淡出同步）。
+    private void FadeOutRefreshButton()
+    {
+        if (_refreshCanvasGroup == null) return;
+        _refreshCanvasGroup.DOKill();
+        _refreshCanvasGroup.blocksRaycasts = false;
+        _refreshCanvasGroup.DOFade(0f, _refreshFadeOutSec).SetEase(Ease.OutQuad).SetLink(gameObject);
+    }
+
+    // 面板每次弹出时让刷新按钮从透明淡入（上一轮结算把它淡成了全透明）。
+    private void FadeInRefreshButton()
+    {
+        if (_refreshCanvasGroup == null) return;
+        _refreshCanvasGroup.DOKill();
+        _refreshCanvasGroup.alpha = 0f;
+        _refreshCanvasGroup.blocksRaycasts = true;
+        _refreshCanvasGroup
+            .DOFade(1f, _refreshFadeInSec)
+            .SetEase(Ease.OutQuad)
+            .SetDelay(_refreshFadeInDelaySec)
+            .SetLink(gameObject);
+
+        if (_refreshButton != null) _refreshButton.interactable = false; // 入场动画结束后再放开
     }
 
     // Fisher-Yates shuffle 后按顺序分配背景，保证三张卡互不重复

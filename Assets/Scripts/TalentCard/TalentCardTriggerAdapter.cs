@@ -28,7 +28,7 @@ public class TalentCardTriggerAdapter
             return;
         }
 
-        var cards = _provider.DrawRandom(CoreGameplayConfigProvider.TalentOfferCount);
+        var cards = DrawOfferCards();
         if (cards.Count == 0)
         {
             Debug.LogWarning("[TalentCardTrigger] Drew 0 cards.");
@@ -41,6 +41,20 @@ public class TalentCardTriggerAdapter
             Faction = faction,
             Cards = cards,
         });
+    }
+
+    /// <summary>
+    /// 按与 RequestOffer 相同的规则重新抽一组候选卡，直接返回而不广播事件。
+    /// 供选卡界面的「刷新」按钮就地替换当前候选使用。
+    /// </summary>
+    public List<TalentCardConfigSO> DrawOfferCards()
+    {
+        if (_provider == null)
+        {
+            Debug.LogWarning("[TalentCardTrigger] Provider is null, cannot draw.");
+            return new List<TalentCardConfigSO>();
+        }
+        return _provider.DrawRandom(CoreGameplayConfigProvider.TalentOfferCount);
     }
 
     public void ApplyCard(int faction, TalentCardConfigSO card)

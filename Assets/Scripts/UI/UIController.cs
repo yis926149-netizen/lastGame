@@ -44,18 +44,22 @@ public class UIController : MonoBehaviour
     [HideInInspector]
     public Button nextTurnButton = null;
 
-    // 本实例若为“下一回合”按钮，缓存其 Button 组件用于启用/禁用
-    private Button _nextTurnButtonComponent = null;
+    // 本实例若为速度按钮，缓存其 Button 组件用于启用/禁用
+    private Button _speedButtonComponent = null;
 
-    // 【时间停止按钮】状态图标，可在 Inspector 中配置
-    [Tooltip("时间流动（未停止）时按钮显示的精灵")]
-    [SerializeField] private Sprite _runSprite;
-    [Tooltip("时间停止后按钮显示的精灵")]
-    [SerializeField] private Sprite _stopSprite;
+    // 【速度按钮】状态图标，可在 Inspector 中配置
+    [Tooltip("x1 速度时按钮显示的精灵")]
+    [SerializeField] private Sprite _x1Sprite;
+    [Tooltip("x2 速度时按钮显示的精灵")]
+    [SerializeField] private Sprite _x2Sprite;
+    [Tooltip("x3 速度时按钮显示的精灵")]
+    [SerializeField] private Sprite _x3Sprite;
+    [Tooltip("暂停时按钮显示的精灵")]
+    [SerializeField] private Sprite _pauseSprite;
 
-    // 时间停止按钮的 Image 组件与当前状态缓存
-    private Image _nextTurnButtonImage = null;
-    private bool _lastPausedState = false;
+    // 速度按钮的 Image 组件与当前速度档缓存
+    private Image _speedButtonImage = null;
+    private GameLoop.GameSpeed _lastSpeed = GameLoop.GameSpeed.x1;
 
     // 【探索奖励预生成】奖励类型图标精灵数组：索引与 ExplorationRewardConfigSO.ExplorationRewardType 枚举值一致
     // （0=无奖励 / 1=金币 / 2=军事单位 / 3=战术卡牌 / 4=建筑）。显示在本物体第二个子物体（Type）的 Image 上。
@@ -81,18 +85,18 @@ public class UIController : MonoBehaviour
         // 自动获取主摄像机（若未手动指定）
         if (Camera == null) { Camera = Camera.main; }
 
-        // 下一回合按钮
+        // 速度按钮
         if (UIType == "nextTurnButton")// && nextTurnButton != null)
         {
             //Debug.Log("挂载了【下一回合按钮】");
-            _nextTurnButtonComponent = transform.GetComponent<Button>();
-            _nextTurnButtonImage = transform.GetComponent<Image>();
-            UITool.AddButtonClickEvent(_nextTurnButtonComponent, NextTurn);
+            _speedButtonComponent = transform.GetComponent<Button>();
+            _speedButtonImage = transform.GetComponent<Image>();
+            UITool.AddButtonClickEvent(_speedButtonComponent, CycleSpeed);
 
             // 【检查点 6】回合制已停用，按钮始终可点击，无阶段变化订阅
-            RefreshNextTurnButtonInteractable();
-            _lastPausedState = _gameLoop != null && _gameLoop.IsPaused;
-            RefreshTimeStopButtonSprite();
+            RefreshSpeedButtonInteractable();
+            _lastSpeed = _gameLoop != null ? _gameLoop.CurrentSpeed : GameLoop.GameSpeed.x1;
+            RefreshSpeedButtonSprite();
         }
 
         // 单位信息面板 - 技能按钮
@@ -176,11 +180,11 @@ public class UIController : MonoBehaviour
 
     void Update()
     {
-        // 时间停止按钮图标随暂停状态切换（EndGame/天赋卡牌选择等也会调用 SetPaused，故每帧检测变化）
-        if (UIType == "nextTurnButton" && _gameLoop != null && _gameLoop.IsPaused != _lastPausedState)
+        // 按钮图标随速度档位切换（EndGame/天赋卡牌选择等也会改速度，故每帧检测变化）
+        if (UIType == "nextTurnButton" && _gameLoop != null && _gameLoop.CurrentSpeed != _lastSpeed)
         {
-            _lastPausedState = _gameLoop.IsPaused;
-            RefreshTimeStopButtonSprite();
+            _lastSpeed = _gameLoop.CurrentSpeed;
+            RefreshSpeedButtonSprite();
         }
 
         // 让Canvas朝向摄像机
@@ -242,28 +246,43 @@ public class UIController : MonoBehaviour
         iconImage.sprite = rewardTypeIcons[index];
     }
 
-    // ---------- 暂停/继续（原“下一回合”按钮）----------
-    // 【批次 C】实时化后此按钮改为暂停/继续切换，不再推进回合。
-    public void NextTurn()
+    // ---------- 速度切换（原“下一回合”按钮）----------
+    // 【批次 C】实时化后此按钮改为速度循环：x1 → x2 → x3 → 暂停 → x1。
+    public void CycleSpeed()
     {
         _audioManager.PlaySFX("Trumpet-009");
-        _gameLoop?.SetPaused(!(_gameLoop?.IsPaused ?? false));
-        RefreshTimeStopButtonSprite();
+        if (_gameLoop == null) return;
+
+        var next = _gameLoop.CurrentSpeed switch
+        {
+            GameLoop.GameSpeed.x1 => GameLoop.GameSpeed.x2,
+            GameLoop.GameSpeed.x2 => GameLoop.GameSpeed.x3,
+            GameLoop.GameSpeed.x3 => GameLoop.GameSpeed.Paused,
+            _ => GameLoop.GameSpeed.x1
+        };
+        _gameLoop.SetSpeed(next);
+        RefreshSpeedButtonSprite();
     }
 
-    // 根据暂停状态切换按钮精灵：停止时显示 _stopSprite，运行时显示 _runSprite
-    private void RefreshTimeStopButtonSprite()
+    // 根据当前速度档位切换按钮精灵
+    private void RefreshSpeedButtonSprite()
     {
-        if (_nextTurnButtonImage == null) return;
-        bool paused = _gameLoop != null && _gameLoop.IsPaused;
-        _nextTurnButtonImage.sprite = paused ? _stopSprite : _runSprite;
+        if (_speedButtonImage == null) return;
+        var speed = _gameLoop != null ? _gameLoop.CurrentSpeed : GameLoop.GameSpeed.x1;
+        _speedButtonImage.sprite = speed switch
+        {
+            GameLoop.GameSpeed.Paused => _pauseSprite,
+            GameLoop.GameSpeed.x2 => _x2Sprite,
+            GameLoop.GameSpeed.x3 => _x3Sprite,
+            _ => _x1Sprite
+        };
     }
 
     // 【批次 C】暂停/继续按钮始终可点击（无回合阶段限制）
-    private void RefreshNextTurnButtonInteractable()
+    private void RefreshSpeedButtonInteractable()
     {
-        if (_nextTurnButtonComponent == null) return;
-        _nextTurnButtonComponent.interactable = true;
+        if (_speedButtonComponent == null) return;
+        _speedButtonComponent.interactable = true;
     }
 
     private void OnDestroy()

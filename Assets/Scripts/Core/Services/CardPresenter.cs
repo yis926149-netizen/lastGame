@@ -27,10 +27,13 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
     [Inject] private GoldWallet _goldWallet;  // 【探索重构-阶段5.5】部署合法性检查
     [Inject] private PublicBuildingMarkerManager _publicBuildingMarkerManager;
     [Inject(Optional = true)] private IMapInteractionGate _interactionGate; // 动态地图-阶段二：事务/动画期间交互锁
-    [Inject(Optional = true)] private CardDragPreviewController _dragPreview; // 卡牌拖拽模型预览（缺失时静默降级为只缩卡）
+    [Inject(Optional = true)] private CardDragWorldPreviewController _dragPreview; // 卡牌拖拽世界空间预览（缺失时静默降级为只缩卡）
 
     private ICardView _nextCardView;
     private List<ICardView> _cardViews = new List<ICardView>();
+    // 持握期组件状态快照（PrepareForDrag 产出，RestoreForDeployment 消费），按拖拽 token 挂账。
+    private readonly Dictionary<ICardView, CardDragPreviewUtils.PreparationState> _dragPrepareStates =
+        new Dictionary<ICardView, CardDragPreviewUtils.PreparationState>();
     private Transform _handRoot;
     // 飞入特效互斥标志：不排队，飞行中再次触发直接同步结算。
     private bool _cardFlyInProgress;
@@ -257,26 +260,36 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
     }
 
     /// <summary>
-    /// 处理拖拽结束（放置卡牌）
+    /// 处理拖拽结束（放置卡牌）。同步提交、异步只做视觉（§4.1）：
+    /// 校验 → 恢复运行时组件 → 交出实例所有权 → 复用实例完成生成 → 失败销毁实例返回 false、
+    /// 成功则扣费腾槽补牌并启动纯视觉落位补间。返回真实成败。
     /// </summary>
     public bool HandleCardDragEnd(ICardView view, HexCellData targetCell, Vector3 releaseWorldPos)
     {
-        if (_gameLoop != null && _gameLoop.IsPaused)
-            return false;
-
         if (!IsReleaseValid(view.Data?.NormalCardConfig, targetCell))
             return false;
 
         NormalCardConfigSO config = view.Data?.NormalCardConfig;
+        if (config == null) return false;
 
-        // 进入提交阶段：先关闭预览再正式生成（§2.4），避免预览体与真实单位同帧同时出现。
-        // 上面两处 return false 之前不清理，保证「无效落点」时预览仍在，由 View 的取消路径统一收尾。
-        _dragPreview?.End(view);
+        // 预览实例：同一对象就地升级为真实单位/建筑。ReleaseOwnership 必须先于
+        // ConsumePlayedCard——后者会 SetActive(false) 卡牌并触发 OnDisable，
+        // 若控制器仍持有实例，任何走到 Cancel 的分支都会把刚落地的真实单位销毁。
+        GameObject instance = _dragPreview != null ? _dragPreview.ReleaseOwnership(view) : null;
+        if (instance != null)
+        {
+            _dragPrepareStates.TryGetValue(view, out CardDragPreviewUtils.PreparationState dragState);
+            _dragPrepareStates.Remove(view);
+            CardDragPreviewUtils.RestoreForDeployment(instance, dragState);
+        }
+
+        // 落位补间起点 = 松手瞬间的悬停位置（含 hoverHeight）。
+        Vector3 releaseHoverPos = instance != null ? instance.transform.position : releaseWorldPos;
 
         bool spawned;
         try
         {
-            spawned = TrySpawnCard(config, targetCell);
+            spawned = TrySpawnCard(config, targetCell, instance);
         }
         catch (System.Exception exception)
         {
@@ -285,19 +298,37 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
             spawned = IsDeploymentCommitted(config, targetCell);
             Debug.LogException(exception);
         }
-        if (!spawned) return false;
+
+        if (!spawned)
+        {
+            // 提交失败：销毁预览实例、return false，卡牌由 OnEndDrag 复位（未扣费、未腾槽）。
+            if (instance != null) GameObject.Destroy(instance);
+            return false;
+        }
+
+        if (instance != null)
+        {
+            // 补间终点 = 生成后的实际位置（单位可能被 TryClaimStandingUnit 二次吸附到站位槽，
+            // 不一定是格心）；把位置拨回释放悬停点，再交控制器补间回终点。
+            // 逻辑状态从第 0 帧起就是「已落地」，只有画面在飞。
+            instance.transform.position = releaseHoverPos;
+        }
 
         ConsumePlayedCard(view);
+
+        if (instance != null)
+            _dragPreview.PlayLanding(instance, releaseHoverPos, null);
+
         return true;
     }
 
-    private bool TrySpawnCard(NormalCardConfigSO config, HexCellData targetCell)
+    private bool TrySpawnCard(NormalCardConfigSO config, HexCellData targetCell, GameObject instance = null)
     {
         if (config is UnitConfigSO unitConfig)
-            return SpawnUnit(unitConfig.Id, targetCell.RealCenterWorldCoordinate) != null;
+            return SpawnUnit(unitConfig.Id, targetCell.RealCenterWorldCoordinate, instance) != null;
 
         if (config is BuildingConfigSO buildingConfig)
-            return SpawnBuilding(buildingConfig.buildingId, targetCell.RealCenterWorldCoordinate);
+            return SpawnBuilding(buildingConfig.buildingId, targetCell.RealCenterWorldCoordinate, instance);
 
         return false;
     }
@@ -328,34 +359,41 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
 
     public void OnCardDragBegin(ICardView view)
     {
-        // 拖拽起手即准备模型预览：此时只实例化+取景，可见性完全由后续 modelProgress 决定。
+        // 拎起即实例化一次世界空间预览：同一实例松手后就地升级为真实单位/建筑（§4.5）。
         if (_dragPreview == null || view == null) return;
 
         GameObject modelPrefab = ResolveModelPrefab(view.Data?.NormalCardConfig);
         if (modelPrefab == null) return;
 
-        // token = view：拒绝上一张卡的迟到回调（§8）。
-        _dragPreview.Begin(modelPrefab, view);
+        // 统一 Object.Instantiate：注入由 SpawnUnit/SpawnBuilding 单点完成，
+        // 避免与 _container.InjectGameObject 双重注入（§4.2 冲突处理）。
+        GameObject instance = Object.Instantiate(modelPrefab);
+        if (instance == null) return;
+
+        CardDragPreviewUtils.PreparationState state = CardDragPreviewUtils.PrepareForDrag(instance);
+        _dragPrepareStates[view] = state;   // 持握期状态随 token 挂账，落地/取消时清理。
+
+        // token = view：拒绝上一张卡的迟到回调。
+        _dragPreview.Begin(instance, view);
     }
 
     public void OnCardDragCancel(ICardView view)
     {
+        _dragPrepareStates.Remove(view);
         _dragPreview?.Cancel(view);
     }
 
-    /// <summary>ICardDragVisualHandler：逐帧把 modelProgress 转成预览窗口的位置/缩放/淡入。</summary>
-    public void OnCardDragUpdate(ICardView view, Vector2 screenPos, float upwardDistance, float cardProgress, float modelProgress)
+    /// <summary>ICardDragVisualHandler：逐帧把原始触点转发给持握控制器（内部换算逻辑射线坐标）。</summary>
+    public void OnCardDragUpdate(ICardView view, Vector2 pointerPosition)
     {
-        if (_dragPreview == null) return;
-
-        // 模型在阶段二前 ModelFadeIn 比例内淡入，与卡牌淡出交叉。
-        float fadeIn = Mathf.Max(0.0001f, FeelConfigProvider.CardDragModelFadeIn);
-        float modelAlpha = Mathf.Clamp01(modelProgress / fadeIn);
-
-        _dragPreview.UpdateProgress(screenPos, modelProgress, modelAlpha, view);
+        _dragPreview?.Follow(pointerPosition, view);
     }
 
-    /// <summary>ICardDragVisualHandler：拖拽成功结束的显式清理入口（成功路径不会走 Cancel）。</summary>
+    /// <summary>
+    /// ICardDragVisualHandler：拖拽成功结束的显式清理入口。幂等且不销毁——
+    /// 成功路径下实例所有权已在 HandleCardDragEnd 内交出，落位补间继续由控制器驱动；
+    /// 失败路径的销毁由随后的 OnCardDragCancel 完成（成功路径不会走 Cancel）。
+    /// </summary>
     public void OnCardDragEnd(ICardView view)
     {
         _dragPreview?.End(view);
@@ -409,7 +447,11 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         return SpawnUnit(unitID, worldPosition);
     }
 
-    private GameObject SpawnUnit(int unitID, Vector3 position)
+    /// <summary>
+    /// instance 非空时跳过 Object.Instantiate，直接对拖拽预览实例做后续接线（§4.2 模型实例复用）；
+    /// instance 为空时行为不变（探索奖励等常规入口）。
+    /// </summary>
+    private GameObject SpawnUnit(int unitID, Vector3 position, GameObject instance = null)
     {
         GameObject prefab = _unitData.GetUnitPrefab(unitID);
         Transform parent = GameObject.Find("PlayerUnit")?.transform;
@@ -424,8 +466,9 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
             return null;
         }
 
-        GameObject g = Object.Instantiate(prefab);
+        GameObject g = instance != null ? instance : Object.Instantiate(prefab);
         g.transform.SetParent(parent, false);
+        // 必须先清掉 hoverHeight（放到目标格地面高度），否则下方 WorldToHexCoordinate 反推的格子不是目标格。
         g.transform.position = position;
         g.tag = "PlayerUnit";
 
@@ -521,7 +564,11 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         return SpawnBuilding(buildingID, worldPosition);
     }
 
-    private bool SpawnBuilding(int buildingID, Vector3 position)
+    /// <summary>
+    /// instance 非空时跳过 Object.Instantiate，直接对拖拽预览实例做后续接线（§4.2 模型实例复用）；
+    /// instance 为空时行为不变（探索奖励等常规入口）。
+    /// </summary>
+    private bool SpawnBuilding(int buildingID, Vector3 position, GameObject instance = null)
     {
         Vector3 v = _mapDataService.WorldToHexCoordinate(position);
         HexCellData h = _mapDataService.GetCell(v);
@@ -542,7 +589,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
             return false;
         }
 
-        GameObject g = Object.Instantiate(prefab);
+        GameObject g = instance != null ? instance : Object.Instantiate(prefab);
         g.transform.SetParent(parent, false);
         g.transform.position = position;
         g.tag = "PlayerBuilding";

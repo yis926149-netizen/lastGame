@@ -22,8 +22,28 @@ using Zenject;
 
 public class GameLoop : IInitializable, ITickable
 {
-    /// <summary>全局暂停标志（对应暂停按钮）。</summary>
-    public bool IsPaused { get; private set; }
+    // ── 速度档位 ────────────────────────────────────────────────
+    public enum GameSpeed { Paused, x1, x2, x3 }
+
+    /// <summary>当前速度档位。</summary>
+    public GameSpeed CurrentSpeed { get; private set; } = GameSpeed.x1;
+
+    /// <summary>全局暂停标志（兼容旧代码，CurrentSpeed == Paused 时为 true）。</summary>
+    public bool IsPaused => CurrentSpeed == GameSpeed.Paused;
+
+    /// <summary>当前帧的缩放 deltaTime（暂停时为 0，供其他系统消费）。</summary>
+    public float ScaledDeltaTime { get; private set; }
+
+    private float SpeedMultiplier => CurrentSpeed switch
+    {
+        GameSpeed.x2 => 2f,
+        GameSpeed.x3 => 3f,
+        GameSpeed.Paused => 0f,
+        _ => 1f
+    };
+
+    // 系统强制暂停（EndGame/天赋卡牌）前保存的速度，恢复时回到该档
+    private GameSpeed _speedBeforeForcePause = GameSpeed.x1;
 
     /// <summary>累计游戏时间（秒），暂停时不累加。</summary>
     public float GameTime { get; private set; }
@@ -63,8 +83,10 @@ public class GameLoop : IInitializable, ITickable
     /// <summary>Zenject 每帧调用。</summary>
     public void Tick()
     {
+        // 先计算本帧缩放 delta（暂停时为 0），供本类与 UnitMovementSystem 等外部系统消费。
+        ScaledDeltaTime = IsPaused ? 0f : Time.deltaTime * SpeedMultiplier;
         if (IsPaused) return;
-        GameTime += Time.deltaTime;
+        GameTime += ScaledDeltaTime;
 
         // 先清理已销毁的 brain，使下面的轮转可以按稳定下标推进
         for (int i = _brains.Count - 1; i >= 0; i--)
@@ -116,7 +138,7 @@ public class GameLoop : IInitializable, ITickable
         TickPublicBuildings();
 
         // 全局倒计时（暂停时跳过，已在上方 IsPaused 检查中一并跳过）
-        _globalTimer.Tick(Time.deltaTime);
+        _globalTimer.Tick(ScaledDeltaTime);
     }
 
     // ── 公共建筑 Tick（决策#15/#26）─────────────────
@@ -158,7 +180,24 @@ public class GameLoop : IInitializable, ITickable
 
     public void SetPaused(bool paused)
     {
-        IsPaused = paused;
+        if (paused)
+        {
+            // 记录强制暂停前的速度档，恢复时回到该档（EndGame/天赋卡牌等系统会直接调 SetPaused）
+            if (CurrentSpeed != GameSpeed.Paused)
+                _speedBeforeForcePause = CurrentSpeed;
+            SetSpeed(GameSpeed.Paused);
+        }
+        else
+        {
+            SetSpeed(_speedBeforeForcePause);
+        }
+    }
+
+    /// <summary>切换速度档位。</summary>
+    public void SetSpeed(GameSpeed speed)
+    {
+        CurrentSpeed = speed;
+        bool isPaused = speed == GameSpeed.Paused;
 
         // 广播暂停状态到所有已注册 Brain（Brain.IsPaused 控制单位决策）。
         // 移动动画暂停由 UnitMovementSystem.Tick 直接查询 GameLoop.IsPaused 实现。
@@ -166,13 +205,18 @@ public class GameLoop : IInitializable, ITickable
         {
             var brain = _brains[i];
             if (brain == null) { _brains.RemoveAt(i); continue; }
-            brain.IsPaused = paused;
+            brain.IsPaused = isPaused;
         }
     }
 
     public void Register(UnitBrainBase brain)
     {
-        if (brain != null && !_brains.Contains(brain)) _brains.Add(brain);
+        if (brain == null || _brains.Contains(brain)) return;
+
+        // 继承当前暂停状态：暂停时生成的单位（卡牌部署/兵营出兵/AI 增援）须立即冻结，
+        // 否则其 MonoBehaviour.Update（回血/攻速冷却计时）会在暂停期间继续推进。
+        brain.IsPaused = IsPaused;
+        _brains.Add(brain);
     }
 
     public void Unregister(UnitBrainBase brain)

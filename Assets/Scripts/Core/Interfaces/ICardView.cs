@@ -21,8 +21,8 @@ public interface ICardDropHandler
 /// </summary>
 public interface ICardDragVisualHandler
 {
-    /// <summary>拖拽逐帧更新：upwardDistance 为向上位移，进度定义见实施计划 §3。</summary>
-    void OnCardDragUpdate(ICardView view, Vector2 screenPos, float upwardDistance, float cardProgress, float modelProgress);
+    /// <summary>拖拽逐帧更新：pointerPosition 为原始触点（屏幕像素坐标），持握控制器内部换算逻辑射线坐标。</summary>
+    void OnCardDragUpdate(ICardView view, Vector2 pointerPosition);
 
     /// <summary>
     /// 拖拽成功结束（有效落点）通知。

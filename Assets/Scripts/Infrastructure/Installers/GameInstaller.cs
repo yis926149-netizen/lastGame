@@ -49,6 +49,9 @@ public class GameInstaller : MonoInstaller
     [SerializeField] private GameObject _tacticalCardQuantityBadge2; // 战术牌数量文本2（物体内挂 Text）
     [SerializeField] private MapResourceDatabaseSO _mapResourceDatabaseSO; // 地图资源数据库
     [SerializeField] private MapLandFormDatabaseSO _mapLandFormDatabaseSO; // 地图地貌数据库
+    [Header("卡牌拖拽落点提示（图标 + 连线）")]
+    [SerializeField] private CardDragTargetMarkerView _cardDragTargetIconPrefab; // 世界空间落点图标 prefab
+    [SerializeField] private CardDragLinkView _cardDragLinkPrefab;               // UI 连线 prefab（未绑定时仅图标工作）
     public override void InstallBindings()
     {
         ValidateRequiredReferences();
@@ -350,11 +353,16 @@ public class GameInstaller : MonoInstaller
 
         Container.BindInterfacesAndSelfTo<CardService>().AsSingle();
 
-        // 卡牌拖拽模型预览：纯 C# 类，自建预览相机/RT/RawImage；
-        // BindInterfacesAndSelfTo 同时绑定 IDisposable，由容器销毁时释放 RT 与预览物件。
-        Container.BindInterfacesAndSelfTo<CardDragPreviewController>()
-                 .AsSingle()
-                 .WithArguments(_targetUICanvas);
+        // 卡牌拖拽世界空间预览：持握控制器（ITickable 逐帧跟随 + GameTime 驱动落位补间）。
+        // BindInterfacesAndSelfTo 同时绑定 IDisposable，容器销毁时清理未落位实例与拖拽根节点。
+        Container.BindInterfacesAndSelfTo<CardDragWorldPreviewController>().AsSingle();
+
+        // 卡牌拖拽落点提示（落点图标与连线计划）：图标 + 连线的生命周期与状态入口。
+        // BindInterfacesAndSelfTo 顺带绑定 IDisposable，容器销毁时视图随之清理。
+        // 图标 prefab 未赋值时不抛异常：控制器 LogError 并整体降级为空操作（验收标准 8）；
+        // 连线 prefab 未赋值时仅连线关闭（LogWarning），图标仍工作。
+        Container.BindInterfacesAndSelfTo<CardDragTargetMarkerController>().AsSingle()
+            .WithArguments(_cardDragTargetIconPrefab, _cardDragLinkPrefab);
 
         Container.BindInterfacesAndSelfTo<CardPresenter>().AsSingle().NonLazy();
 

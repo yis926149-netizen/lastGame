@@ -1207,7 +1207,13 @@
         "cardDragPreviewRTSize",
         "cardDragPreviewWindowSize",
         "cardDragPreviewCameraDistance",
-        "cardDragPreviewPadding"
+        "cardDragPreviewPadding",
+        "cardDragPreviewHoverHeight",
+        "cardDragPreviewSnapDuration",
+        "cardDragPreviewAppearDuration",
+        "cardDragTargetIconHeight",
+        "cardDragTargetIconScale",
+        "cardDragLinkWidth"
       ],
       "rows": [
         {
@@ -1227,7 +1233,13 @@
             "512",
             "512",
             "10",
-            "1.25"
+            "1.25",
+            "1",
+            "0.2",
+            "0.08",
+            "3.5",
+            "1",
+            "6"
           ]
         }
       ]

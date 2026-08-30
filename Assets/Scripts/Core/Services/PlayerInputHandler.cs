@@ -27,6 +27,7 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     private readonly ILogisticsService _logisticsService;
     private readonly IMapRaycastService _mapRaycastService;
     private readonly CameraController _cameraController;
+    private readonly CardDragTargetMarkerController _targetMarker;
 
     private bool _isDraggingCard;
     private CardData _draggingCardData;
@@ -51,6 +52,7 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         GameLoop gameLoop,
         IMapRaycastService mapRaycastService,
         CameraController cameraController,
+        CardDragTargetMarkerController targetMarker,
         [InjectOptional] ILogisticsService logisticsService
     )
     {
@@ -63,6 +65,7 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         _gameLoop = gameLoop;
         _mapRaycastService = mapRaycastService;
         _cameraController = cameraController;
+        _targetMarker = targetMarker;
         _logisticsService = logisticsService;
     }
 
@@ -75,12 +78,6 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     // ---------- 卡牌拖拽高亮 ----------
     private void HandleCardDragging()
     {
-        if (_gameLoop != null && _gameLoop.IsPaused)
-        {
-            CancelCardDragging();
-            return;
-        }
-
         if (_input.GetMouseButtonDown(0))
         {
             CardController controller = GetCardUnderMouse();
@@ -103,36 +100,46 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         _draggingDropHandler = null;
         _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
         _lastDraggingHighlightCell = null;
+        // 落点图标与连线计划 §5.1：图标与高亮共存亡；本方法覆盖松手 / 暂停 /
+        // CardController.ClearHighlights 全部收尾路径，是唯一需要挂的清理点。
+        _targetMarker.Clear();
     }
 
     private void CancelCardDragging() => ClearCardDragHighlight();
 
+    /// <summary>
+    /// 【UI-1.0】每帧先做一次地图射线，再算出“本帧的可放置格”（可能为 null）：
+    /// 图标跟随射线命中点（SetTarget(isMapHit, hit.point)），与可放置格高亮解耦；
+    /// _lastDraggingHighlightCell 缓存只保留给昂贵的 SetHighlightedCells 网格重建，不再控制图标。
+    /// 顺带收敛旧行为差异：原实现中“命中地图但格不可放置”只在 cell 变化时才清高亮，
+    /// 从可放置格拖到不可放置格再拖回来的中间态可能残留；新写法以 placeableCell 为唯一真值。
+    /// </summary>
     private void HighlightGridOnMouseHover()
     {
         Vector2 dragLogicPosition = CardController.GetCardDragLogicPosition(
             _input.MousePosition);
 
-        if (_mapRaycastService.RaycastMap(dragLogicPosition, out RaycastHit hit))
+        HexCellData placeableCell = null;
+        bool isMapHit = _mapRaycastService.RaycastMap(dragLogicPosition, out RaycastHit hit,
+                CardController.CardDragRaycastMaxDistance);          // ← §3.2 统一射程
+        if (isMapHit)
         {
             var cell = _mapData.GetCellByWorldPosition(hit.point);
-            if (cell != null && cell != _lastDraggingHighlightCell)
-            {
-                if (CanHighlightCellForCard(cell))
-                {
-                    _hexHighlightRenderer.SetHighlightedCells(HexHighlightChannel.CardPlacement, new[] { cell }, Color.yellow);
-                    _lastDraggingHighlightCell = cell;
-                }
-                else
-                {
-                    _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
-                    _lastDraggingHighlightCell = null;
-                }
-            }
+            if (cell != null && CanHighlightCellForCard(cell)) placeableCell = cell;
         }
-        else
+
+        // 图标：射线命中地形即显示（跟随 hit.point），不受「是否可放置」约束；连线随图标共存亡。
+        _targetMarker.SetTarget(isMapHit, hit.point);
+
+        // 高亮网格：维持原有「变化才重建」的缓存语义，行为不变。
+        if (placeableCell != _lastDraggingHighlightCell)
         {
-            _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
-            _lastDraggingHighlightCell = null;
+            if (placeableCell != null)
+                _hexHighlightRenderer.SetHighlightedCells(
+                    HexHighlightChannel.CardPlacement, new[] { placeableCell }, Color.yellow);
+            else
+                _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
+            _lastDraggingHighlightCell = placeableCell;
         }
     }
 
