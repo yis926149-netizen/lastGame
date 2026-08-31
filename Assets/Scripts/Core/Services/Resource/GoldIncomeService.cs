@@ -42,7 +42,8 @@ public class GoldIncomeService : ITickable
     {
         if (_gameLoop != null && _gameLoop.IsPaused) return;
 
-        _accumulator += UnityEngine.Time.deltaTime;
+        // 缩放时间：x2/x3 时金币自增同步加速（与攻速/移动/全局倒计时同源）
+        _accumulator += _gameLoop != null ? _gameLoop.ScaledDeltaTime : UnityEngine.Time.deltaTime;
         if (_accumulator < IncomeInterval) return;
         _accumulator -= IncomeInterval;
 

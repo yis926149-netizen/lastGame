@@ -12,6 +12,9 @@ public sealed class MapPresentationBootstrap : MonoBehaviour, IMapPresentationBo
     /// <summary>探索费用标签预制体：需在 Inspector 中指定（子物体需有 Text 组件）。</summary>
     public GameObject CostLabelPrefab;
 
+    /// <summary>伤害飘字预制体：需在 Inspector 中指定（Assets/UI/FloatingText.prefab，根节点需有 TextMeshProUGUI）。</summary>
+    public GameObject FloatingTextPrefab;
+
     // ── 【P0-1 地图初始化分帧】分帧参数（可在 Inspector 按真机实测调整）────────
     [Header("分帧初始化（P0-1）")]
     [Tooltip("每帧提交的 Chunk 数量（对齐 MapMutationService.maxChunksPerFrame 默认值 2）。")]
@@ -33,12 +36,15 @@ public sealed class MapPresentationBootstrap : MonoBehaviour, IMapPresentationBo
     [Inject] private IExplorationCostProvider _costProvider;
     [Inject(Optional = true)] private ILogisticsService _logisticsService;
     [Inject(Optional = true)] private MapInteractionGate _interactionGate;
+    // 【伤害飘字】表现层事件总线
+    [Inject] private DamageEventBroker _damageEventBroker;
 
     private Texture2D _fogMaskTex;
     private GameObject _landFormRoot;
     private GameObject _resourceRoot;
     private FogEnvironmentSelectiveEffect _environmentFogEffect;
     private CostLabelRenderer _costLabelRenderer;
+    private DamageFloatTextRenderer _damageFloatTextRenderer;
     private bool _isMapVisualSubscribed;
     private bool _isLogisticsSubscribed;
 
@@ -126,6 +132,7 @@ public sealed class MapPresentationBootstrap : MonoBehaviour, IMapPresentationBo
         SetupEnvironmentFogEffect();
         _mapVisualEvent.FogInit();
         EnsureCostLabelRenderer();
+        EnsureDamageFloatTextRenderer();
 
         _stage = SlicedStage.Done;
         IsPresentationReady = true;
@@ -283,6 +290,7 @@ public sealed class MapPresentationBootstrap : MonoBehaviour, IMapPresentationBo
         SetupEnvironmentFogEffect();
         _mapVisualEvent.FogInit();
         EnsureCostLabelRenderer();
+        EnsureDamageFloatTextRenderer();
 
         UnlockMapAfterSlicing();
         ReleaseSliceQueues();
@@ -461,6 +469,28 @@ public sealed class MapPresentationBootstrap : MonoBehaviour, IMapPresentationBo
             _explorationService,
             _mapVisualEvent,
             _logisticsService);
+    }
+
+    /// <summary>
+    /// 创建伤害飘字渲染器（屏幕空间）。FloatingTextPrefab 未指定时 LogError 并降级为不显示，
+    /// 不阻断地图初始化（对齐 CardDragTargetMarkerController 的降级约定）。
+    /// </summary>
+    private void EnsureDamageFloatTextRenderer()
+    {
+        if (_damageFloatTextRenderer != null) return;
+        if (FloatingTextPrefab == null)
+        {
+            Debug.LogError("[MapPresentationBootstrap] FloatingTextPrefab 未指定：伤害飘字降级为不显示。" +
+                           "请在场景的 MapPresentationBootstrap 组件上指定 Assets/UI/FloatingText.prefab。");
+            return;
+        }
+        var go = new GameObject("DamageFloatTextRenderer");
+        go.transform.SetParent(transform);
+        _damageFloatTextRenderer = go.AddComponent<DamageFloatTextRenderer>();
+        _damageFloatTextRenderer.Initialize(
+            FloatingTextPrefab,
+            _targetUICanvas,
+            _damageEventBroker);
     }
 
     private void SetupFogGlobalShaderProperties(Vector3[] hexVertices)

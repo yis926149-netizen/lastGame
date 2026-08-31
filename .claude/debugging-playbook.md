@@ -372,3 +372,31 @@
 - **修复**：在兜底入口只跑**一次** `GetAllReachableHexesFromStartHex`，结果一鱼两吃：灌进复用的 `HashSet` 让可达性判定退化成 O(1) 查表；同一份 `List` 直接用来选最近岸格。
 - **等价性陷阱**：旧判定用 `MovementPurpose.MoveToAttack`，该模式**允许终点被占据**（走到邻格即可开打）；而洪泛的 `allowedBlockedTarget` 为 null，站着敌人的格子不在可达域里。直接换成查表会把近身敌人误判成「被隔绝」，错误触发隔海趋近。补法：目标格本身在集合内 **或其 6 个邻格任一在集合内** 即算可达。
 - **可迁移判据**：优化前先问「**这条分支是异常路径还是常态路径**」——名字叫 fallback/兜底/异常处理的代码，在高负载下常常反而是主路径。另外，**把 N 次「单点可达性查询」换成 1 次「全可达域计算 + 查表」时，必须逐一核对两者的可进入性语义**（是否允许终点被占据/阻挡、是否允许起点、代价预算），语义差一点就会在边界场景静默改变行为。
+
+## 逻辑计时加速会被表现层动画窗口掩盖：攻速缩放"看起来没生效"
+
+- **现象**：速度系统（x2/x3）接入 `ScaledDeltaTime` 后，攻速冷却已同步加速，但实战中攻速完全没变化。
+- **根因**：攻速冷却只是节奏链条的一环。攻击动画用 `Invoke(nameof(StopAttackAnimation), animDuration)` 走真实时间，窗口期间 `IsBusy = true`（isAttack / isAttackingInProgress），决策轮转跳过该单位——每两次攻击的最小间隔被钉死在动画时长上，冷却加速再快也被掩盖。`Invoke` 走 timeScale 时间（本项目不改 `Time.timeScale`），天然不受任何内部倍率影响。
+- **修复**：动画窗口改由 Update 按 `ScaledDeltaTime` 手动倒计时（替换 Invoke），并把 `Animator.speed` 设为档位倍率；两者同倍率 → 动画完整快进播完、窗口到期恰好结束，无截断。死亡动画例外（依赖帧事件 + 兜底延时，保持 speed=1）。跨基准换时间戳（`Time.time` → `GameLoop.GameTime`）前先确认该状态无存档序列化。
+- **可迁移判据**：给任何游戏逻辑计时器（冷却/生产/收入）接入加速或缩放后，**先画出该节奏的完整门控链**：计时器到期后还要经过哪些标志位（IsBusy/动画状态/Invoke 窗口/动作间隔门控）才能真正执行下一次动作？链上只要有一个真实时间驱动的环节，加速就会被它钳住。症状签名：**倍率加大到极端（10 倍）节奏仍纹丝不动 → 不是计时器没改到，是门控链上有别的锁**。
+
+## 运行时新建 UGUI Graphic：`new GameObject(name, types)` + 后置 `SetParent` 会让 mesh 永不重建
+
+- **现象**：UI 弧光拖尾（`UITrailRenderer : MaskableGraphic`）在运行时按需创建共享 Renderer 节点，代码路径全部走到、Emitter 也注册上了，屏幕上却什么都没有——**且 `OnPopulateMesh` 里的诊断日志一条都没打**（既没有"首次生成 ribbon"，也没有创建失败的 LogError）。
+- **根因**：`new GameObject(name, typeof(RectTransform), typeof(Canvas), typeof(UITrailRenderer))` 建出的对象**是激活的**，`Graphic.OnEnable()` 在这一行就跑完了——此时对象还挂在场景根上，`CacheCanvas()` 缓存到 null。随后的 `SetParent(parent, false)` 触发 `OnTransformParentChanged`，而 UGUI 该函数是先 `m_Canvas = null` 再 `if (!IsActive()) return;`，偏偏 `Graphic.IsActive()` 的条件里就要求 `m_Canvas != null` → **直接早退，既不重新 CacheCanvas 也不 SetAllDirty**。从此这个 Graphic 卡在"非激活渲染态"：之后每一次 `SetVerticesDirty()` 同样被 `IsActive()` 挡掉，静默丢弃，`OnPopulateMesh` 永不执行。没有异常、没有日志，只是安静地不画。
+- **修复**：改成 **先建成 inactive → AddComponent → 挂父子/设层级 → 配置 profile 等参数 → 最后 `SetActive(true)`**。让 `OnEnable` 在最终层级下运行一次，缓存到正确的 canvas，`ApplyMaterial()` 也拿得到已赋值的 profile（原写法要在外面补调一次 `ApplyMaterial()` 正是这个坑的另一面症状）。
+- **然而"先 inactive 再激活"会引出第二个坑（同一次排查里踩到的）**：`Canvas` 是**原生组件**，`overrideSorting` / `sortingOrder` 在 GameObject **inactive 时写入不会落地**——Canvas 要到 `OnEnable` 才建立自己的排序状态，之前的赋值被静默丢弃。症状是日志打出 `sortingOrder=0`（而非你设的 -1/30000），节点退化成**按 hierarchy 顺序渲染**；如果它又恰好是第一个子节点，就被所有业务 UI 完整盖住，看起来仍然"什么都没有"。**排序属性必须在 `SetActive(true)` 之后再设**（本例抽成 `ApplySorting()`，`SetAsFirstSibling/LastSibling` 也一并挪过去）。
+- **可迁移判据**：**运行时动态创建的 UGUI 元素，凡是"先建后挂"的，一律改成"先 SetActive(false) → 挂父子 → 配托管字段 → SetActive(true) → 再设原生组件的运行时状态"**。托管字段（自己脚本的 public/SerializeField）inactive 时写入没问题；**原生组件的运行时状态（Canvas 排序、Animator 参数等）必须等激活后再写**，这两类要分开处理。这条对所有 `Graphic` 子类（Image/Text/自定义）都成立，不止本例。诊断签名极好认——**代码路径明明走到了，但 `OnPopulateMesh` / `OnEnable` 里的日志一条不打**，就说明这个 Graphic 从未进入激活渲染态，去查它的创建顺序，而不是去查 shader、材质、sortingOrder。**在创建完成处把关键运行时状态整条打出来（canvasCached / isActive / overrideSorting / sortingOrder / 实际 shader 名），比逐个猜快得多**——本例第二个坑就是靠日志里那句刺眼的 `sortingOrder=0` 一眼定位的，设的明明是 -1。反过来说：排查"UI 不可见"时，**先确认 mesh 到底有没有生成**（在 `OnPopulateMesh` 里打一次顶点数），再谈层级和渲染；顺序反了会在 shader/层级上白耗很久。
+- **附带（同一次排查里的第三个坑）**：`UITrailLayer.Above` 当时只是个占位枚举值，`GetOrCreate` 里遇到它会 LogWarning 后**静默回退成 Below**（`SetAsFirstSibling` + `sortingOrder=-1`，压在所有业务 UI 之下）。预制体上配了 `layer: 1` 却看不到拖尾，第一层原因就在这。**未实现的枚举值不要静默降级到"视觉上完全相反"的行为**——要么实现，要么让它明确失败。
+
+## `AddComponent<某Graphic子类>()` 不会带来 `CanvasRenderer`，缺了它 `Graphic.Rebuild()` 每帧无条件早退
+
+- **现象**：接着上一条。创建顺序、canvas 缓存、Canvas 排序全部修好之后，`UITrailRenderer` 的状态看起来完全健康——`IsActive=True`、`activeInHierarchy=True`、`enabled=True`、canvas 缓存正确、`rect` 是满屏 1080×1920、材质是编译通过的 `Custom/UITrailGlow`、Emitter 已注册且采样正常跑满 32/32 点。**但 `OnPopulateMesh` 依然一次都没执行**，屏幕上依然什么都没有。
+- **根因**：那个节点上**根本没有 `CanvasRenderer` 组件**。`Graphic` 类声明了 `[RequireComponent(typeof(CanvasRenderer))]`，但该特性只在 **Inspector 里手工 Add Component** 时由编辑器补齐；**运行时 `gameObject.AddComponent<T>()` 不触发它**（本项目 Unity 2022.3 实测）。而 `Graphic.Rebuild(CanvasUpdate)` 的第一行就是：
+  ```csharp
+  if (canvasRenderer == null || canvasRenderer.cull) return;
+  ```
+  组件缺失 → 每帧无条件早退 → `OnPopulateMesh` 永不执行 → 零 mesh、零日志、零像素，**且不抛任何异常**。
+- **为什么极难定位**：症状与上一条的"`SetVerticesDirty()` 被 `IsActive()` 静默丢弃"**完全一致**——都是"代码路径全走到、`OnPopulateMesh` 一条日志不打"。修好了创建顺序之后 `IsActive()` 已经返回 true，于是所有常规怀疑（激活态、canvas 缓存、排序、材质、shader、顶点数）全部显示正常，唯独结果不对。**这两个坑必须靠打印 `canvasRenderer` 是否为 null 才能区分**。
+- **修复**：`GetOrCreate` 里显式 `go.AddComponent<CanvasRenderer>()`（在 `AddComponent<UITrailRenderer>()` 之前），并顺手 `cr.cullTransparentMesh = false`——初始 mesh 为空，留 `true` 会被原生 Canvas 标记 `cull`，而 `cull` 一旦置上，`Rebuild` 同样在第一行早退，`OnPopulateMesh` 再没机会把 mesh 填进去清掉它：**自锁**。另在 `OnEnable`/`LateUpdate` 加自愈兜底（缺组件就补上并告警、`cull` 被置上就清掉），覆盖手工挂载与预制体等其他来源。
+- **可迁移判据**：**`[RequireComponent]` 只是编辑器的便利，不是运行时契约**。凡是运行时 `AddComponent` 一个带 `[RequireComponent]` 的类型（`Graphic` 子类要 `CanvasRenderer`，`Rigidbody` 依赖、`AudioSource` 依赖同理），**依赖组件必须自己显式加**，不能假定框架代劳。诊断上给"UI 不可见"这条排查线加一个**最先检查的项**：`canvasRenderer == null` 吗？它比 `IsActive`、比 shader、比 sortingOrder 都更靠前——`Rebuild` 的第一行就卡在这里，后面所有状态再健康也没用。**心跳日志要把它打出来**（本例正是靠心跳里那句 `canvasRenderer=无` 一眼定位的，此前三轮排查全在更下游的层面打转）。

@@ -26,6 +26,10 @@ public abstract class UnitBrainBase : MonoBehaviour
     // ── 暂停标志 ──────────────────────────────────────────
     public bool IsPaused { get; set; }
 
+    // ── 速度系统引用（由 GameLoop.Register 接线）──────────
+    /// <summary>攻速冷却/回血计时按缩放时间推进（x2/x3 时同步加速）。</summary>
+    public GameLoop GameLoop { get; set; }
+
     // ── 忙碌标志 ──────────────────────────────────────────
     public bool IsBusy => Owner?.unitMovementController?.IsBusy ?? false;
 
@@ -71,7 +75,8 @@ public abstract class UnitBrainBase : MonoBehaviour
     {
         if (IsPaused || Owner == null) return;
 
-        float dt = Time.deltaTime;
+        // 缩放时间：x2/x3 时攻速冷却与回血同步加速；GameLoop 未接线（防御路径）时回退真实时间
+        float dt = GameLoop != null ? GameLoop.ScaledDeltaTime : Time.deltaTime;
 
         // 攻速冷却倒计时
         if (_attackCooldownRemaining > 0f)

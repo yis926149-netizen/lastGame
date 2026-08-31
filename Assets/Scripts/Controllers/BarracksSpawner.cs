@@ -59,7 +59,8 @@ public class BarracksSpawner : MonoBehaviour
 
         if (_timer < _spawnInterval)
         {
-            _timer = Mathf.Min(_spawnInterval, _timer + Time.deltaTime);
+            // 缩放时间：x2/x3 时生产节奏同步加速（_gameLoop 已在方法开头判空）
+            _timer = Mathf.Min(_spawnInterval, _timer + _gameLoop.ScaledDeltaTime);
             UpdateProgressDisplay();
         }
 

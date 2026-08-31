@@ -43,6 +43,17 @@ public class UnitMovementSystem : ITickable
     public List<Vector3> AllHexCoordinates => _mapDataService.GetAllHexCoordinates();
 
     /// <summary>
+    /// 缩放 deltaTime（x2/x3 时放大，暂停时为 0）。
+    /// 供表现层组件（UnitMovementController 攻击动画窗口等）消费，与移动步长同源。
+    /// </summary>
+    public float ScaledDeltaTime => _gameLoop != null ? _gameLoop.ScaledDeltaTime : Time.deltaTime;
+
+    /// <summary>
+    /// 当前速度档的动画倍率（暂停 0），供 Animator.speed 等表现层同步加速。
+    /// </summary>
+    public float AnimationSpeedMultiplier => _gameLoop != null ? _gameLoop.SpeedMultiplier : 1f;
+
+    /// <summary>
     /// 请求单位移动
     /// </summary>
     public bool RequestMove(IUnitMovement unit, Vector3 targetHex, Enums.MovementPurpose purpose)

@@ -27,6 +27,7 @@ public class UIController : MonoBehaviour
     [Inject] private AudioManager _audioManager;
     [Inject] private GoldWallet _goldWallet; // 【探索重构-阶段7】
     [Inject] private GoldIncomeService _goldIncomeService;
+    [Inject] private ExplorationCoinFlyPresenter _coinFlyPresenter; // 金币飞入表现（方案 B：显示层延迟）
     [Inject] private IFactionBuffService _factionBuff; // 天赋 Buff 服务
     [Inject] private HexHighlightRenderer _hexHighlightRenderer;
 
@@ -156,14 +157,18 @@ public class UIController : MonoBehaviour
             UITool.AddButtonClickEvent(transform.GetComponent<Button>(), ContinueGame);
         }
 
-        // 金币显示 HUD
+        // 金币显示 HUD（方案 B：显示值 = 真实钱包 - 飞行中金币数，飞币落地逐枚追平）
         if (UIType == "GoldWallet")
         {
             var goldText = transform.GetChild(0)?.GetComponent<Text>();
             if (goldText != null)
             {
-                goldText.text = _goldWallet.Gold.ToString();
-                _goldWallet.OnGoldChanged += (g) => goldText.text = g.ToString();
+                RefreshGoldText(goldText);
+                _goldWallet.OnGoldChanged += (_) => RefreshGoldText(goldText);
+                if (_coinFlyPresenter != null)
+                {
+                    _coinFlyPresenter.InFlightChanged += () => RefreshGoldText(goldText);
+                }
             }
 
             var incomeText = transform.GetChild(2)?.GetComponent<Text>();
@@ -491,6 +496,16 @@ public class UIController : MonoBehaviour
     {
         _audioManager.PlayBGM("Theme_Mistery_But_Then_Happy_Loop");
         _endGame.HideEndUI();
+    }
+
+    /// <summary>金币 HUD 显示值 = 真实钱包 - 飞行中金币数（方案 B：显示层延迟，飞币落地逐枚追平）。</summary>
+    private void RefreshGoldText(Text goldText)
+    {
+        if (goldText == null || _goldWallet == null) return;
+        int inFlight = _coinFlyPresenter != null ? _coinFlyPresenter.InFlightGold : 0;
+        int display = _goldWallet.Gold - inFlight;
+        if (display < 0) display = 0;
+        goldText.text = display.ToString();
     }
 
     private void RefreshIncomeText(Text incomeText)

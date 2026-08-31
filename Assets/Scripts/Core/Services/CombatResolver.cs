@@ -18,11 +18,13 @@ public class CombatResolver
 {
     private readonly IMapDataService _mapDataService;
     private readonly IFactionBuffService _factionBuff;
+    private readonly DamageEventBroker _damageEventBroker;
 
-    public CombatResolver(IMapDataService mapDataService, IFactionBuffService factionBuff)
+    public CombatResolver(IMapDataService mapDataService, IFactionBuffService factionBuff, DamageEventBroker damageEventBroker)
     {
         _mapDataService = mapDataService;
         _factionBuff = factionBuff;
+        _damageEventBroker = damageEventBroker;
     }
 
     /// <summary>
@@ -40,12 +42,25 @@ public class CombatResolver
         float damage = ComputeUnitDamage(attacker, target);
         target.currentHp -= damage;
 
+        // 【伤害飘字】发布表现事件：只发布有效伤害，飘字由 DamageFloatTextRenderer 订阅（数据层不依赖 UI）
+        if (damage > 0f)
+            _damageEventBroker.RaiseDamage(GetDamageAnchor(target), damage,
+                targetFaction: target.unitMovementController != null ? target.unitMovementController.PlayerIndex : -1);
+
         // 同步血条
         if (target.healthBar != null && target.unitData != null && target.unitData.hp > 0)
         {
             target.healthBar.value = Mathf.Clamp01(target.currentHp / target.unitData.hp);
         }
         // 死亡检查由 UnitMovementController.UnitDeath（Update 中）处理，currentHp <= 0 即触发。
+    }
+
+    /// <summary>伤害飘字锚点：优先血条位置（预制体头顶），无血条时用模型位置。</summary>
+    private static Vector3 GetDamageAnchor(CharacterData target)
+    {
+        if (target.healthBar != null)
+            return target.healthBar.transform.position;
+        return target.model.transform.position;
     }
 
     /// <summary>

@@ -39,6 +39,10 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     private const float ExplorationTapMaxDistance = 20f;
     private const float ExplorationTapMaxDuration = 0.25f;
 
+    /// <summary>本帧的按下是否被用于"收起提起态卡牌"。
+    /// 该次点击只用于收起，不得再触发探索等游戏行为（探索消耗金币且不可撤销）。</summary>
+    private bool _dismissedRaisedThisFrame;
+
     [Inject] private HexHighlightRenderer _hexHighlightRenderer;
 
     [Inject]
@@ -71,8 +75,31 @@ public class PlayerInputHandler : ITickable, System.IDisposable
 
     public void Tick()
     {
+        _dismissedRaisedThisFrame = false;
         HandleCardDragging();
+        HandleRaisedCardDismiss();
         HandleTileClickForExploration();
+    }
+
+    /// <summary>
+    /// 【提起态】单击路线的退出入口：点击卡牌之外的任意位置 → 落下。
+    /// 常规 PC 下退出由 CardController.OnPointerExit 负责，本方法对鼠标同样生效但无副作用
+    /// （鼠标点卡外时指针早已离开卡面，提起态已由 Exit 清空，ActiveRaisedCard 为 null 直接返回）；
+    /// 卡牌上的调试开关 _forceClickModeOnPC 打开后，PC 的退出就完全依赖本方法。
+    ///
+    /// 采用轮询而非全屏透明遮罩：遮罩会吞掉这一次点击，玩家"点地图放下卡"需点两次。
+    /// </summary>
+    private void HandleRaisedCardDismiss()
+    {
+        CardController raised = CardController.ActiveRaisedCard;
+        if (raised == null) return;
+        if (!_input.GetMouseButtonDown(0)) return;
+
+        // 点在该卡自身上 → 交给 OnPointerClick 做 toggle，此处不介入，避免双重处理。
+        if (GetCardUnderMouse() == raised) return;
+
+        raised.LowerCard();
+        _dismissedRaisedThisFrame = true;
     }
 
     // ---------- 卡牌拖拽高亮 ----------
@@ -108,38 +135,45 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     private void CancelCardDragging() => ClearCardDragHighlight();
 
     /// <summary>
-    /// 【UI-1.0】每帧先做一次地图射线，再算出“本帧的可放置格”（可能为 null）：
-    /// 图标跟随射线命中点（SetTarget(isMapHit, hit.point)），与可放置格高亮解耦；
+    /// 【UI-1.0】每帧先做一次地图射线，再算出“本帧的悬停格”（可能为 null）：
+    /// 图标跟随射线命中点（SetTarget(isMapHit, hit.point)），与格高亮解耦；
     /// _lastDraggingHighlightCell 缓存只保留给昂贵的 SetHighlightedCells 网格重建，不再控制图标。
-    /// 顺带收敛旧行为差异：原实现中“命中地图但格不可放置”只在 cell 变化时才清高亮，
-    /// 从可放置格拖到不可放置格再拖回来的中间态可能残留；新写法以 placeableCell 为唯一真值。
+    /// 【方案甲】颜色由可放置性决定：可放置 = 金黄，不可放置 = 柔和红（合并“能否放置 + 哪格”语义）。
+    /// 因此缓存键从“可放置格”改为“悬停格”——命中地图但不可放置的格也要给红光反馈，而非清空。
+    /// 山格由 HexHighlightRenderer 的 IsBlockedByMountainGate 门禁过滤（不显示任何高亮，语义不变）。
     /// </summary>
     private void HighlightGridOnMouseHover()
     {
         Vector2 dragLogicPosition = CardController.GetCardDragLogicPosition(
             _input.MousePosition);
 
-        HexCellData placeableCell = null;
+        HexCellData hoveredCell = null;
         bool isMapHit = _mapRaycastService.RaycastMap(dragLogicPosition, out RaycastHit hit,
                 CardController.CardDragRaycastMaxDistance);          // ← §3.2 统一射程
         if (isMapHit)
         {
-            var cell = _mapData.GetCellByWorldPosition(hit.point);
-            if (cell != null && CanHighlightCellForCard(cell)) placeableCell = cell;
+            hoveredCell = _mapData.GetCellByWorldPosition(hit.point);
         }
 
         // 图标：射线命中地形即显示（跟随 hit.point），不受「是否可放置」约束；连线随图标共存亡。
         _targetMarker.SetTarget(isMapHit, hit.point);
 
-        // 高亮网格：维持原有「变化才重建」的缓存语义，行为不变。
-        if (placeableCell != _lastDraggingHighlightCell)
+        // 高亮网格：维持「变化才重建」的缓存语义；颜色由可放置性决定（金/红）。
+        if (hoveredCell != _lastDraggingHighlightCell)
         {
-            if (placeableCell != null)
+            if (hoveredCell != null)
+            {
+                Color highlightColor = CanHighlightCellForCard(hoveredCell)
+                    ? HexHighlightRenderer.PlaceableGlowColor
+                    : HexHighlightRenderer.UnplaceableGlowColor;
                 _hexHighlightRenderer.SetHighlightedCells(
-                    HexHighlightChannel.CardPlacement, new[] { placeableCell }, Color.yellow);
+                    HexHighlightChannel.CardPlacement, new[] { hoveredCell }, highlightColor);
+            }
             else
+            {
                 _hexHighlightRenderer.ClearChannel(HexHighlightChannel.CardPlacement);
-            _lastDraggingHighlightCell = placeableCell;
+            }
+            _lastDraggingHighlightCell = hoveredCell;
         }
     }
 
@@ -287,7 +321,9 @@ public class PlayerInputHandler : ITickable, System.IDisposable
 
         if (_input.GetMouseButtonDown(0))
         {
-            _explorationPointerDown = !IsPointerOverBlockingUI();
+            // 为收起提起态卡牌而点的这一下，不参与探索判定：
+            // 否则点在"未探索且相邻己方"的地块上会顺带触发一次非预期探索（消耗金币且不可撤销）。
+            _explorationPointerDown = !IsPointerOverBlockingUI() && !_dismissedRaisedThisFrame;
             _explorationPointerStart = _input.MousePosition;
             _explorationPointerDownTime = Time.unscaledTime;
         }

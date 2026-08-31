@@ -10,6 +10,8 @@ public class ArrowTowerShooter : MonoBehaviour
     [Inject] private GameLoop _gameLoop;
     [Inject] private IUnitRepository _unitRepository;
     [Inject] private UnitRemovalService _unitRemovalService;
+    // 【伤害飘字】表现层事件总线：可选注入，缺失时静默跳过
+    [Inject(Optional = true)] private DamageEventBroker _damageEventBroker;
 
     // 【Excel 数值化】箭塔射程/间隔/伤害/弹道/飞行时长迁移至 CoreGameplayConfigProvider（旧 Inspector 字段已删除）。
     private int _attackRange => CoreGameplayConfigProvider.ArrowTowerRange;
@@ -48,7 +50,8 @@ public class ArrowTowerShooter : MonoBehaviour
             return;
         }
 
-        _timer += Time.deltaTime;
+        // 缩放时间：x2/x3 时射击间隔同步加速（_gameLoop 已在方法开头判空，此处必然非空）
+        _timer += _gameLoop.ScaledDeltaTime;
         if (_timer < _attackInterval) return;
         _timer = 0f;
 
@@ -189,6 +192,9 @@ public class ArrowTowerShooter : MonoBehaviour
         path[1] = (startPos + endPos) * 0.5f + Vector3.up * _arcHeight;
         path[2] = endPos;
 
+        // 箭矢飞行随速度档同步加速（timeScale 与 Animator.speed 同源；暂停时 0 冻结，恢复后继续）
+        seq.timeScale = _gameLoop != null ? _gameLoop.SpeedMultiplier : 1f;
+
         seq.Append(arrow.transform.DOPath(path, _arrowFlightDuration, PathType.CatmullRom).SetEase(Ease.Linear));
         seq.Join(arrow.transform.DOScale(0.5f, _arrowFlightDuration).SetEase(Ease.InQuad));
 
@@ -211,6 +217,18 @@ public class ArrowTowerShooter : MonoBehaviour
             }
 
             targetData.currentHp -= _damage;
+
+            // 【伤害飘字】箭到结算时发布表现事件（锚点优先血条位置）
+            if (_damage > 0f && _damageEventBroker != null)
+            {
+                Vector3 anchor = targetData.healthBar != null
+                    ? targetData.healthBar.transform.position
+                    : target.transform.position;
+                int targetFaction = targetData.unitMovementController != null
+                    ? targetData.unitMovementController.PlayerIndex
+                    : -1;
+                _damageEventBroker.RaiseDamage(anchor, _damage, targetFaction: targetFaction);
+            }
 
             if (targetData.healthBar != null && targetData.unitData.hp > 0)
                 targetData.healthBar.value = Mathf.Max(0, targetData.currentHp / targetData.unitData.hp);

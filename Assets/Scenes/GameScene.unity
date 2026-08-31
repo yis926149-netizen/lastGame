@@ -386,6 +386,7 @@ RectTransform:
   - {fileID: 246316252}
   - {fileID: 409350894}
   - {fileID: 818467538}
+  - {fileID: 920000002}
   m_Father: {fileID: 1882833282}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -1510,7 +1511,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 222bdc7e85faeed4b9300c2a5747da44, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  AIDisabled: 0
+  AIDisabled: 1
 --- !u!114 &286174322
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1536,6 +1537,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   CostLabelPrefab: {fileID: 6128552193402368147, guid: 9d297d215438ce844a6984d8825abb47, type: 3}
+  FloatingTextPrefab: {fileID: 9206414730502342077, guid: 72c64e497d94887439108fedc8189d1a, type: 3}
   _chunksPerFrame: 2
   _instantiatesPerFrame: 30
   _lockInteractionWhileSlicing: 1
@@ -1995,6 +1997,7 @@ GameObject:
   - component: {fileID: 326623417}
   - component: {fileID: 326623416}
   - component: {fileID: 326623418}
+  - component: {fileID: 920000003}
   m_Layer: 0
   m_Name: ExplorationPillarPool
   m_TagString: Untagged
@@ -3906,7 +3909,7 @@ MonoBehaviour:
   _tacticalCardQuantityBadge2: {fileID: 1716923138}
   _mapResourceDatabaseSO: {fileID: 11400000, guid: 3457a3a7396f4063ad6a02b4b64c844a, type: 2}
   _mapLandFormDatabaseSO: {fileID: 11400000, guid: 3760f0f9ca8c4482bdf979b2841c527b, type: 2}
-  _cardDragTargetIconPrefab: {fileID: 5937579817778867480, guid: e5698196e94e7d24e9f5f79e8ad8d08a, type: 3}
+  _cardDragTargetIconPrefab: {fileID: 0}
   _cardDragLinkPrefab: {fileID: 0}
 --- !u!114 &617994631
 MonoBehaviour:
@@ -5481,6 +5484,70 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
+--- !u!1 &920000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 920000002}
+  m_Layer: 5
+  m_Name: CoinFlyLayer
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &920000002
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000001}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 74818285}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &920000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 326623415}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1b2c3d4e5f64718293a4b5c6d7e8f01, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _flyLayer: {fileID: 920000002}
+  _targetUI: {fileID: 794295123}
+  _coinUIPrefab: {fileID: 9000000000000000001, guid: c3d4e5f6a7b8693a415b6c7d8e9f0123, type: 3}
+  _coinSprite: {fileID: 21300000, guid: c1a364c01e33c0645aac06c17bad5f3d, type: 3}
+  _initialPoolSize: 40
+  _globalActiveCap: 40
+  _spawnInterval: 0.04
+  _scatterRadius: 80
+  _appearDuration: 0.25
+  _appearStartScale: 0.25
+  _appearEndScale: 1
+  _liftHeight: 60
+  _flyDuration: 0.35
+  _arcHeight: 100
+  _landScale: 0.75
+  _punchTargetOnArrival: 1
+  _targetPunchScale: 0.15
 --- !u!1 &921053248
 GameObject:
   m_ObjectHideFlags: 0
@@ -7206,7 +7273,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 85.9, y: -15.4}
+  m_AnchoredPosition: {x: 83, y: -15.4}
   m_SizeDelta: {x: 254.5918, y: 119.418}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1383559184
@@ -9270,6 +9337,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1924824594}
   - component: {fileID: 1924824596}
+  - component: {fileID: 1924824597}
   m_Layer: 5
   m_Name: TimeStop
   m_TagString: Untagged
@@ -9305,6 +9373,22 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1924824593}
   m_CullTransparentMesh: 1
+--- !u!114 &1924824597
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1924824593}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1570d69f16df248458887047481fdb02, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  profile: {fileID: 11400000, guid: 468ee7276295b6f4fbd7e7baf2c525bf, type: 2}
+  layer: 0
+  emitting: 1
+  tint: {r: 1, g: 1, b: 1, a: 1}
 --- !u!1 &1928056956
 GameObject:
   m_ObjectHideFlags: 0

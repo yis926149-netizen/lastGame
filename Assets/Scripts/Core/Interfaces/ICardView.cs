@@ -94,4 +94,11 @@ public interface ICardView
     /// 设置拖拽代理（幽灵）：非空时拖拽移动/缩放作用于代理而不是本体。
     /// </summary>
     void SetDragProxy(RectTransform proxy);
+
+    /// <summary>
+    /// 入场/升手牌等位移补间期间的交互锁。为 true 时不可进入"提起态"，
+    /// 避免提起动画 DOKill 掉正在播放的补间、把卡牌从半途拽走。
+    /// 由播放补间的一方（CardPresenter）在补间前置 true、OnComplete 置 false。
+    /// </summary>
+    bool IsTweening { get; set; }
 }

@@ -70,15 +70,18 @@ public class AIAutoExplorer : ITickable, IDisposable
     {
         if (_gameLoop != null && _gameLoop.IsPaused) return;
         if (_aiManager.AIDisabled) return;
-        _timer += UnityEngine.Time.deltaTime;
+        // 缩放时间基准：x2/x3 时 AI 探索节奏同步加速。
+        _timer += _gameLoop != null ? _gameLoop.ScaledDeltaTime : UnityEngine.Time.deltaTime;
         if (_timer < _aiConfig.ExploreInterval) return;
         // 探索准备完成后等待全局动作窗口，不丢失已累计的计时。
-        if (UnityEngine.Time.time - _aiState.LastActionTime < _aiConfig.GlobalActionMinInterval) return;
+        // LastActionTime == 0 视为尚未动作（原 Time.time 基准下首次即放行），跳过间隔门控。
+        if (_aiState.LastActionTime > 0f &&
+            _gameLoop.GameTime - _aiState.LastActionTime < _aiConfig.GlobalActionMinInterval) return;
 
         if (TryAutoExplore())
         {
             _timer = 0f;
-            _aiState.LastActionTime = UnityEngine.Time.time;
+            _aiState.LastActionTime = _gameLoop != null ? _gameLoop.GameTime : UnityEngine.Time.time;
         }
     }
 

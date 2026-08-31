@@ -214,15 +214,15 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
             _cardViews.Add(view);                       // 保持原有 list 一致性
         }
 
-        // 播放入场动画
+        // 播放入场动画（IsTweening 锁由 PlayDealAnimation 内部随补间自行上锁/解锁）
         view.PlayDealAnimation(targetPosition, () =>
         {
             if (!isNext)
             {
                 view.IsNextCard = false;
-            }           
+            }
             onComplete?.Invoke();
-        }, isNext);   
+        }, isNext);
     }
 
     /// <summary>
@@ -252,8 +252,15 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
         _cardViews.Add(_nextCardView);
 
         // 滑动 + 放大（保持 0.3s）
+        // IsNextCard 已在上面置 false（升为手牌），此刻卡牌已可交互，
+        // 必须用 IsTweening 挡住"提起态"——否则补间途中鼠标移入/点击会 DOKill 掉滑动，
+        // 卡牌从半路直接跳到槽位。
+        // 上锁必须在 DOKill 之后：DOKill 会带出上一条补间的 OnComplete，把锁清回 false。
+        ICardView promoting = _nextCardView;
         _nextCardView.RectTransform.DOKill();
-        _nextCardView.RectTransform.DOAnchorPos(targetPosition, 0.3f).SetEase(Ease.OutQuad);
+        _nextCardView.IsTweening = true;
+        _nextCardView.RectTransform.DOAnchorPos(targetPosition, 0.3f).SetEase(Ease.OutQuad)
+            .OnComplete(() => promoting.IsTweening = false);
         _nextCardView.RectTransform.DOScale(_uiConfig.CardSize, 0.3f).SetEase(Ease.OutQuad);
 
         _nextCardView = null;   // 立即清空，让新卡可以立刻生成

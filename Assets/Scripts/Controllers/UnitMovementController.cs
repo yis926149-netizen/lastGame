@@ -112,6 +112,10 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
     private bool _isMeleeAttackInProgress = false;
     private bool _isDeathScheduled = false;
+
+    // 【速度系统】攻击动画窗口剩余时间：替代 Invoke(StopAttackAnimation) 的真实时间延时，
+    // 由 Update 按缩放时间倒计时（x2/x3 时窗口同步缩短），否则攻速被动画锁（IsBusy）钉死在动画时长上。
+    private float _attackAnimWindowRemaining = 0f;
     /// <summary>死亡流程已触发（动画播放中，等待销毁）。供外部（CombatResolver 等）只读查询。</summary>
     public bool IsDeathScheduled => _isDeathScheduled;
 
@@ -322,6 +326,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
 
     void Update()
     {
+        TickAttackAnimWindow();
+        SyncAnimatorSpeed();
         // 不再调用 UnitMove()
         UnitAttacked();
         UnitAttack();
@@ -427,6 +433,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         isAttack = false;
         attackedUnit = null;
         enemyAttacker = null;
+        _attackAnimWindowRemaining = 0f;
 
         if (characterData != null)
         {
@@ -574,8 +581,9 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
             float animDuration = _rangedAttack
                 ? RangedAttackAnimationDuration
                 : CoreGameplayConfigProvider.AttackAnimationDuration;
-            Invoke(nameof(StopAttackAnimation), animDuration);
-            Invoke(nameof(SetReturnToOriginalPositionTrue), animDuration);
+            // 【速度系统】窗口改由 TickAttackAnimWindow 按缩放时间倒计时（x2/x3 时攻速锁同步缩短），
+            // 原 Invoke 走真实时间，会把攻速钉死在动画时长上。
+            _attackAnimWindowRemaining = animDuration;
         }
 
         // ----- 4. 初始触发逻辑：移动结束或远程单位准备攻击 -----
@@ -729,6 +737,41 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     /// <summary>
     /// 停止攻击动画
     /// </summary>
+    /// <summary>
+    /// 攻击动画窗口倒计时（缩放时间驱动）：到点执行原 Invoke 的 StopAttackAnimation + SetReturnToOriginalPositionTrue。
+    /// 暂停时 ScaledDeltaTime == 0，窗口自动冻结（与单位决策一致）。
+    /// 窗口与 Animator.speed 同倍率：动画完整播完（快进），不会被截断。
+    /// </summary>
+    private void TickAttackAnimWindow()
+    {
+        if (_isDeathScheduled || _attackAnimWindowRemaining <= 0f) return;
+
+        float dt = _movementSystem != null ? _movementSystem.ScaledDeltaTime : Time.deltaTime;
+        _attackAnimWindowRemaining -= dt;
+        if (_attackAnimWindowRemaining > 0f) return;
+
+        StopAttackAnimation();
+        SetReturnToOriginalPositionTrue();
+    }
+
+    /// <summary>
+    /// 动画速度同步（速度档驱动）：x2/x3 时待机/移动/攻击/受击动画同倍率快进，暂停时冻结。
+    /// 死亡流程例外：保持真实时间，避免破坏死亡动画帧事件与兜底延时。
+    /// characterData 未接线（拖拽预览实例）时不动 speed，由 CardDragWorldPreviewController 独占控制。
+    /// </summary>
+    private void SyncAnimatorSpeed()
+    {
+        if (animator == null || characterData == null) return;
+
+        if (_isDeathScheduled)
+        {
+            animator.speed = 1f;
+            return;
+        }
+
+        animator.speed = _movementSystem != null ? _movementSystem.AnimationSpeedMultiplier : 1f;
+    }
+
     private void StopAttackAnimation()
     {
         animator.SetBool("isAttack", false);

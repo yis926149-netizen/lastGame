@@ -138,6 +138,9 @@ public class GameInstaller : MonoInstaller
         Container.Bind<PublicBuildingGenerator>().AsSingle();
         Container.Bind<ExplorationPillarPool>().FromComponentInHierarchy().AsSingle();
         Container.Bind<ExplorationCoinPresenter>().FromComponentInHierarchy().AsSingle();
+        // NonLazy：该 Presenter 只订阅广播、无其他消费者注入它，若不 NonLazy 则 FromComponentInHierarchy 懒解析、
+        // Construct 永不执行、_broadcastSource/_gameLoop 保持 null，飞币静默不播（与暂停语义一起难排查）。
+        Container.Bind<ExplorationCoinFlyPresenter>().FromComponentInHierarchy().AsSingle().NonLazy();
 
         // UI
 
@@ -306,6 +309,10 @@ public class GameInstaller : MonoInstaller
         // 【批次 D】战斗结算器
         Container.Bind<CombatResolver>().AsSingle();
 
+        // 【伤害飘字】数据层 → 表现层事件总线
+        // （CombatResolver/BuildingBase/ArrowTowerShooter 发布，DamageFloatTextRenderer 订阅）
+        Container.Bind<DamageEventBroker>().AsSingle();
+
         // 【天赋卡系统】阵营级 Buff 服务
         Container.Bind<IFactionBuffService>().To<FactionBuffService>().AsSingle();
 
@@ -425,6 +432,7 @@ public class GameInstaller : MonoInstaller
         AddMissingInScene<EndGame>(missing);
         AddMissingInScene<ExplorationPillarPool>(missing);
         AddMissingInScene<ExplorationCoinPresenter>(missing);
+        AddMissingInScene<ExplorationCoinFlyPresenter>(missing);
 
         if (missing.Count > 0)
         {
@@ -455,6 +463,10 @@ public class GameInstaller : MonoInstaller
                 pool.enabled = true;
             }
             foreach (ExplorationCoinPresenter presenter in root.GetComponentsInChildren<ExplorationCoinPresenter>(true))
+            {
+                presenter.enabled = true;
+            }
+            foreach (ExplorationCoinFlyPresenter presenter in root.GetComponentsInChildren<ExplorationCoinFlyPresenter>(true))
             {
                 presenter.enabled = true;
             }

@@ -34,7 +34,8 @@ public class GameLoop : IInitializable, ITickable
     /// <summary>当前帧的缩放 deltaTime（暂停时为 0，供其他系统消费）。</summary>
     public float ScaledDeltaTime { get; private set; }
 
-    private float SpeedMultiplier => CurrentSpeed switch
+    /// <summary>当前档的缩放倍率（暂停 0、x1 1、x2 2、x3 3）。供 Animator.speed / DOTween timeScale 等表现层同步。</summary>
+    public float SpeedMultiplier => CurrentSpeed switch
     {
         GameSpeed.x2 => 2f,
         GameSpeed.x3 => 3f,
@@ -216,6 +217,8 @@ public class GameLoop : IInitializable, ITickable
         // 继承当前暂停状态：暂停时生成的单位（卡牌部署/兵营出兵/AI 增援）须立即冻结，
         // 否则其 MonoBehaviour.Update（回血/攻速冷却计时）会在暂停期间继续推进。
         brain.IsPaused = IsPaused;
+        // 速度系统接线：brain.Update 的攻速冷却/回血计时按 ScaledDeltaTime 推进（x2/x3 同步加速）
+        brain.GameLoop = this;
         _brains.Add(brain);
     }
 

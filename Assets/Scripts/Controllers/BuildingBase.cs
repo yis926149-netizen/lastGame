@@ -21,6 +21,8 @@ public abstract class BuildingBase : MonoBehaviour
     [Inject(Optional = true)] protected ILogisticsService _logisticsService;
     // 【动态地图-阶段二】统一可见性解析（永久 || 临时 VisibilityLease）：宝箱血条随 Arena lease 显示
     [Inject(Optional = true)] protected IMapVisibilityResolver _visibilityResolver;
+    // 【伤害飘字】表现层事件总线：可选注入，缺失时静默跳过（数据层不依赖 UI）
+    [Inject(Optional = true)] protected DamageEventBroker _damageEventBroker;
 
     // ── 公共字段 ──────────────────────────────────────
     [HideInInspector] public BuildingData buildingData;
@@ -154,6 +156,15 @@ public abstract class BuildingBase : MonoBehaviour
 
         // 同步血条
         SyncHealthBar();
+
+        // 【伤害飘字】发布表现事件（无 UI 依赖；锚点优先血条位置）
+        if (damage > 0f && _damageEventBroker != null)
+        {
+            Vector3 anchor = uiHealthBar != null
+                ? uiHealthBar.transform.position
+                : transform.position;
+            _damageEventBroker.RaiseDamage(anchor, damage, targetFaction: Player_City_Index.Key);
+        }
 
         // 记录攻击者（用于易主/奖励分配）
         Attacker = enemyAttacker;

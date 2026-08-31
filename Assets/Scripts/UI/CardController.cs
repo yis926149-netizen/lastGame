@@ -8,7 +8,7 @@ using Zenject;
 
 [RequireComponent(typeof(Image), typeof(RectTransform))]
 public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IPointerExitHandler,
-    IBeginDragHandler, IDragHandler, IEndDragHandler
+    IPointerClickHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
     [Inject] private IMapDataService _mapDataService;
     [Inject] private ICardDropHandler _dropHandler;
@@ -96,7 +96,27 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     private bool _isNextCard;
     private static CardController _activeDraggingCard;
 
+    /// <summary>
+    /// 【提起态】卡牌上移并停住的粘滞状态。同一时刻全局至多一张。
+    /// 入口按输入设备分流（PointerEventData.pointerId：鼠标 &lt; 0，触摸 &gt;= 0）：
+    ///   PC   → OnPointerEnter 进入 / OnPointerExit 退出；
+    ///   移动 → OnPointerClick 进入 / PlayerInputHandler 轮询卡外点击退出。
+    /// 两条入口汇入同一对 RaiseCard / LowerCard，视觉与状态完全一致。
+    /// </summary>
+    private bool _isRaised;
+    private static CardController _activeRaisedCard;
+
+    /// <summary>提起态上移量（Canvas 参考高度比例），与原悬浮上移保持一致。</summary>
+    private const float RaiseOffsetRatio = 0.025f;
+
     public static bool IsAnyCardDragging => _activeDraggingCard != null;
+
+    /// <summary>
+    /// 当前处于提起态的卡牌；无则 null。供 PlayerInputHandler 轮询"点击卡外收起"。
+    /// 注意：语义与 IsAnyCardDragging 独立，**不参与相机拖动屏蔽**——
+    /// 提起后玩家仍需平移地图寻找落点。
+    /// </summary>
+    public static CardController ActiveRaisedCard => _activeRaisedCard;
 
     /// <summary>
     /// 当前拖拽中的卡牌视觉 RectTransform（战术卡为幽灵代理 _dragProxy，否则卡牌本体）；无拖拽时为 null。
@@ -240,6 +260,9 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
             // 悬浮中变为买不起时，UI 射线不再触发 OnPointerExit，需主动复位位置。
             if (!_isDragging)
             {
+                // 提起态下金币掉到买不起：视觉在此统一回落，故只清标志不再播一次回落 tween，
+                // 否则状态与视觉会脱节（标志仍是 Raised，PlayerInputHandler 会继续等一次卡外点击）。
+                ReleaseRaiseCapture();
                 // 只复位位置，不清除缩放 Tween：金币状态刷新不应打断发牌/入手的缩放动画。
                 _rectTransform.DOAnchorPos(_originPosition, 0.2f);
             }
@@ -277,7 +300,11 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
             _rectTransform.anchoredPosition = startPos;
 
             // 0.6s 带回弹的弹出
-            _rectTransform.DOAnchorPos(targetPosition, 0.6f).SetEase(Ease.OutBack, 1.2f);
+            // IsTweening 由补间自身解锁：本分支的 onComplete 是同步调用（预告卡无需等待），
+            // 若把解锁挂在 onComplete 上会立刻置回 false，锁形同虚设。
+            IsTweening = true;
+            _rectTransform.DOAnchorPos(targetPosition, 0.6f).SetEase(Ease.OutBack, 1.2f)
+                .OnComplete(() => IsTweening = false);
             _rectTransform.DOScale(_uiConfig.NextCardSize, 0.6f).SetEase(Ease.OutBack, 1.2f);
 
             onComplete?.Invoke(); // 预告卡无需等待
@@ -285,7 +312,12 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         }
 
         // 普通手牌发牌逻辑（保持不变）
-        _rectTransform.DOAnchorPos(targetPosition, 0.4f).OnComplete(() => onComplete?.Invoke());
+        IsTweening = true;
+        _rectTransform.DOAnchorPos(targetPosition, 0.4f).OnComplete(() =>
+        {
+            IsTweening = false;
+            onComplete?.Invoke();
+        });
         _rectTransform.DOScale(_uiConfig.CardSize, 0.4f);
     }
 
@@ -329,6 +361,9 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     public void ResetToOrigin()
     {
+        // DOKill 会跳过补间的 OnComplete，入场锁不会自行解开；
+        // 拖拽取消回到原位时卡牌本就该恢复可交互，在此显式解锁。
+        IsTweening = false;
         _rectTransform.DOKill();
         _rectTransform.DOAnchorPos(_originPosition, 0.2f);
         transform.DOScale(_uiConfig.CardSize, 0.2f);
@@ -352,21 +387,111 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _playerInputHandler.Value.ClearCardDragHighlight();
     }
 
-    public void OnPointerEnter(PointerEventData eventData)
-    {
-        if (IsNextCard) return;
-        if (_isDragging) return;
-        if (!_isAffordable) return;
+    [Header("调试")]
+    [Tooltip("勾选后，PC 上也走移动端的单击路线（单击提起 / 单击别处落下），" +
+             "鼠标悬浮不再提起。用于在编辑器里验证移动端交互，无需打包到真机。\n" +
+             "改卡牌预制体上的本项即对全部卡牌生效。")]
+    [SerializeField] private bool _forceClickModeOnPC;
 
-        _rectTransform.DOAnchorPos(_originPosition + new Vector3(0, UIScreenHelper.ReferenceHeight * 0.025f, 0), 0.2f); // B3: 悬停上移改为 Canvas 参考高度比例
+    /// <summary>
+    /// 本次事件是否走"单击路线"（移动端语义）。
+    /// 触摸事件（pointerId >= 0）恒为 true；鼠标事件仅在调试开关打开时为 true。
+    /// 提起态的进入/退出入口全部由本方法分流，保证两条路线互斥——
+    /// 否则 PC 上会出现"移入提起、点一下又落下"的混乱状态。
+    /// </summary>
+    private bool UsesClickRoute(PointerEventData eventData)
+    {
+        if (eventData == null) return _forceClickModeOnPC;
+        return eventData.pointerId >= 0 || _forceClickModeOnPC;
     }
 
+    /// <summary>
+    /// 提起态是否可进入。
+    /// IsTweening：入场/升手牌补间期间上锁——RaiseCard 的 DOKill 会杀掉该 RectTransform 上
+    /// 所有 tween，补间途中提起会让卡牌从半路被拽走。
+    /// </summary>
+    private bool CanRaise => !IsNextCard && !_isDragging && _isAffordable && !IsTweening;
+
+    /// <summary>位移补间期间的交互锁，见 ICardView.IsTweening。</summary>
+    public bool IsTweening { get; set; }
+
+    /// <summary>
+    /// 进入提起态。全局唯一：先让上一张落下。
+    /// DOKill 是必需的——发牌/入手动画或上一次落下的 tween 可能仍在播，
+    /// 不杀会与本次上移争抢 anchoredPosition。
+    /// </summary>
+    public void RaiseCard()
+    {
+        if (_isRaised) return;
+
+        if (_activeRaisedCard != null && _activeRaisedCard != this)
+            _activeRaisedCard.LowerCard();
+
+        _isRaised = true;
+        _activeRaisedCard = this;
+
+        _rectTransform.DOKill();
+        _rectTransform.DOAnchorPos(
+            _originPosition + new Vector3(0, UIScreenHelper.ReferenceHeight * RaiseOffsetRatio, 0), 0.2f);
+    }
+
+    /// <summary>退出提起态并回落原位。对外供 PlayerInputHandler 在"点击卡外"时调用。</summary>
+    public void LowerCard()
+    {
+        if (!_isRaised) return;
+
+        ReleaseRaiseCapture();
+
+        _rectTransform.DOKill();
+        _rectTransform.DOAnchorPos(_originPosition, 0.2f);
+    }
+
+    /// <summary>
+    /// 只清提起态的标志与全局引用，不播回落动画。
+    /// 用于"位置随后会被别的逻辑接管"的场景（进入拖拽 / 失活 / 买不起复位），
+    /// 此时再播一次回落 tween 会与接管方争抢 anchoredPosition。
+    /// </summary>
+    private void ReleaseRaiseCapture()
+    {
+        _isRaised = false;
+        if (_activeRaisedCard == this) _activeRaisedCard = null;
+    }
+
+    /// <summary>
+    /// PC 悬浮入口：鼠标移入即提起。
+    /// 触摸设备上 EventSystem 会在手指按下时补发一次 Enter，必须挡掉，
+    /// 否则移动端会退化为"按住才抬起"。调试开关打开时鼠标也走单击路线，此处同样不响应。
+    /// </summary>
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (UsesClickRoute(eventData)) return;
+        if (!CanRaise) return;
+
+        RaiseCard();
+    }
+
+    /// <summary>PC 悬浮入口：鼠标移出即落下。触摸补发的 Exit / 单击路线下同样不响应。</summary>
     public void OnPointerExit(PointerEventData eventData)
     {
-        if (IsNextCard) return;
+        if (UsesClickRoute(eventData)) return;
         if (_isDragging) return;
 
-        _rectTransform.DOAnchorPos(_originPosition, 0.2f);
+        LowerCard();
+    }
+
+    /// <summary>
+    /// 单击入口：单击提起 / 再次单击落下（toggle）。移动端常规路径；
+    /// PC 上仅在调试开关 _forceClickModeOnPC 打开时生效——否则 PC 的提起完全由
+    /// Enter/Exit 驱动，指针仍在卡上时点击不应改变状态。
+    /// 与拖拽天然互斥：位移超过 EventSystem.pixelDragThreshold 后只走 Drag 链，不再触发 Click。
+    /// </summary>
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (!UsesClickRoute(eventData)) return;
+        if (_isDragging) return;
+
+        if (_isRaised) LowerCard();
+        else if (CanRaise) RaiseCard();
     }
 
     public void OnBeginDrag(PointerEventData eventData)
@@ -380,6 +505,13 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         // Follow + TrySnapToTerrain 做一次初始吸附，那一刻就要读到起点。
         _dragOriginScreenPoint = eventData.position;
         _hasDragOrigin = true;
+
+        // 提起态直接起拖是主路径（两种状态都可拖）。必须在此杀掉上移 tween 并同步清标志：
+        // OnDragUpdate 会逐帧直写 anchoredPosition，未播完的 tween 会与之争抢位置；
+        // 且进度基准是 _originPosition，视觉起点若停在 +0.025H 会让缩放/淡出进度从非 0 跳变。
+        // 这里不播回落动画——下一帧拖拽立即接管位置。
+        _rectTransform.DOKill();
+        ReleaseRaiseCapture();
 
         _playerInputHandler.Value.ForceDeselectUnit();
         _isDragging = true;
@@ -430,9 +562,11 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         // 落点将落回手指处、与松手瞬间的高亮格不一致。
         Vector2 dragLogicPosition = GetCardDragLogicPosition(eventData.position);
 
-        transform.SetSiblingIndex(originalSiblingIndex);   
+        transform.SetSiblingIndex(originalSiblingIndex);
         _isDragging = false;
         ReleaseDragCapture();
+        // 成功部署路径会提前 return，故提起态在此统一清理（OnBeginDrag 已清过一次，幂等）。
+        ReleaseRaiseCapture();
 
         ClearHighlights();
 
@@ -507,6 +641,11 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         EndDragVisual();
         if (_isDragging) _dropHandler?.OnCardDragCancel(this);
         ReleaseDragCapture();
+        // 卡牌打出后会被销毁：静态引用必须清掉，否则 PlayerInputHandler 会持有已销毁对象。
+        ReleaseRaiseCapture();
+        // 下面的 DOKill 会跳过入场补间的 OnComplete，锁不会自行解开；
+        // 若该实例被回收复用，残留的 true 会让它永远无法提起。
+        IsTweening = false;
         _rectTransform?.DOKill();
     }
 
@@ -523,6 +662,9 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     {
         _isDragging = false;
         ReleaseDragCapture();
+        // 拖拽结束一律回 Idle，不回提起态：ResetToOrigin 复位到 _originPosition，
+        // 若保留 Raised 标志会与视觉位置矛盾。
+        ReleaseRaiseCapture();
         transform.SetSiblingIndex(originalSiblingIndex);
         ClearHighlights();
         EndDragVisual();
