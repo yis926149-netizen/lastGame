@@ -207,6 +207,14 @@ public class GameInstaller : MonoInstaller
                  .WithGameObjectName("HexHighlightRenderer")
                  .AsSingle();
 
+        // 【不可放置区域红色遮罩】提起态屏幕空间遮罩（读取 PlayerInputHandler.RaisedUnplaceableCells）。
+        // NonLazy：无其他消费者解析它，必须立即构造才会开始每帧驱动。
+        Container.Bind<UI.PlacementMask.PlacementRangeMaskUI>()
+                 .FromNewComponentOnNewGameObject()
+                 .WithGameObjectName("PlacementRangeMaskUI")
+                 .AsSingle()
+                 .NonLazy();
+
         // ���������ɷ���
         Container.Bind<IMeshGenerator>().To<MeshGeneratorService>().AsSingle();
 
