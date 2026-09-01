@@ -21,6 +21,9 @@ public static class Program
             ("Output.jsonFieldOrderDeterministic", OutputWriterTests.JsonFieldOrderDeterministic),
             ("Output.manifestWritesHashes", OutputWriterTests.ManifestWritesHashes),
 
-            ("RoundTrip.initReadValidate", WorkbookRoundTripTests.InitThenReadThenValidate));
+            ("RoundTrip.initReadValidate", WorkbookRoundTripTests.InitThenReadThenValidate),
+
+            ("Comment.rowsSkipped", CommentRowTests.CommentRowsAreSkipped),
+            ("Comment.onlyFirstColumn", CommentRowTests.SlashesInOtherColumnsAreNotComments));
     }
 }

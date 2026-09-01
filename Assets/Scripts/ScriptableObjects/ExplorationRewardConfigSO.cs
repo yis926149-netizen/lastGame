@@ -51,7 +51,7 @@ public class ExplorationRewardConfigSO : ScriptableObject
     public TacticalCardSO[] rewardTacticalCards;
 
     [Header("第二次随机：建筑（建筑奖励）")]
-    [Tooltip("奖励可放置的建筑配置（等概率随机选择；请勿放入 City/GoldMine/PublicBuilding）。")]
+    [Tooltip("奖励可放置的建筑配置（等概率随机选择）。当前配置为金矿；地块不合格或生成失败时降级为金币。请勿放入 City/PublicBuilding。")]
     public BuildingConfigSO[] rewardBuildings;
 
     [Header("探索费用（按地块奖励类型）")]

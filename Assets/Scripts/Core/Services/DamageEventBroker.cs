@@ -21,4 +21,16 @@ public class DamageEventBroker
     {
         DamageDealt?.Invoke(anchorWorldPosition, damage, isCrit, targetFaction);
     }
+
+    /// <summary>
+    /// 受击表现事件。参数：受击对象根节点（单位为 model，建筑为自身 gameObject）。
+    /// 与 DamageDealt 分离：飘字与受击反馈的过滤规则（如迷雾）、生命周期、参数各不相同。
+    /// </summary>
+    public event Action<GameObject> UnitHit;
+
+    public void RaiseHit(GameObject target)
+    {
+        if (target == null) return;
+        UnitHit?.Invoke(target);
+    }
 }

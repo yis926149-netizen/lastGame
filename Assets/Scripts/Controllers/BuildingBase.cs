@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using Zenject;
+using UIToolkitDemo;
 
 //****************************************
 // 【公共建筑系统-决策#16】建筑基类
@@ -164,6 +165,9 @@ public abstract class BuildingBase : MonoBehaviour
                 ? uiHealthBar.transform.position
                 : transform.position;
             _damageEventBroker.RaiseDamage(anchor, damage, targetFaction: Player_City_Index.Key);
+
+            // 【受击反馈】发布受击事件：参数为建筑自身 gameObject
+            _damageEventBroker.RaiseHit(gameObject);
         }
 
         // 记录攻击者（用于易主/奖励分配）

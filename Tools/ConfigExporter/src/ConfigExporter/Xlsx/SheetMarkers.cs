@@ -8,4 +8,10 @@ public static class SheetMarkers
     /// 首列为该标记，其余列依次是该列的中文解释；读取时按此标记整行跳过。
     /// </summary>
     public const string FieldNoteRow = "#字段说明";
+
+    /// <summary>
+    /// 注释行的首列前缀。首列以此开头的行整行跳过，供策划在表中随手写备注，
+    /// 可出现在表内任意位置（含数据行之间与表尾）。
+    /// </summary>
+    public const string CommentRow = "//";
 }

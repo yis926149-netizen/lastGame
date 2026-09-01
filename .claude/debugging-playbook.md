@@ -400,3 +400,40 @@
 - **为什么极难定位**：症状与上一条的"`SetVerticesDirty()` 被 `IsActive()` 静默丢弃"**完全一致**——都是"代码路径全走到、`OnPopulateMesh` 一条日志不打"。修好了创建顺序之后 `IsActive()` 已经返回 true，于是所有常规怀疑（激活态、canvas 缓存、排序、材质、shader、顶点数）全部显示正常，唯独结果不对。**这两个坑必须靠打印 `canvasRenderer` 是否为 null 才能区分**。
 - **修复**：`GetOrCreate` 里显式 `go.AddComponent<CanvasRenderer>()`（在 `AddComponent<UITrailRenderer>()` 之前），并顺手 `cr.cullTransparentMesh = false`——初始 mesh 为空，留 `true` 会被原生 Canvas 标记 `cull`，而 `cull` 一旦置上，`Rebuild` 同样在第一行早退，`OnPopulateMesh` 再没机会把 mesh 填进去清掉它：**自锁**。另在 `OnEnable`/`LateUpdate` 加自愈兜底（缺组件就补上并告警、`cull` 被置上就清掉），覆盖手工挂载与预制体等其他来源。
 - **可迁移判据**：**`[RequireComponent]` 只是编辑器的便利，不是运行时契约**。凡是运行时 `AddComponent` 一个带 `[RequireComponent]` 的类型（`Graphic` 子类要 `CanvasRenderer`，`Rigidbody` 依赖、`AudioSource` 依赖同理），**依赖组件必须自己显式加**，不能假定框架代劳。诊断上给"UI 不可见"这条排查线加一个**最先检查的项**：`canvasRenderer == null` 吗？它比 `IsActive`、比 shader、比 sortingOrder 都更靠前——`Rebuild` 的第一行就卡在这里，后面所有状态再健康也没用。**心跳日志要把它打出来**（本例正是靠心跳里那句 `canvasRenderer=无` 一眼定位的，此前三轮排查全在更下游的层面打转）。
+
+## Unity asmdef 边界：新代码引不到已存在类型（CS0246/CS0234）
+
+- **症状**：一批"类型找不到"报错（`AudioManager`、`RadialCounter`、`Volume`、`PSDImporter` 等），各自分布在**不同文件**，看似零散，实则由少数几个根因引发。
+- **根因分类（逐个映射，不要逐个改）**：
+  1. **命名空间变动**——`AudioManager.cs` 被移进 `namespace UIToolkitDemo`，而调用方在全局命名空间且无 `using`。修复：给调用方加 `using UIToolkitDemo;`。**判据**：报错文件是否已在自己 `namespace` 内则免加（同命名空间可直接解析）。
+  2. **asmdef 未引用第三方程序集**——`UnityEngine.Rendering.Universal`/`Volume` 报错：`MainGame.asmdef` 未引用 URP 两个 Runtime 程序集。修复：往 references 加 GUID（`Unity.RenderPipelines.Core.Runtime`、`Unity.RenderPipelines.Universal.Runtime`）。
+  3. **asmdef 边界**——`RadialCounter`/`ChartLibrary` 所在文件夹无 asmdef，编进 `Assembly-CSharp`；而带 asmdef 的 `MainGame` **不能引用 Assembly-CSharp**。修复：给那个文件夹新建 asmdef（并引其依赖如 Unity.Collections），把 GUID 加进 `MainGame.asmdef` references。
+  4. **Editor-only 程序集被运行程序集引用**——`PSDImporter`/`PSDImporterEditor` 在 `Unity.2D.Psdimporter.Editor`（Editor-only），而文件位于运行程序集 `MainGame` 的目录下，`#if UNITY_EDITOR` **挡不住**（问题不在编译目标而在程序集边界）。修复：给该目录单独建一个 `includePlatforms:["Editor"]` 的 asmdef，并引用 `Unity.2D.Psdimporter.Editor` 与 `PsdPlugin`。
+- **可迁移判据**：
+  - **报错不是"类型不存在"，而是"当前程序集看不见"**。先看报错类型所在文件是否在某个 asmdef 作用域里，再想主调用程序集能否引用它。
+  - **`#if UNITY_EDITOR` ≠ Editor-only 程序集**。平台宏只处理编译目标，不做程序集隔离；Editor API 类型（如 `ScriptedImporter` 派生类）必须放进 Editor-only asmdef 才能引用 Editor 程序集。
+  - **新建 asmdef 要顺带写 `.meta`**（含 GUID）。Unity 用 `.asmdef.meta` 的 GUID 作为 references 里的引用 ID，`GUID:xxxx` 拼的就是它。可直接用 `[guid]::NewGuid().ToString('N')` 生成。
+  - 加 `using` 前先确认目标类型无重名歧义；加 asmdef 前先用 `grep` 确认该目录**只有**要隔离的文件（否则会把别的运行代码也拉出 MainGame）。
+
+## MonoBehaviour 的 `.meta` GUID 漂移会"静默"绑出 null 单例，把 NRE 伪装成 DI 没装
+
+- **现象**：`[Inject] private AudioManager _audioManager;` 在 `GameFlowManager.Initialize()` 里判空触发 `NullReferenceException`。第一直觉是"AudioManager 没绑/忘注入"，于是翻 `GameInstaller`、翻 `GlobalServicesInstaller.InstallBindings`，都"看起来没毛病"。
+- **根因**：`AudioManager.cs.meta` 的 guid 从 HEAD 的 `8220ab4a80d04b846861d8afb215c4bd` 漂移到了 `56662d7438cc11b42bebf96c5230efa4`。而 `ProjectContext.prefab`（项目级容器）里 AudioManager 组件是**按旧 guid 引用**的：guid 一变，那个组件引用就悬空，`.prefab` 反序列化时该组件解析失败 → `GlobalServicesInstaller._audioManager` 序列化字段值为 `null` → `Container.Bind<AudioManager>().FromInstance(_audioManager).AsSingle()` 把一个 **null 单例**注册到整个项目容器 → 所有 `[Inject] AudioManager` 都解到 null → 首个使用点（`GameFlowManager:44`）抛 NRE。
+- **为什么难排查**：链条每一步都"成立了"——`GlobalServicesInstaller` 确实在 `InstallBindings` 里绑了、绑的还是 `AsSingle`、`GameFlowManager` 也确实 `[Inject]` 了。代码全对，唯独 `ProjectContext.prefab` 里那根线断在 **asset 层面**，而 C# 层面毫无痕迹。
+- **决定性判据（不必猜绑没绑）**：用 `git diff -- <脚本>.cs.meta` 看 guid 是否变了；再 `grep` 那个 guid 看谁在引用它、谁在拥有它。**`<脚本>.cs.meta` 的 guid 必须是"唯一持有者"，且被 `ProjectContext.prefab` 等消费方按同一个 guid 引用**。guid 一漂移，消费方要么悬空、要么指向别人。
+- **迁移判据**：`[Inject]` 解到 null / `FromInstance(null)` 注册了 null 单例 → 先怀疑**DI 没装**，但排掉代码后（绑定存在、`AsSingle`、字段非空）若仍 null，**下一步查 `.meta` guid 漂移**，不要继续在 C# 里找。反序列化失败的序列化字段顶到 DI 注册链，会把 asset 层的问题伪装成代码层的问题。
+- **验证法**：`git diff -- Assets/Scripts/<MonoBehaviour>.cs.meta` 应为空（guid 未漂移）；`git grep -l <guid>` 应且只应命中 `.meta` 自身 + 消费方 prefab；漂移后的旧 guid 若残留在别的未跟踪 prefab 里（如测试件）无害，只要不在 DI 路径上即可。
+
+## Unity 序列化陷阱：Component 类型的 prefab 字段必须用「组件 fileID」，不能用根 GameObject 的 fileID
+
+- **现象**：`[CardDragTargetMarker] 未在 GameInstaller 绑定落点图标 prefab`——注入的 prefab 是 `null`，功能降级为空操作；`Scene` 里 `_cardDragTargetIconPrefab` / `_cardDragLinkPrefab` 明明"看起来绑了"。第一直觉是"绑错 prefab 了"，于是去核对 guid、核对是不是拿成别的 prefab。
+- **根因**：`GameInstaller.cs` 里这两个字段的静态类型是 **Component**（`CardDragTargetMarkerView` / `CardDragLinkView`），不是 `GameObject`。Unity 对**组件类型**的序列化 prefab 引用，存的是该组件在 prefab 里的 `--- !u!114 &...` **组件 fileID**；把字段指向根 GameObject 的 `--- !u!1 &...` fileID，反序列化时类型不匹配 → 解析为 `null`。我上一轮把 fileID 错写成了根 GameObject 的 `4628901259271367074` / `3502627650508113528`（`!u!1`），所以还是 null。
+- **正确值**：组件 fileID 是 `--- !u!114` 对象上的 `&` 号：
+  - 图标 `CardDragTargetMarkerView` → `5937579817778867480`（在 `UITest.prefab`）
+  - 连线 `CardDragLinkView` → `710961085589720210`（在 `UILinkTest.prefab`）
+  - guid 不变（`e569...` / `944f...`），只改 fileID。
+- **可迁移判据（每次绑 prefab 都要先判断字段类型）**：
+  - 字段是 `GameObject` → 用 `--- !u!1 &...`（根 GameObject）fileID。
+  - 字段是 `MonoBehaviour` 子类 / 任意**组件类型** → 用 `--- !u!114 &...`（组件）fileID。**用组件类型去指根对象必成 null**，且 Unity 不报错、不告警，只在运行时表现出"没绑上"。
+  - 判定方法：在 prefab 里 `grep -n "!u!114.*&"`（组件）和 `!u!1.*&`（根对象），看哪个 `&` 号对应的 `m_Script`/`m_GameObject` 符合目标。**一条铁律：字段的静态类型决定用哪一层 fileID。**
+- **顺带**：日志里的 `Tag: EnemyBuilding / NeutralBuilding / PlayerBuilding is not defined` 是 `ProjectSettings/TagManager.asset` 的 `tags: []` 为空、而代码 `go.tag = "..."` 需要这些 tag 未定义。给 `tags:` 数组补齐脚本里出现的全部 5 个 tag（`EnemyBuilding`、`EnemyUnit`、`NeutralBuilding`、`PlayerBuilding`、`PlayerUnit`）即可，无需改代码。

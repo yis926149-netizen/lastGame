@@ -279,6 +279,7 @@ Assets/GameConfig/Generated/*.asset（自动生成只读数值库 SO）
 - **工作表（21 张）**：单位、建筑、普通卡池、战术卡、天赋卡、天赋抽卡规则、探索奖励配置、探索奖励池、地图资源、地图资源全局、地图地貌、地图地貌全局、公共建筑、经济配置、游戏流程配置、AI 配置、战斗公式、地图生成参数、核心玩法配置、表现配置、山体配置。
 - **生成目录**：`Assets/GameConfig/Generated/` 下每张表一个 `*Database.asset`（如 `UnitBalanceDatabase.asset`、`NormalCardPoolDatabase.asset`、`ExplorationRewardPoolDatabase.asset`），由导入器全量重建，Inspector 标注「自动生成，禁止手改」。
 - **校验**：`Tools/游戏配置/仅校验` 输出校验报告；导出器 `--strict` 与 Unity 导入器做跨表引用/必填/枚举/主键唯一/总权重>0 等校验；运行时缺失配置抛 `InvalidOperationException`，不再静默回退。
+- **表内注释**：首列以 `//` 开头的整行会被导出器跳过，可放在任意位置（数据行之间、表尾）用于写备注；`//` 只在首列生效。第 2 行的 `#字段说明` 行同样跳过。注意**空行不是表结束标记**——导出器读到工作表最后一行，空行之后的内容仍会被解析，所以表尾备注必须写成 `//` 开头，否则会当成数据行报一堆「必填字段为空」。
 - **确定性**：相同 Excel 输入生成字节级一致的 CSV/JSON/SO；`game-config.manifest.json` 记录 schema 版本、工作簿 SHA-256 与各表行数。
 - **运行时不读 Excel/CSV/JSON**：Player 只读场景绑定的生成 SO。
 

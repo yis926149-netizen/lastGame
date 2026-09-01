@@ -141,6 +141,9 @@ public class GameInstaller : MonoInstaller
         // NonLazy：该 Presenter 只订阅广播、无其他消费者注入它，若不 NonLazy 则 FromComponentInHierarchy 懒解析、
         // Construct 永不执行、_broadcastSource/_gameLoop 保持 null，飞币静默不播（与暂停语义一起难排查）。
         Container.Bind<ExplorationCoinFlyPresenter>().FromComponentInHierarchy().AsSingle().NonLazy();
+        // 同上：增量拖尾飞入由业务侧直接调用触发，但 GameLoop 靠 Construct 注入；不 NonLazy 则暂停语义失效
+        // （GameLoop 为 null 时回退 Time.time，暂停时动画照跑）。
+        Container.Bind<IncrementTrailFlyPresenter>().FromComponentInHierarchy().AsSingle().NonLazy();
 
         // UI
 
@@ -433,6 +436,7 @@ public class GameInstaller : MonoInstaller
         AddMissingInScene<ExplorationPillarPool>(missing);
         AddMissingInScene<ExplorationCoinPresenter>(missing);
         AddMissingInScene<ExplorationCoinFlyPresenter>(missing);
+        AddMissingInScene<IncrementTrailFlyPresenter>(missing);
 
         if (missing.Count > 0)
         {
@@ -467,6 +471,10 @@ public class GameInstaller : MonoInstaller
                 presenter.enabled = true;
             }
             foreach (ExplorationCoinFlyPresenter presenter in root.GetComponentsInChildren<ExplorationCoinFlyPresenter>(true))
+            {
+                presenter.enabled = true;
+            }
+            foreach (IncrementTrailFlyPresenter presenter in root.GetComponentsInChildren<IncrementTrailFlyPresenter>(true))
             {
                 presenter.enabled = true;
             }

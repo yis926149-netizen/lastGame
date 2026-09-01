@@ -80,6 +80,10 @@ public static class WorkbookReader
             if (IsFieldNoteRow(xrow))
                 continue;
 
+            // 跳过注释行（首列以 // 开头）
+            if (IsCommentRow(xrow))
+                continue;
+
             var row = new RawRow { RowNumber = xrow.RowNumber };
             var hasAnyContent = false;
             for (var c = 1; c <= table.Columns.Count; c++)
@@ -120,6 +124,14 @@ public static class WorkbookReader
     {
         if (row.Cells.TryGetValue(1, out var first) && first.Value is string s)
             return s.TrimStart().StartsWith(SheetMarkers.FieldNoteRow, System.StringComparison.Ordinal);
+        return false;
+    }
+
+    /// <summary>判断某行是否为注释行（首列以 // 开头）。</summary>
+    private static bool IsCommentRow(XlsxRow row)
+    {
+        if (row.Cells.TryGetValue(1, out var first) && first.Value is string s)
+            return s.TrimStart().StartsWith(SheetMarkers.CommentRow, System.StringComparison.Ordinal);
         return false;
     }
 }

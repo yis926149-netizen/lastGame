@@ -43,6 +43,13 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     /// 该次点击只用于收起，不得再触发探索等游戏行为（探索消耗金币且不可撤销）。</summary>
     private bool _dismissedRaisedThisFrame;
 
+    /// <summary>已计算提起态放置范围的那张卡（快照去重）。无提起卡时为 null。</summary>
+    private CardController _lastRaisedPreviewCard;
+
+    /// <summary>提起态放置范围（纯逻辑快照）：可放置格与不可放置格。无提起卡时为空。</summary>
+    private readonly List<HexCellData> _raisedPlaceableCells = new List<HexCellData>();
+    private readonly List<HexCellData> _raisedUnplaceableCells = new List<HexCellData>();
+
     [Inject] private HexHighlightRenderer _hexHighlightRenderer;
 
     [Inject]
@@ -78,6 +85,7 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         _dismissedRaisedThisFrame = false;
         HandleCardDragging();
         HandleRaisedCardDismiss();
+        HandleRaisedCardPlacementPreview();
         HandleTileClickForExploration();
     }
 
@@ -178,14 +186,71 @@ public class PlayerInputHandler : ITickable, System.IDisposable
     }
 
     /// <summary>
-    /// 放置预览资格 = 该卡牌能否部署到该格（与确认路径共用同一规则）：
+    /// 统一"该卡能否部署到该格"资格查询（拖牌预览与提起态预览共用同一入口）：
     /// 普通卡 → CardPresenter.CanDeployTo（内部含地形/归属/后勤等，归属即隐含“已探索”）；
     /// 战术卡 → TacticalCardPresenter.CanDeployTo（任意有效地图格均可）。
     /// </summary>
+    private static bool CanDeployToCell(ICardDropHandler dropHandler, CardData cardData, HexCellData cell)
+    {
+        return cell != null && dropHandler != null && dropHandler.CanDeployTo(cardData, cell);
+    }
+
+    /// <summary>拖牌悬停格的放置预览资格（复用 CanDeployToCell 统一规则）。</summary>
     private bool CanHighlightCellForCard(HexCellData cell)
     {
-        if (cell == null || _draggingDropHandler == null) return false;
-        return _draggingDropHandler.CanDeployTo(_draggingCardData, cell);
+        return CanDeployToCell(_draggingDropHandler, _draggingCardData, cell);
+    }
+
+    // ---------- 提起态放置范围（纯逻辑，无任何视觉） ----------
+
+    /// <summary>提起态放置范围快照（可放置格）。无提起卡或拖拽中为空；供后续视觉表达方案读取。</summary>
+    public IReadOnlyList<HexCellData> RaisedPlaceableCells => _raisedPlaceableCells;
+
+    /// <summary>提起态放置范围快照（不可放置格）。无提起卡或拖拽中为空；供后续视觉表达方案读取。</summary>
+    public IReadOnlyList<HexCellData> RaisedUnplaceableCells => _raisedUnplaceableCells;
+
+    /// <summary>
+    /// 【提起态放置范围·纯逻辑】卡牌提起时，把全图格按"该卡能否部署"分成可放置 / 不可放置两批，
+    /// 结果缓存到 RaisedPlaceableCells / RaisedUnplaceableCells，不产生任何视觉。
+    /// 与拖牌预览共用同一资格入口（CanDeployToCell → ICardDropHandler.CanDeployTo）。
+    /// 快照语义：只在"提起的卡发生变化"时重算；拖拽期间清空（提起态已让位于拖牌）。
+    /// </summary>
+    private void HandleRaisedCardPlacementPreview()
+    {
+        CardController raised = CardController.ActiveRaisedCard;
+
+        if (raised == null || raised.Data == null || raised.DropHandler == null || _isDraggingCard)
+        {
+            ClearRaisedCardPlacementPreview();
+            return;
+        }
+
+        if (raised == _lastRaisedPreviewCard) return;   // 同一张卡已计算，快照不变
+
+        _lastRaisedPreviewCard = raised;
+
+        List<HexCellData> allCells = _mapData.GetAllCells();
+        if (allCells == null)
+        {
+            ClearRaisedCardPlacementPreview();
+            return;
+        }
+
+        _raisedPlaceableCells.Clear();
+        _raisedUnplaceableCells.Clear();
+        foreach (HexCellData cell in allCells)
+        {
+            if (cell == null) continue;
+            if (CanDeployToCell(raised.DropHandler, raised.Data, cell)) _raisedPlaceableCells.Add(cell);
+            else _raisedUnplaceableCells.Add(cell);
+        }
+    }
+
+    private void ClearRaisedCardPlacementPreview()
+    {
+        _lastRaisedPreviewCard = null;
+        _raisedPlaceableCells.Clear();
+        _raisedUnplaceableCells.Clear();
     }
 
     // ---------- 空桩（外部调用点保留引用，不删调用方）----------

@@ -7,7 +7,7 @@ using UnityEngine.UI;
 /// （暂停语义统一走 GameLoop.GameTime，见 ExplorationCoinFlyPresenter）。
 /// 组件需手动挂载在 CoinUIPrefab 上（RectTransform + Image 为必需，CanvasGroup 缺失时自动补挂）。
 /// </summary>
-public class ExplorationFlyingCoinUI : MonoBehaviour
+public class ExplorationFlyingCoinUI : MonoBehaviour, IFlyingItemView
 {
 	/// <summary>金币 UI 的 RectTransform（由 Presenter 每帧写入 anchoredPosition / localScale）。</summary>
 	public RectTransform Rect { get; private set; }

@@ -1,0 +1,19 @@
+{
+    "name": "PSDImporterOverride",
+    "rootNamespace": "",
+    "references": [
+        "GUID:bcb706ca0f6dd48449aa27a93faa899c",
+        "GUID:73a61a380edacb34795f31a3ec21c2ef"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

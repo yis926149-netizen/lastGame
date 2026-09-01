@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using Zenject;
+using UIToolkitDemo;
 
 //****************************************
 // 功能说明：玩家阵营单位 Brain。

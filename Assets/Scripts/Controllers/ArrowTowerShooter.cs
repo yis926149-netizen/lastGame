@@ -230,6 +230,10 @@ public class ArrowTowerShooter : MonoBehaviour
                 _damageEventBroker.RaiseDamage(anchor, _damage, targetFaction: targetFaction);
             }
 
+            // 【受击反馈】发布受击事件：参数为受击对象根节点（target）
+            if (_damage > 0f && _damageEventBroker != null)
+                _damageEventBroker.RaiseHit(target);
+
             if (targetData.healthBar != null && targetData.unitData.hp > 0)
                 targetData.healthBar.value = Mathf.Max(0, targetData.currentHp / targetData.unitData.hp);
 

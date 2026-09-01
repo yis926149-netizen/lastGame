@@ -47,6 +47,10 @@ public class CombatResolver
             _damageEventBroker.RaiseDamage(GetDamageAnchor(target), damage,
                 targetFaction: target.unitMovementController != null ? target.unitMovementController.PlayerIndex : -1);
 
+        // 【受击反馈】发布受击事件：参数为受击对象根节点（model），表现层据此驱动作用于对象自身的反馈
+        if (damage > 0f)
+            _damageEventBroker.RaiseHit(target.model);
+
         // 同步血条
         if (target.healthBar != null && target.unitData != null && target.unitData.hp > 0)
         {
