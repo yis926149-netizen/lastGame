@@ -118,6 +118,23 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     /// <summary>上升途中放缩补间的句柄（Sequence 亦为 Tween），用于定点清理（避免误杀入场/发牌缩放补间）。</summary>
     private Tween _raisePopTween;
 
+    // ===== 提起态边缘流光（CardEdgeFlow.shader）=====
+
+    /// <summary>流光总强度的材质属性 ID（_GlowMaster：0 = 全灭，1 = 全亮）。</summary>
+    private static readonly int GlowMasterID = Shader.PropertyToID("_GlowMaster");
+
+    /// <summary>本卡独占的材质实例。共享材质会让所有卡牌一起亮，必须每卡克隆一份。
+    /// 注意：这里不能用 MaterialPropertyBlock —— UGUI 的 Graphic 走 CanvasRenderer 合批，
+    /// 不读 MaterialPropertyBlock，属性不会生效。</summary>
+    private Material _glowMaterialInstance;
+
+    /// <summary>流光淡入淡出补间句柄，用于定点清理。</summary>
+    private Tween _glowTween;
+
+    /// <summary>流光淡入/淡出时长（秒）。淡入与提起上移同步，淡出略快，避免落下后余光滞留。</summary>
+    private const float GlowFadeInDuration = 0.18f;
+    private const float GlowFadeOutDuration = 0.12f;
+
     public static bool IsAnyCardDragging => _activeDraggingCard != null;
 
     /// <summary>
@@ -178,6 +195,12 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         }
 
         //_image.alphaHitTestMinimumThreshold = 0.01f;
+
+        // 流光初始必须是灭的。不能依赖材质资源里存的 _GlowMaster 值：
+        // 那是共享资源，任何人在 Inspector 里拖动滑条预览都会被持久化进 .mat，
+        // 导致开局所有卡牌常亮（直到被提起一次、由代码接管才恢复）。
+        EnsureGlowMaterial();
+        KillGlowImmediate();
     }
 
     public void SetData(CardData data, int placementID, Vector3 originPosition)
@@ -441,6 +464,8 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _isRaised = true;
         _activeRaisedCard = this;
 
+        SetGlow(true);
+
         Vector3 baseScale = _uiConfig.CardSize;
         Vector3 popScale = baseScale * (1f + RaisePopScale);
         Vector3 raisePos = _originPosition + new Vector3(0, UIScreenHelper.ReferenceHeight * RaiseOffsetRatio, 0);
@@ -473,6 +498,53 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
             _rectTransform.localScale = _uiConfig.CardSize;
     }
 
+    /// <summary>
+    /// 克隆本卡独占的材质实例（幂等）。在 Construct 中即调用一次，确保开局就把 _GlowMaster
+    /// 压成 0 —— 共享材质资源里存的值不可信（见 Construct 内注释）。
+    /// 预制体未挂流光材质（或挂的是别的 shader）时返回 false，调用方静默跳过。
+    /// </summary>
+    private bool EnsureGlowMaterial()
+    {
+        if (_glowMaterialInstance != null) return true;
+        if (_image == null || _image.material == null) return false;
+
+        // Image.material 默认返回内置的 Default UI Material，它没有 _GlowMaster；
+        // 用属性存在与否判断预制体是否真的挂了流光材质，避免误克隆默认材质。
+        if (!_image.material.HasProperty(GlowMasterID)) return false;
+
+        _glowMaterialInstance = new Material(_image.material);
+        _image.material = _glowMaterialInstance;
+        _glowMaterialInstance.SetFloat(GlowMasterID, 0f);
+        return true;
+    }
+
+    /// <summary>点亮/熄灭提起态边缘流光（幂等）。材质缺失时静默跳过，不影响提起动效本身。</summary>
+    private void SetGlow(bool on)
+    {
+        if (!EnsureGlowMaterial()) return;
+
+        _glowTween?.Kill();
+
+        float target = on ? 1f : 0f;
+        float duration = on ? GlowFadeInDuration : GlowFadeOutDuration;
+
+        _glowTween = DOTween
+            .To(() => _glowMaterialInstance.GetFloat(GlowMasterID),
+                v => _glowMaterialInstance.SetFloat(GlowMasterID, v),
+                target, duration)
+            .SetEase(on ? Ease.OutQuad : Ease.InQuad)
+            .OnComplete(() => _glowTween = null);
+    }
+
+    /// <summary>立即熄灭流光并杀掉补间，不播淡出。用于失活/销毁等"来不及淡出"的路径。</summary>
+    private void KillGlowImmediate()
+    {
+        _glowTween?.Kill();
+        _glowTween = null;
+        if (_glowMaterialInstance != null)
+            _glowMaterialInstance.SetFloat(GlowMasterID, 0f);
+    }
+
     /// <summary>退出提起态并回落原位。对外供 PlayerInputHandler 在"点击卡外"时调用。</summary>
     public void LowerCard()
     {
@@ -494,6 +566,9 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     {
         _isRaised = false;
         if (_activeRaisedCard == this) _activeRaisedCard = null;
+        // 挂在这里而非 LowerCard：拖拽/失活/买不起复位等路径只走本方法，
+        // 不播回落动画，若挂在 LowerCard 上这些路径的流光会一直亮着。
+        SetGlow(false);
     }
 
     /// <summary>
@@ -684,10 +759,25 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         // 卡牌打出后会被销毁：静态引用必须清掉，否则 PlayerInputHandler 会持有已销毁对象。
         ReleaseRaiseCapture();
         StopRaisePopAndResetScale();
+        // ReleaseRaiseCapture 会起一个淡出补间，但失活路径上没有下一帧可播；
+        // 直接掐掉，避免补间残留（实例复用时还会把上一次的淡出接着播完）。
+        KillGlowImmediate();
         // 下面的 DOKill 会跳过入场补间的 OnComplete，锁不会自行解开；
         // 若该实例被回收复用，残留的 true 会让它永远无法提起。
         IsTweening = false;
         _rectTransform?.DOKill();
+    }
+
+    /// <summary>克隆出来的材质实例不属于任何资源，必须手动销毁，否则每张卡牌泄漏一份。</summary>
+    private void OnDestroy()
+    {
+        _glowTween?.Kill();
+        _glowTween = null;
+        if (_glowMaterialInstance != null)
+        {
+            Destroy(_glowMaterialInstance);
+            _glowMaterialInstance = null;
+        }
     }
 
     private void ReleaseDragCapture()
