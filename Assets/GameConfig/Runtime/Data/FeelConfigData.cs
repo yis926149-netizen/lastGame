@@ -45,6 +45,18 @@ namespace GameConfig
         public float cardDragPreviewSnapDuration;
         public float cardDragPreviewAppearDuration;
 
+        // 落位拉伸（Squash & Stretch）：拉长峰值幅度（Y 拉长比例），0 = 关闭拉伸。
+        public float cardDragPreviewLandingStretch;
+
+        // 落位拉伸：拉长峰值位置（progress 0~1，峰值时刻）。
+        public float cardDragPreviewLandingStretchPeak;
+
+        // 落地压扁幅度（落地瞬间 Y 下压比例），0 = 关闭压扁。
+        public float cardDragPreviewLandingSquash;
+
+        // 额外下落高度（落位视觉起点整体抬高的世界 Y 量，延长落差），0 = 关闭。
+        public float cardDragPreviewLandingDropHeight;
+
         // 卡牌拖拽落点提示（落点图标与连线计划 §5.5）。
         public float cardDragTargetIconHeight;
         public float cardDragTargetIconScale;

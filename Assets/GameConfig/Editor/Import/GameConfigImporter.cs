@@ -824,8 +824,12 @@ namespace GameConfig.Editor
                     cardDragPreviewPadding = GetFloat(v, col, "cardDragPreviewPadding", 1.25f),
                     // ── 卡牌拖拽世界空间预览（改造计划 §7.1）──
                     cardDragPreviewHoverHeight = GetFloat(v, col, "cardDragPreviewHoverHeight", 1f),
-                    cardDragPreviewSnapDuration = GetFloat(v, col, "cardDragPreviewSnapDuration", 0.2f),
+                    cardDragPreviewSnapDuration = GetFloat(v, col, "cardDragPreviewSnapDuration", 1f),
                     cardDragPreviewAppearDuration = GetFloat(v, col, "cardDragPreviewAppearDuration", 0.08f),
+                    cardDragPreviewLandingStretch = GetFloat(v, col, "cardDragPreviewLandingStretch", 0.3f),
+                    cardDragPreviewLandingStretchPeak = GetFloat(v, col, "cardDragPreviewLandingStretchPeak", 0.4f),
+                    cardDragPreviewLandingSquash = GetFloat(v, col, "cardDragPreviewLandingSquash", 0.22f),
+                    cardDragPreviewLandingDropHeight = GetFloat(v, col, "cardDragPreviewLandingDropHeight", 0.4f),
                     // ── 卡牌拖拽落点提示（落点图标与连线计划 §5.5）──
                     cardDragTargetIconHeight = GetFloat(v, col, "cardDragTargetIconHeight", 3.5f),
                     cardDragTargetIconScale = GetFloat(v, col, "cardDragTargetIconScale", 1f),

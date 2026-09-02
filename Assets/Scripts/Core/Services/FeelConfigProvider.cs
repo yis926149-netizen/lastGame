@@ -43,6 +43,18 @@ public static class FeelConfigProvider
     public static float CardDragPreviewSnapDuration => Config.cardDragPreviewSnapDuration;
     public static float CardDragPreviewAppearDuration => Config.cardDragPreviewAppearDuration;
 
+    // 落位拉伸（Squash & Stretch）：拉长峰值幅度。
+    public static float CardDragPreviewLandingStretch => Config.cardDragPreviewLandingStretch;
+
+    // 落位拉伸：拉长峰值位置（progress 0~1）。
+    public static float CardDragPreviewLandingStretchPeak => Config.cardDragPreviewLandingStretchPeak;
+
+    // 落地压扁幅度。
+    public static float CardDragPreviewLandingSquash => Config.cardDragPreviewLandingSquash;
+
+    // 额外下落高度（延长落差）。
+    public static float CardDragPreviewLandingDropHeight => Config.cardDragPreviewLandingDropHeight;
+
     // 卡牌拖拽落点提示（落点图标与连线计划 §5.5）。
     public static float CardDragTargetIconHeight => Config.cardDragTargetIconHeight;
     public static float CardDragTargetIconScale => Config.cardDragTargetIconScale;

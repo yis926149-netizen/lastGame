@@ -291,7 +291,8 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
             CardDragPreviewUtils.RestoreForDeployment(instance, dragState);
         }
 
-        // 落位补间起点 = 松手瞬间的悬停位置（含 hoverHeight）。
+        // 松手瞬间的悬停位置（含 hoverHeight）。方案一：PlayLanding 以终点正上方为起点做纯垂直下落，
+        // 不再使用此值；这里仅为兼容保留（未来若改回两阶段落位可复用）。
         Vector3 releaseHoverPos = instance != null ? instance.transform.position : releaseWorldPos;
 
         bool spawned;
@@ -314,13 +315,10 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
             return false;
         }
 
-        if (instance != null)
-        {
-            // 补间终点 = 生成后的实际位置（单位可能被 TryClaimStandingUnit 二次吸附到站位槽，
-            // 不一定是格心）；把位置拨回释放悬停点，再交控制器补间回终点。
-            // 逻辑状态从第 0 帧起就是「已落地」，只有画面在飞。
-            instance.transform.position = releaseHoverPos;
-        }
+        // 补间终点由 PlayLanding 内部读取（生成后的实际位置：单位可能被 TryClaimStandingUnit
+        // 二次吸附到站位槽，不一定是格心）；PlayLanding 以终点正上方为起点做纯垂直下落。
+        // 这里不得提前复位 position，否则 PlayLanding 读到的终点会退化成悬停点、落位补间变成原地不动。
+        // 逻辑状态从第 0 帧起就是「已落地」，只有画面在飞。
 
         ConsumePlayedCard(view);
 

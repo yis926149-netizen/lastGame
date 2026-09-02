@@ -45,6 +45,13 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
     private float _landingStartTime;
     private System.Action _landingOnComplete;
 
+    // ── 落位拉伸（Squash & Stretch，方案 B：缩放视觉子节点而非 root）──
+    private Transform _stretchVisualRoot;   // 视觉子节点（ResolveVisualRoot 定位；null = 不拉伸）
+    private Vector3 _stretchBaseScale;      // 视觉子节点基线 localScale
+    private float _stretchBaseLocalY;       // 视觉子节点基线 localPosition.y
+    private float _stretchBottomLocalY;     // 视觉子节点局部空间底部 Y（底锚点，仅子节点时使用）
+    private bool _stretchAnchorEnabled;     // 视觉根是实例子节点时做顶锚点补偿；等于实例根时仅缩放
+
     private bool _isDisposed;
 
     public CardDragWorldPreviewController(IMapRaycastService mapRaycast, GameLoop gameLoop)
@@ -125,9 +132,10 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
     }
 
     /// <summary>
-    /// 播放落位补间（纯视觉）：终点取当前实际位置（生成后读，单位可能已被站位槽二次吸附），
-    /// 把位置拨回释放悬停点后按 GameTime 增量补间回去。补间期间冻结单位 brain，
-    /// 补间结束恢复为 GameLoop.IsPaused（不无条件写 false，防止暂停中落地被解冻）。
+    /// 播放落位补间（纯视觉）：终点取当前实际位置（生成后读，单位可能已被站位槽二次吸附）。
+    /// 起点取终点正上方（X/Z 对齐终点、Y = 终点 Y + 悬停高度 + 延长落差），做纯垂直下落，
+    /// 避免松手触点与目标槽位不在同一条竖线上造成的水平位移。
+    /// 补间期间冻结单位 brain，补间结束恢复为 GameLoop.IsPaused（不无条件写 false，防止暂停中落地被解冻）。
     /// </summary>
     public void PlayLanding(GameObject instance, Vector3 fromPos, System.Action onComplete)
     {
@@ -135,27 +143,32 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
 
         KillLandingDriver();
 
+        // 方案一：纯垂直下落。起点取终点正上方，忽略松手触点 X/Z（屏幕空间触点不在地块正上方，
+        // 用它会带进水平位移）；起始高度 = 终点 Y + 基础悬停高度 + 延长落差。
+        // 终点仍读自「生成后的实际位置」，最终落点不变，只有下落距离被拉长。
         Vector3 endPos = instance.transform.position;
-        instance.transform.position = fromPos;
+        float hoverHeight = Mathf.Max(0f, FeelConfigProvider.CardDragPreviewHoverHeight);
+        Vector3 startPos = new Vector3(endPos.x, endPos.y + hoverHeight + LandingDropHeight, endPos.z);
+        instance.transform.position = startPos;
 
         // 单位落地即注册了 brain，下一帧就可能决策并改写 transform.position；
         // 补间期间冻结，恢复时机见 FinishLanding。
         UnitBrainBase brain = instance.GetComponentInChildren<UnitBrainBase>(true);
         if (brain != null) brain.IsPaused = true;
 
-        float duration = Mathf.Max(0.0001f, FeelConfigProvider.CardDragPreviewSnapDuration);
+        PrepareLandingStretch(instance);
 
         _landingInstance = instance;
         _landingBrain = brain;
-        _landingFrom = fromPos;
+        _landingFrom = startPos;
         _landingTo = endPos;
-        _landingDuration = duration;
+        _landingDuration = LandingDuration;
         _landingStartTime = Time.unscaledTime;
         _landingOnComplete = onComplete;
 
         // 进度由 unscaledTime 增量驱动（不受暂停/速度档位影响，暂停出牌也播完落位）；
         // driver 只承载每帧 OnUpdate；SetLoops(-1) 永不自然结束。
-        _landingDriver = DOTween.To(() => 0f, _ => { }, 1f, duration)
+        _landingDriver = DOTween.To(() => 0f, _ => { }, 1f, LandingDuration)
             .SetEase(Ease.Linear)
             .SetLoops(-1)
             .OnUpdate(UpdateLanding);
@@ -242,6 +255,19 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         if (_mapRaycast.RaycastMap(logicPosition, out RaycastHit hit, RaycastMaxDistance))
         {
             _lastHoverPosition = hit.point + Vector3.up * Mathf.Max(0f, FeelConfigProvider.CardDragPreviewHoverHeight);
+
+            // 建筑统一吸附到所属地块中心：无论射线命中地块内哪个位置（槽位），
+            // 预览都钉在格心，松手后也落在格心（与 SpawnBuilding 的 targetCell.RealCenterWorldCoordinate 一致）。
+            ICardView cardView = _token as ICardView;
+            if (cardView != null && cardView.Data?.NormalCardConfig is BuildingConfigSO)
+            {
+                HexCellData cell = _mapRaycast.GetCellByWorldPosition(hit.point);
+                if (cell != null)
+                {
+                    _lastHoverPosition = cell.RealCenterWorldCoordinate
+                        + Vector3.up * Mathf.Max(0f, FeelConfigProvider.CardDragPreviewHoverHeight);
+                }
+            }
         }
 
         _instance.transform.position = _lastHoverPosition;
@@ -259,8 +285,19 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         float elapsed = current - _landingStartTime;
         if (elapsed < 0f) return;
 
+        // 滞空段：停在起始高度不动，也不施加拉伸（进度按 0 计算，包络两端均为 0）。
+        // 下坠计时从滞空结束才开始，故整段总时长 = LandingHangTime + LandingDuration。
+        elapsed -= LandingHangTime;
+        if (elapsed < 0f)
+        {
+            _landingInstance.transform.position = _landingFrom;
+            ApplyLandingStretch(0f);
+            return;
+        }
+
         float progress = Mathf.Clamp01(elapsed / _landingDuration);
-        _landingInstance.transform.position = Vector3.Lerp(_landingFrom, _landingTo, EaseOutCubic(progress));
+        _landingInstance.transform.position = Vector3.LerpUnclamped(_landingFrom, _landingTo, FallCurve(progress));
+        ApplyLandingStretch(progress);
 
         if (progress >= 1f) FinishLanding();
     }
@@ -284,6 +321,8 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         if (instance != null)
             instance.transform.position = _landingTo;
 
+        ResetLandingStretch();
+
         // 补间结束：恢复为全局暂停状态（不能无条件写 false，否则暂停中落地会被解冻）。
         if (brain != null && _gameLoop != null)
             brain.IsPaused = _gameLoop.IsPaused;
@@ -301,6 +340,8 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         _landingInstance = null;
         _landingBrain = null;
         _landingOnComplete = null;
+
+        ResetLandingStretch();
     }
 
     private void DestroyHeldInstance()
@@ -325,9 +366,199 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         return t * t * (3f - 2f * t);
     }
 
-    private static float EaseOutCubic(float t)
+    // ── 落位拉伸（Squash & Stretch，方案 B：只缩放视觉子节点，不碰血条 Canvas 与 root 位移补间）──
+
+    /// <summary>落位开始时解析视觉子节点并缓存拉伸基线。</summary>
+    private void PrepareLandingStretch(GameObject instance)
     {
-        float u = 1f - t;
-        return 1f - u * u * u;
+        _stretchVisualRoot = ResolveVisualRoot(instance);
+        _stretchAnchorEnabled = false;
+
+        if (_stretchVisualRoot == null) return;
+
+        _stretchBaseScale = _stretchVisualRoot.localScale;
+        _stretchBaseLocalY = _stretchVisualRoot.localPosition.y;
+        _stretchAnchorEnabled = _stretchVisualRoot != instance.transform;
+        _stretchBottomLocalY = ComputeVisualBottomLocalY(_stretchVisualRoot);
+    }
+
+    /// <summary>
+    /// 定位「视觉子节点」：网格在根上（当前建筑）→ 根；否则取「非 UI 且子树含 3D 网格」的直接子节点（单位：model）。
+    /// 不靠名字（实测 model/Canvas/默认名不一致），按结构启发式。
+    /// </summary>
+    private static Transform ResolveVisualRoot(GameObject instance)
+    {
+        Transform root = instance != null ? instance.transform : null;
+        if (root == null) return null;
+
+        if (HasOwnMeshRenderer(root)) return root;
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform child = root.GetChild(i);
+            if (child == null) continue;
+            if (ContainsCanvas(child)) continue;
+            if (HasMeshInSubtree(child)) return child;
+        }
+
+        return root;
+    }
+
+    private static bool HasOwnMeshRenderer(Transform t)
+    {
+        if (t == null) return false;
+        return t.GetComponent<MeshRenderer>() != null || t.GetComponent<SkinnedMeshRenderer>() != null;
+    }
+
+    private static bool HasMeshInSubtree(Transform t)
+    {
+        if (t == null) return false;
+        if (HasOwnMeshRenderer(t)) return true;
+        if (t.GetComponentInChildren<MeshRenderer>(true) != null) return true;
+        if (t.GetComponentInChildren<SkinnedMeshRenderer>(true) != null) return true;
+        return false;
+    }
+
+    private static bool ContainsCanvas(Transform t)
+    {
+        if (t == null) return false;
+        return t.GetComponent<Canvas>() != null || t.GetComponentInChildren<Canvas>(true) != null;
+    }
+
+    /// <summary>视觉子节点局部空间底部 Y（底锚点）：由 3D 网格世界包围盒底反算，自动吸收嵌套缩放。</summary>
+    private static float ComputeVisualBottomLocalY(Transform visualRoot)
+    {
+        if (visualRoot == null) return 0f;
+
+        bool hasBounds = false;
+        Bounds combined = default;
+        Renderer[] renderers = visualRoot.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer r = renderers[i];
+            if (r == null) continue;
+            if (!(r is MeshRenderer || r is SkinnedMeshRenderer)) continue; // 排除粒子/拖尾/UI
+            if (!hasBounds) { combined = r.bounds; hasBounds = true; }
+            else combined.Encapsulate(r.bounds);
+        }
+
+        if (!hasBounds) return 0f;
+
+        Vector3 bottomWorld = new Vector3(visualRoot.position.x, combined.min.y, visualRoot.position.z);
+        return visualRoot.InverseTransformPoint(bottomWorld).y;
+    }
+
+    /// <summary>
+    /// 按落位进度施加「先拉长 → 落地压扁 → 弹回」包络：
+    /// 拉伸为钟形（峰值位置可调），压扁 + 弹回为尾部阻尼振荡；Y 与 XZ 按体积守恒反向缩放。
+    /// 以脚底为锚：拉伸只往上长、压扁只往下塌，视觉根永不被推到地面以下。
+    /// （延长落差已由 PlayLanding 抬高视觉起点实现，不在此处逐帧叠加。）
+    /// </summary>
+    private void ApplyLandingStretch(float progress)
+    {
+        if (_stretchVisualRoot == null) return;
+
+        float t = Mathf.Clamp01(progress);
+        float stretchY = 1f + LandingStretchAmp * StretchBump(t, LandingStretchPeak);
+        float squashY = 1f - LandingSquashAmp * SquashBounce(t);
+        float k = stretchY * squashY;
+        float sxz = 1f / Mathf.Sqrt(Mathf.Max(0.0001f, k));
+
+        _stretchVisualRoot.localScale = new Vector3(
+            _stretchBaseScale.x * sxz,
+            _stretchBaseScale.y * k,
+            _stretchBaseScale.z * sxz);
+
+        if (_stretchAnchorEnabled)
+        {
+            // 底锚点：脚底始终钉在原地。缩放 k 会把底部推到 bottomLocalY * k，
+            // 反向补偿 bottomLocalY * (1 - k) 抵消它——拉伸只往上长，压扁只往下塌，绝不入地。
+            Vector3 lp = _stretchVisualRoot.localPosition;
+            lp.y = _stretchBaseLocalY + _stretchBottomLocalY * (1f - k);
+            _stretchVisualRoot.localPosition = lp;
+        }
+    }
+
+    /// <summary>拉伸钟形包络：峰值位置 peak 可调，两端为 0、峰值为 1。</summary>
+    private static float StretchBump(float t, float peak)
+    {
+        float u = t <= peak
+            ? 0.5f * (t / peak)
+            : 0.5f + 0.5f * ((t - peak) / (1f - peak));
+        return Mathf.Sin(Mathf.PI * u);
+    }
+
+    /// <summary>落地撞击时刻（progress）。下落与压扁共用，保证「贴地」与「压扁」同帧发生。</summary>
+    private const float LandingImpactProgress = 0.7f;
+
+    // ── 落位手感（硬编码，不走配置表）────────────────────────────
+    // 表现配置表缺列，这几项此前一直在吃 GameConfigImporter 的硬编码默认值，
+    // 语义上从未真正可配；索性显式写在这里，改手感只改这一处。
+    // hoverHeight 不在此列——它同时被持握吸附与落点图标读取，仍走 FeelConfigProvider。
+
+    /// <summary>额外下落高度（世界单位）。总落差 = hoverHeight + 本值。</summary>
+    private const float LandingDropHeight = 3f;
+
+    /// <summary>落位补间时长（秒）。与总落差配套：落差变则须同调，否则撞击速度失真。</summary>
+    private const float LandingDuration = 0.38f;
+
+    /// <summary>松手后的滞空时长（秒）。模型悬在起始高度不动，随后才开始下坠。</summary>
+    private const float LandingHangTime = 0.3f;
+
+    /// <summary>拉伸峰值位置（progress 0~1）。紧贴 LandingImpactProgress 之前，速度最大处最长。</summary>
+    private const float LandingStretchPeak = 0.6f;
+
+    /// <summary>落位拉伸幅度（Y 方向最大拉长比例）。</summary>
+    private const float LandingStretchAmp = 0.3f;
+
+    /// <summary>落地压扁幅度（撞击瞬间 Y 方向最大压缩比例）。</summary>
+    private const float LandingSquashAmp = 0.22f;
+
+    /// <summary>落地压扁 + 弹回：撞击后阻尼振荡（压扁 → 轻微过冲弹回 → 归位）。</summary>
+    private static float SquashBounce(float t)
+    {
+        const float damp = 2f;       // 阻尼，越大弹回越快、过冲越小
+        float w = (t - LandingImpactProgress) / (1f - LandingImpactProgress);
+        if (w <= 0f) return 0f;
+        if (w >= 1f) w = 1f;
+        return Mathf.Sin(Mathf.PI * 2f * w) * Mathf.Exp(-damp * w);
+    }
+
+    /// <summary>复位拉伸到 prefab 原样；底锚点补偿仅当视觉根是子节点时回写（等于实例根时只还原缩放，不碰位移）。</summary>
+    private void ResetLandingStretch()
+    {
+        if (_stretchVisualRoot != null)
+        {
+            _stretchVisualRoot.localScale = _stretchBaseScale;
+            if (_stretchAnchorEnabled)
+            {
+                Vector3 lp = _stretchVisualRoot.localPosition;
+                lp.y = _stretchBaseLocalY;
+                _stretchVisualRoot.localPosition = lp;
+            }
+        }
+
+        _stretchVisualRoot = null;
+        _stretchAnchorEnabled = false;
+    }
+
+    /// <summary>
+    /// 下落位移曲线（返回 0→1 的行程比例，允许 &gt;1 的弹起过冲）：
+    /// [0, LandingImpactProgress] 重力加速段 t²（先慢后快，落地瞬间速度最大）；
+    /// 之后落点已到，做一次快速衰减的小弹跳（向上为负超出，故用 1 - 微小正弦）。
+    /// 与 SquashBounce 共用同一撞击时刻，画面上「贴地 = 压扁 = 弹起」发生在同一帧。
+    /// </summary>
+    private static float FallCurve(float t)
+    {
+        if (t <= LandingImpactProgress)
+        {
+            float u = t / LandingImpactProgress;
+            return u * u;
+        }
+
+        const float bounceHeight = 0.06f;   // 弹起高度（占总落差比例）
+        const float damp = 3.5f;
+        float w = (t - LandingImpactProgress) / (1f - LandingImpactProgress);
+        return 1f - bounceHeight * Mathf.Sin(Mathf.PI * w) * Mathf.Exp(-damp * w);
     }
 }

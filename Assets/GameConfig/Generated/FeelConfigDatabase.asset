@@ -30,8 +30,12 @@ MonoBehaviour:
     cardDragPreviewCameraDistance: 10
     cardDragPreviewPadding: 1.25
     cardDragPreviewHoverHeight: 1
-    cardDragPreviewSnapDuration: 0.2
+    cardDragPreviewSnapDuration: 1
     cardDragPreviewAppearDuration: 0.08
+    cardDragPreviewLandingStretch: 0.3
+    cardDragPreviewLandingStretchPeak: 0.4
+    cardDragPreviewLandingSquash: 0.22
+    cardDragPreviewLandingDropHeight: 0.4
     cardDragTargetIconHeight: 3.5
     cardDragTargetIconScale: 1
     cardDragLinkWidth: 6
