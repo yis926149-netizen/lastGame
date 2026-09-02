@@ -8,5 +8,8 @@ public enum ExplorationEffectStyle
 	PillarRise,
 
 	/// <summary>方案二：六边形飞盘从地下弹出 → 上抛翻转 → 下坠撞击 → 势力范围扩散环。</summary>
-	DiskSmash
+	DiskSmash,
+
+	/// <summary>无特效：不播放任何探索动画，探索奖励立即触发。</summary>
+	None
 }

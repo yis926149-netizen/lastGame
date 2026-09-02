@@ -109,6 +109,15 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     /// <summary>提起态上移量（Canvas 参考高度比例），与原悬浮上移保持一致。</summary>
     private const float RaiseOffsetRatio = 0.025f;
 
+    /// <summary>提起态上移时长（秒）。上移与放缩共用同一时长，保证到顶时放缩恰好结束。</summary>
+    private const float RaiseDuration = 0.2f;
+
+    /// <summary>上升途中放缩幅度：放大目标 = 原始尺寸 × (1 + RaisePopScale)。</summary>
+    private const float RaisePopScale = 0.10f;
+
+    /// <summary>上升途中放缩补间的句柄（Sequence 亦为 Tween），用于定点清理（避免误杀入场/发牌缩放补间）。</summary>
+    private Tween _raisePopTween;
+
     public static bool IsAnyCardDragging => _activeDraggingCard != null;
 
     /// <summary>
@@ -263,6 +272,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
                 // 提起态下金币掉到买不起：视觉在此统一回落，故只清标志不再播一次回落 tween，
                 // 否则状态与视觉会脱节（标志仍是 Raised，PlayerInputHandler 会继续等一次卡外点击）。
                 ReleaseRaiseCapture();
+                StopRaisePopAndResetScale();
                 // 只复位位置，不清除缩放 Tween：金币状态刷新不应打断发牌/入手的缩放动画。
                 _rectTransform.DOAnchorPos(_originPosition, 0.2f);
             }
@@ -363,6 +373,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     {
         // DOKill 会跳过补间的 OnComplete，入场锁不会自行解开；
         // 拖拽取消回到原位时卡牌本就该恢复可交互，在此显式解锁。
+        StopRaisePopAndResetScale();
         IsTweening = false;
         _rectTransform.DOKill();
         _rectTransform.DOAnchorPos(_originPosition, 0.2f);
@@ -430,9 +441,36 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _isRaised = true;
         _activeRaisedCard = this;
 
+        Vector3 baseScale = _uiConfig.CardSize;
+        Vector3 popScale = baseScale * (1f + RaisePopScale);
+        Vector3 raisePos = _originPosition + new Vector3(0, UIScreenHelper.ReferenceHeight * RaiseOffsetRatio, 0);
+
         _rectTransform.DOKill();
-        _rectTransform.DOAnchorPos(
-            _originPosition + new Vector3(0, UIScreenHelper.ReferenceHeight * RaiseOffsetRatio, 0), 0.2f);
+
+        // 先快后慢：OutCubic 减速上浮，全程 RaiseDuration。
+        _rectTransform
+            .DOAnchorPos(raisePos, RaiseDuration)
+            .SetEase(Ease.OutCubic);
+
+        // 上升途中放缩：100% → 110% → 100%，同样持续 RaiseDuration，与上移同起点、同终点，
+        // 到顶时恰好放缩结束。前半放大、后半回落，各占一半时长。
+        float half = RaiseDuration / 2f;
+        _raisePopTween = DOTween.Sequence()
+            .Append(_rectTransform.DOScale(popScale, half).SetEase(Ease.OutQuad))
+            .Append(_rectTransform.DOScale(baseScale, half).SetEase(Ease.OutCubic))
+            .OnComplete(() => _raisePopTween = null);
+    }
+
+    /// <summary>停止上升途中放缩并复位到原始尺寸（幂等）。所有结束提起态的路径统一调用。</summary>
+    private void StopRaisePopAndResetScale()
+    {
+        if (_raisePopTween != null)
+        {
+            _raisePopTween.Kill();
+            _raisePopTween = null;
+        }
+        if (_rectTransform != null && _uiConfig != null)
+            _rectTransform.localScale = _uiConfig.CardSize;
     }
 
     /// <summary>退出提起态并回落原位。对外供 PlayerInputHandler 在"点击卡外"时调用。</summary>
@@ -441,6 +479,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         if (!_isRaised) return;
 
         ReleaseRaiseCapture();
+        StopRaisePopAndResetScale();
 
         _rectTransform.DOKill();
         _rectTransform.DOAnchorPos(_originPosition, 0.2f);
@@ -510,6 +549,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         // OnDragUpdate 会逐帧直写 anchoredPosition，未播完的 tween 会与之争抢位置；
         // 且进度基准是 _originPosition，视觉起点若停在 +0.025H 会让缩放/淡出进度从非 0 跳变。
         // 这里不播回落动画——下一帧拖拽立即接管位置。
+        StopRaisePopAndResetScale();
         _rectTransform.DOKill();
         ReleaseRaiseCapture();
 
@@ -643,6 +683,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         ReleaseDragCapture();
         // 卡牌打出后会被销毁：静态引用必须清掉，否则 PlayerInputHandler 会持有已销毁对象。
         ReleaseRaiseCapture();
+        StopRaisePopAndResetScale();
         // 下面的 DOKill 会跳过入场补间的 OnComplete，锁不会自行解开；
         // 若该实例被回收复用，残留的 true 会让它永远无法提起。
         IsTweening = false;

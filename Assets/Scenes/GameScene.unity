@@ -2751,7 +2751,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68668365c862ade4bada9f7696117835, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _effectStyle: 1
+  _effectStyle: 2
   _pillarPrefab: {fileID: 595379655394747856, guid: 72f5a28023237f6499b93fe225a5f1af, type: 3}
   _diskPrefab: {fileID: 3994623197851806591, guid: 4261ba57285d3464ebb5f96d409c3e84, type: 3}
   _initialPoolSize: 5
@@ -4645,6 +4645,29 @@ MonoBehaviour:
   _mapLandFormDatabaseSO: {fileID: 11400000, guid: 3760f0f9ca8c4482bdf979b2841c527b, type: 2}
   _cardDragTargetIconPrefab: {fileID: 0}
   _cardDragLinkPrefab: {fileID: 0}
+  _placementMaskSettings:
+    ShowUnplaceableMask: 1
+    ShowPlaceableMask: 1
+    UnplaceableFillColor: {r: 0.9811321, g: 0.30806997, b: 0.28230685, a: 0.31764707}
+    UnplaceableStrokeColor: {r: 0.7264151, g: 0.06149545, b: 0, a: 1}
+    PlaceableFillColor: {r: 0.0990566, g: 1, b: 0.22837858, a: 0.4}
+    PlaceableStrokeColor: {r: 0.15970986, g: 0.9150943, b: 0.2341844, a: 1}
+    StrokeHalfWidth: 5
+    StrokeCoreRatio: 0.8
+    SimplifyEpsilonInR: 0.6
+    CornerRadiusInR: 1.5
+    CornerSegments: 1
+    MergeEpsilonLocal: 0.5
+    UnplaceableShadow:
+      Offset: 6
+      DirDeg: 270
+      Tint: {r: 0.20754719, g: 0.027659738, b: 0.02055892, a: 1}
+    PlaceableShadow:
+      Offset: 6
+      DirDeg: 270
+      Tint: {r: 0.0240299, g: 0.33962262, b: 0.059095774, a: 1}
+    CamMoveSqrThreshold: 0.01
+    CamRotThresholdDeg: 0.1
 --- !u!114 &617994631
 MonoBehaviour:
   m_ObjectHideFlags: 0

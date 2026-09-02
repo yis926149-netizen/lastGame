@@ -5,55 +5,119 @@ using Zenject;
 namespace UI.PlacementMask
 {
     //****************************************
-    // 不可放置区域红色遮罩 · 主控组件（屏幕空间 UI 遮罩，实现方案 §4/§5）。
+    // 提起态·不可放置（红）+ 可放置（绿）双遮罩 · 主控组件（屏幕空间 UI 遮罩）。
     //
-    // 流程（每次「提起卡变化」或「相机变换」触发重建）：
-    //   1) 读取 PlayerInputHandler.RaisedUnplaceableCells（不重写放置判定）；
-    //   2) 过滤有效山格（MountainCellRule.IsEffectiveMountainCell，对齐现有高亮门禁）；
-    //   3) 按六方向邻接分连通区域（方向索引 0..5，不含 None）；
-    //   4) 每区域用邻接边界求世界空间外轮廓 → Catmull-Rom 平滑 → 去自交预警 → Ear Clipping；
-    //   5) 轮廓顶点 Camera.main.WorldToScreenPoint（剔除 z<0 背面点）→ Canvas 本地坐标；
-    //   6) 每区域一张 PlacementRangeMaskGraphic 半透明红多边形。
+    // 【路线三·拓扑级并集轮廓】流程（红/绿各走一遍，共享同一刷新触发与全部拟合参数；
+    //  仅配色与「立体感阴影线」参数红绿各持一份）：
+    //   1) 读 PlayerInputHandler.RaisedUnplaceableCells / RaisedPlaceableCells（不重写放置判定）。
+    //      不可放置快照已把整片山脉算入：CanBuildOnCell/CanSpawnUnitOnCell 拒绝非清除山格，
+    //      故山脉自然落入不可放置集，这里**不再过滤山格**。
+    //      （可放置与不可放置是同一二分的互补：一次遍历同时重算，值互斥、并集=全图。）
+    //   2) PlacementMaskTopology.Build：立方坐标角点身份 → 去重顶点 + 边界闭环；
+    //   3) 每条闭环：世界空间简化 + 圆角 → 投屏 → 去重，得到一批「处理后闭环」；
+    //   4) 填充层与描边层**都吃这同一批闭环**：填充走扫描线偶奇填充，描边走羽化缎带。
     //
-    // 刷新策略：透视相机，监听 Camera.main.transform（position + rotation）超阈值才重建，
-    //   避免每帧重投影；卡牌落下/拖拽/无提起卡时清空。
+    // 【填充与描边必须同源】
+    // 早期填充走的是 topo 的原始六边形角点逐格扇形三角化，与描边那条「简化+圆角」后的路径
+    // 是两套几何：凹口处描边被切到填充之外 → 线内侧露白；凸角处圆角切角 → 填充溢出线外。
+    // 偏移量可达大半个格，远超描边半宽，调粗线盖不住。故填充改为共用处理后闭环
+    //（PlacementMaskFill），两层逐点重合，任何拟合参数下都严丝合缝。
+    //
+    // 视觉分工：红为全图口径（582/598 格几乎铺满屏），内部填充压得淡、高 alpha 会压抑
+    // （真机标定后取 0.55），对比度全押在边界描边上 → 读作「圈出一个区域」而非「盖了层脏色」。
+    // 绿为可放置格（一般是地图上的孤岛/散块，格数少），配色略亮但同属「低底 + 强调边」口径。
+    //
+    // 刷新策略：透视相机，卡引用 / 快照数量 / 相机变换任一变化才重建。
+    // 两套遮罩共用同一次重建：快照与触发完全同源，避免两个组件各维护一套脏检测而错帧。
     //****************************************
     public sealed class PlacementRangeMaskUI : MonoBehaviour
     {
         [Inject] private PlayerInputHandler _inputHandler;
-        [Inject] private IMapDataService _mapData;
         [Inject] private MapGenerationConfigSO _config;
         [Inject(Id = "TargetUICanvas")] private Canvas _targetCanvas;
 
-        // ---- 诊断日志开关（定位遮罩不显示问题；排查完可关）----
-        private const bool VerboseLog = true;
+        // ---- 表现参数（真机可再标定，红值已标定保持不动）----
+        // 全部参数收进 PlacementRangeMaskSettings，由 GameInstaller 的序列化字段注入：
+        // 本组件是运行时新建对象，自身 Inspector 不随场景保存、也无法在 Play 之前调。
+        // 未注入时（单测 / 手动 AddComponent）回落到 Settings 的默认值 = 收编前的原常量值。
+        private PlacementRangeMaskSettings _settings = new PlacementRangeMaskSettings();
 
-        // ---- 表现参数（真机可再标定，见方案 §4.2/§7）----
-        private static readonly Color MaskColor = new Color(1.0f, 0.15f, 0.12f, 0.30f);
+        /// <summary>
+        /// 表现参数（配色 / 描边形状 / 重建阈值 / 红绿显示开关）。
+        /// 赋值即时生效：立刻重建当前遮罩，不必等相机移动触发脏检测。
+        /// 由 GameInstaller 在组件实例化后注入；运行时也可再改。
+        /// </summary>
+        public PlacementRangeMaskSettings Settings
+        {
+            get => _settings;
+            set
+            {
+                _settings = value ?? new PlacementRangeMaskSettings();
+                if (_hasActiveMask) Rebuild();
+            }
+        }
 
-        // 相机变换刷新阈值：位移平方阈值 + 旋转角度阈值。
-        private const float CamMoveSqrThreshold = 0.01f;
-        private const float CamRotThresholdDeg = 0.1f;
+        /// <summary>【红·不可放置遮罩】显示开关。赋值即时生效（立刻清 mesh / 重建）。</summary>
+        public bool ShowUnplaceableMask
+        {
+            get => _settings.ShowUnplaceableMask;
+            set => SetMaskVisible(ref _settings.ShowUnplaceableMask, value);
+        }
+
+        /// <summary>【绿·可放置遮罩】显示开关。语义同 <see cref="ShowUnplaceableMask"/>。</summary>
+        public bool ShowPlaceableMask
+        {
+            get => _settings.ShowPlaceableMask;
+            set => SetMaskVisible(ref _settings.ShowPlaceableMask, value);
+        }
+
+        private void SetMaskVisible(ref bool field, bool value)
+        {
+            if (field == value) return;
+            field = value;
+            // 关 → 立刻清掉该层已有 mesh；开 → 下一次 Rebuild 补上。
+            // 直接重建而非等脏检测：脏标记只看卡引用/快照数/相机，开关变化不在其中。
+            if (_hasActiveMask) Rebuild();
+        }
 
         private Camera _camera;
         private RectTransform _maskRoot;
-        private readonly List<PlacementRangeMaskGraphic> _pool = new List<PlacementRangeMaskGraphic>();
+        private PlacementRangeMaskGraphic _fillGraphic;
+        private PlacementRangeMaskGraphic _strokeGraphic;
+        private PlacementRangeMaskGraphic _placeableFillGraphic;
+        private PlacementRangeMaskGraphic _placeableStrokeGraphic;
 
         // 提起态 / 相机变化的重建脏标记来源
         private object _lastRaisedCardRef;
-        private int _lastUnplaceableCount = -1; // 上次快照的不可放置格数量（内容变化检测，规避 Tick 顺序早一帧读空快照）
+        private int _lastUnplaceableCount = -1;
         private Vector3 _lastCamPos;
         private Quaternion _lastCamRot;
         private bool _hasActiveMask;
 
+        // 复用缓冲，避免每次重建产生 GC（提起态下相机每动就重建一次）。
+        // 红/绿两次 BuildMaskForSet 依次复用：SetMesh 内部拷贝顶点，缓冲用完即弃，安全。
+        private readonly List<Vector3> _loopWorld = new List<Vector3>();
+        private readonly List<Vector3> _loopSimplified = new List<Vector3>();
+        private readonly List<Vector3> _loopRounded = new List<Vector3>();
+        private readonly List<Vector2> _loopLocal = new List<Vector2>();
+        private readonly List<Vector2> _strokeVerts = new List<Vector2>();
+        private readonly List<Color32> _strokeColors = new List<Color32>();
+        private readonly List<int> _strokeTris = new List<int>();
+        private readonly List<Vector2> _fillVerts = new List<Vector2>();
+        private readonly List<int> _fillTris = new List<int>();
+        // 阴影线的平移副本：每条环临时填一次，喂给 BuildRibbon 后即弃（复用避免每环分配）。
+        private readonly List<Vector2> _shadowLoop = new List<Vector2>();
+
+        // 处理后闭环（简化+圆角+投屏+去重）：填充与描边的共同输入。
+        // 池化复用内层 List，避免每帧为每条环各分配一个 List。
+        private readonly List<List<Vector2>> _loops = new List<List<Vector2>>();
+        private readonly List<List<Vector2>> _loopPool = new List<List<Vector2>>();
+
+        private readonly PlacementMaskFill _fill = new PlacementMaskFill();
+
         private void Awake()
         {
             BuildRoot();
-            if (VerboseLog)
-                Debug.Log($"[遮罩] Awake：组件已创建。inputHandler={( _inputHandler != null ? "有" : "NULL")} " +
-                          $"mapData={(_mapData != null ? "有" : "NULL")} config={(_config != null ? "有" : "NULL")} " +
-                          $"targetCanvas={(_targetCanvas != null ? _targetCanvas.name : "NULL")} " +
-                          $"canvasRenderMode={(_targetCanvas != null ? _targetCanvas.renderMode.ToString() : "?")}", this);
         }
 
         private void Update()
@@ -67,8 +131,7 @@ namespace UI.PlacementMask
             {
                 if (_hasActiveMask)
                 {
-                    if (VerboseLog) Debug.Log("[遮罩] Update：无提起卡 → 清空遮罩。", this);
-                    ClearAllGraphics();
+                    ClearGraphics();
                     _hasActiveMask = false;
                 }
                 _lastRaisedCardRef = null;
@@ -76,9 +139,9 @@ namespace UI.PlacementMask
                 return;
             }
 
-            // 当前快照的不可放置格数量（PlayerInputHandler 的快照可能晚本组件一帧才填上，
-            // 因此不能只靠"卡引用变化"触发——改用"引用变化 OR 快照数量变化"，
-            // 保证快照从 0 变非 0 的那一帧能补上重建）。
+            // PlayerInputHandler（ITickable）与本组件（MonoBehaviour.Update）同帧顺序不保证：
+            // 提起卡变化那一帧本组件可能先跑，读到上一帧的空快照。因此脏检测不能只看卡引用，
+            // 必须叠加「快照数量变化」，让 0→N 的那一帧补上重建。
             IReadOnlyList<HexCellData> snapshot = _inputHandler?.RaisedUnplaceableCells;
             int unplaceableCount = snapshot?.Count ?? 0;
 
@@ -88,10 +151,6 @@ namespace UI.PlacementMask
 
             if (raisedChanged || snapshotChanged || cameraChanged || !_hasActiveMask)
             {
-                if (VerboseLog)
-                    Debug.Log($"[遮罩] Update：触发重建。raisedChanged={raisedChanged} snapshotChanged={snapshotChanged}" +
-                              $"(count {_lastUnplaceableCount}→{unplaceableCount}) cameraChanged={cameraChanged} " +
-                              $"hasActiveMask={_hasActiveMask} camera={(_camera != null ? _camera.name : "NULL")}", this);
                 _lastRaisedCardRef = raised;
                 _lastUnplaceableCount = unplaceableCount;
                 CacheCameraTransform();
@@ -101,129 +160,201 @@ namespace UI.PlacementMask
 
         private void Rebuild()
         {
-            ClearAllGraphics();
             _hasActiveMask = true;
 
             if (_camera == null || _targetCanvas == null)
             {
-                if (VerboseLog) Debug.LogWarning($"[遮罩] Rebuild 早退：camera={(_camera != null ? "有" : "NULL")} " +
-                                                 $"targetCanvas={(_targetCanvas != null ? "有" : "NULL")}", this);
+                ClearGraphics();
                 return;
             }
-
-            IReadOnlyList<HexCellData> unplaceable = _inputHandler?.RaisedUnplaceableCells;
-            if (unplaceable == null || unplaceable.Count == 0)
-            {
-                if (VerboseLog) Debug.LogWarning($"[遮罩] Rebuild 早退：RaisedUnplaceableCells " +
-                                                 $"{(unplaceable == null ? "为 NULL" : "为空(count=0)")}。" +
-                                                 $"（是否真的处于提起态？PlayerInputHandler 是否本帧已算过快照？）", this);
-                return;
-            }
-
-            // 2) 过滤有效山格（对齐现有高亮门禁；RaisedUnplaceableCells 本身不过滤）。
-            var filtered = new List<HexCellData>(unplaceable.Count);
-            foreach (HexCellData cell in unplaceable)
-            {
-                if (cell == null) continue;
-                if (MountainCellRule.IsEffectiveMountainCell(cell)) continue;
-                filtered.Add(cell);
-            }
-            if (VerboseLog) Debug.Log($"[遮罩] Rebuild：不可放置格 原始={unplaceable.Count} 过滤山格后={filtered.Count}", this);
-            if (filtered.Count == 0)
-            {
-                if (VerboseLog) Debug.LogWarning("[遮罩] Rebuild 早退：过滤山格后无剩余格。", this);
-                return;
-            }
-
-            // 3) 连通分组
-            System.Func<HexCellData, Enums.HexDirection, HexCellData> neighborOf =
-                (c, d) => _mapData.GetNeighbor(c, d);
-            List<PlacementMaskGeometry.Region> regions =
-                PlacementMaskGeometry.GroupIntoRegions(filtered, neighborOf);
 
             float outerRadius = _config != null ? _config.OuterRadius : 3f;
+            float elevationStep = _config != null ? _config.elevationStep : 3f;
 
             RectTransform canvasRect = _targetCanvas.transform as RectTransform;
             Camera uiCam = _targetCanvas.renderMode == RenderMode.ScreenSpaceOverlay
                 ? null
                 : _targetCanvas.worldCamera;
 
-            if (VerboseLog) Debug.Log($"[遮罩] Rebuild：分组数={regions.Count} outerRadius={outerRadius} " +
-                                      $"uiCam={(uiCam != null ? uiCam.name : "null(Overlay)")}", this);
+            // 红（不可放置）与绿（可放置）是同一快照二分的互补，走同一套拓扑/拟合/投屏流水线，
+            // 只有配色不同。快照本身已是「不可放置」全图口径（含非清除山脉），这里不再过滤山格，
+            // 让整片山脉被红色遮罩覆盖（扑灭/清除山后该格回到可放置集，自然不会出现）。
+            // 开关关闭 → 传 null，BuildMaskForSet 走清空分支（该层清 mesh 且跳过拓扑/投屏开销）。
+            BuildMaskForSet(
+                _settings.ShowUnplaceableMask ? _inputHandler?.RaisedUnplaceableCells : null,
+                _fillGraphic, _strokeGraphic,
+                _settings.UnplaceableFillColor, _settings.UnplaceableStrokeColor,
+                _settings.UnplaceableShadow,
+                outerRadius, elevationStep, canvasRect, uiCam);
+            BuildMaskForSet(
+                _settings.ShowPlaceableMask ? _inputHandler?.RaisedPlaceableCells : null,
+                _placeableFillGraphic, _placeableStrokeGraphic,
+                _settings.PlaceableFillColor, _settings.PlaceableStrokeColor,
+                _settings.PlaceableShadow,
+                outerRadius, elevationStep, canvasRect, uiCam);
+        }
 
-            int graphicIndex = 0;
-            int totalCells = 0, totalTris = 0, dropBackface = 0, committedRegions = 0;
-
-            var ring = new List<Vector3>(6);
-
-            foreach (var region in regions)
+        /// <summary>
+        /// 对一组格（不可放置 / 可放置各一份）构建填充 + 描边两层。
+        /// 先把边界闭环拟合并投屏一次，再喂给两层——两层几何同源是本方案的关键（见类注释）。
+        /// 红/绿两次调用依次复用同一批缓冲是安全的（SetMesh 内部拷贝）。
+        /// </summary>
+        private void BuildMaskForSet(
+            IReadOnlyList<HexCellData> cells,
+            PlacementRangeMaskGraphic fillGraphic, PlacementRangeMaskGraphic strokeGraphic,
+            Color fillColor, Color strokeColor, PlacementMaskShadowSettings shadow,
+            float outerRadius, float elevationStep,
+            RectTransform canvasRect, Camera uiCam)
+        {
+            if (cells == null || cells.Count == 0)
             {
-                // 【逐格扇形直填】每格 6 个三角形（中心 + 相邻两角点），投屏后合并进本区域一张 mesh。
-                // 放弃脆弱的「求整体外轮廓」——大面积/有洞/T型交叉时串环易碎（35 碎环全三角化失败）。
-                // 相邻格三角形自然拼满过渡区；重叠区半透明同色叠加不影响观感。
-                var localVerts = new List<Vector2>(region.Cells.Count * 7);
-                var tris = new List<int>(region.Cells.Count * 18);
+                fillGraphic.ClearMesh();
+                strokeGraphic.ClearMesh();
+                return;
+            }
 
-                foreach (HexCellData cell in region.Cells)
+            PlacementMaskTopology.Topology topo =
+                PlacementMaskTopology.Build(cells, outerRadius, elevationStep);
+
+            PrepareLoops(topo, outerRadius, canvasRect, uiCam);
+
+            BuildFillLayer(fillGraphic, fillColor);
+            BuildStrokeLayer(strokeGraphic, strokeColor, shadow);
+        }
+
+        /// <summary>
+        /// 每条边界闭环 → 世界空间简化 + 圆角 → 投屏 → 去重，结果存进 _loops 供两层共用。
+        ///
+        /// 简化/圆角刻意放在**投屏前的世界空间**：容差以 R 为单位有稳定几何含义，
+        /// 且推拉相机时轮廓形状不变（屏幕空间做的话，缩放会改变简化力度）。
+        /// </summary>
+        private void PrepareLoops(
+            PlacementMaskTopology.Topology topo, float outerRadius,
+            RectTransform canvasRect, Camera uiCam)
+        {
+            ReleaseLoops();
+
+            float epsilon = _settings.SimplifyEpsilonInR * outerRadius;
+            float cornerRadius = _settings.CornerRadiusInR * outerRadius;
+
+            foreach (List<int> loop in topo.Loops)
+            {
+                _loopWorld.Clear();
+                for (int i = 0; i < loop.Count; i++)
+                    _loopWorld.Add(topo.CornerWorld[loop[i]]);
+                if (_loopWorld.Count < 3) continue;
+
+                PlacementMaskOutline.SimplifyClosed(_loopWorld, epsilon, _loopSimplified);
+                PlacementMaskOutline.RoundCorners(
+                    _loopSimplified, cornerRadius, _settings.CornerSegments, _loopRounded);
+
+                // 环上任一点投屏失败就整环作废：拆环会连出跨屏的错误线段，
+                // 填充那边还会因残缺环把嵌套判定算错。
+                _loopLocal.Clear();
+                bool ok = true;
+                for (int i = 0; i < _loopRounded.Count; i++)
                 {
-                    totalCells++;
-                    PlacementMaskGeometry.GetCellRingWorld(cell, outerRadius, ring);
-
-                    // 中心点 + 6 角点投屏
-                    if (!ProjectPoint(cell.RealCenterWorldCoordinate, canvasRect, uiCam, out Vector2 centerLocal))
-                    { dropBackface++; continue; }
-
-                    // 投影 6 个角点；任一背面则整格跳过（单格小，跳过无碍）
-                    bool ok = true;
-                    Vector2[] corners = new Vector2[6];
-                    for (int i = 0; i < 6; i++)
-                    {
-                        if (!ProjectPoint(ring[i], canvasRect, uiCam, out corners[i])) { ok = false; break; }
-                    }
-                    if (!ok) { dropBackface++; continue; }
-
-                    int baseIdx = localVerts.Count;
-                    localVerts.Add(centerLocal);       // baseIdx + 0 = 中心
-                    for (int i = 0; i < 6; i++)
-                        localVerts.Add(corners[i]);    // baseIdx + 1..6 = 角点
-
-                    for (int i = 0; i < 6; i++)
-                    {
-                        int a = baseIdx + 1 + i;
-                        int b = baseIdx + 1 + (i + 1) % 6;
-                        tris.Add(baseIdx); // 中心
-                        tris.Add(a);
-                        tris.Add(b);
-                        totalTris++;
-                    }
+                    if (!TryProjectLocal(_loopRounded[i], canvasRect, uiCam, out Vector2 local))
+                    { ok = false; break; }
+                    _loopLocal.Add(local);
                 }
+                if (!ok || _loopLocal.Count < 3) continue;
 
-                if (localVerts.Count >= 3 && tris.Count >= 3)
+                // 圆角相接处（切点被夹到边中点时）会产生重合点：缎带在那里退化出尖刺，
+                // 故必须去重。（填充侧的扫描线对重复点免疫，这条只为描边。）
+                List<Vector2> dedup = RentLoop();
+                PlacementMaskOutline.DedupClosed(_loopLocal, _settings.MergeEpsilonLocal, dedup);
+                if (dedup.Count < 3) { _loopPool.Add(dedup); continue; }
+                _loops.Add(dedup);
+            }
+        }
+
+        /// <summary>
+        /// 填充层：与描边同一批闭环，扫描线 + 偶奇规则。洞（被包围的异色孤岛）真的挖空。
+        /// 边界与描边中线逐点重合，故描边内侧不会再露白、也不会有填充溢出到线外。
+        /// </summary>
+        private void BuildFillLayer(PlacementRangeMaskGraphic fillGraphic, Color fillColor)
+        {
+            _fill.Triangulate(_loops, _fillVerts, _fillTris);
+            fillGraphic.color = fillColor;
+            fillGraphic.SetMesh(_fillVerts, _fillTris);
+        }
+
+        /// <summary>
+        /// 描边层：每条闭环一条羽化缎带，所有环合并进一张 mesh。
+        ///
+        /// 【立体感·方案 A】shadow.Offset > 0 时，先把同一批路径整体平移一段距离、用深色画一遍，
+        /// 再画主线。两者共用**同一张 mesh**：UGUI 单张 mesh 内三角按提交顺序绘制、无深度测试，
+        /// 故先提交的阴影自然压在主线下面 —— 不需要额外的 Graphic，drawcall 不变。
+        ///
+        /// 阴影参数由调用方按红/绿分别传入（PlacementMaskShadowSettings），不再共用一份：
+        /// 红是连片大区域、要厚重感，绿多是零散小岛、同样偏移会把小块压暗。
+        ///
+        /// ⚠️ 平移是**整体**的：朝下的边界外侧探出深带（想要的厚度感），而朝上的边界会在
+        /// 区域**内侧**同样探出一条深带（物理上说不通的重影）。偏移小时读作厚度，给大值必然穿帮。
+        /// 真需要明显的「墙」时应改为按 dot(外法线, 光照方向) 调制墙带宽度的方案。
+        /// </summary>
+        private void BuildStrokeLayer(
+            PlacementRangeMaskGraphic strokeGraphic, Color strokeColor,
+            PlacementMaskShadowSettings shadow)
+        {
+            _strokeVerts.Clear();
+            _strokeColors.Clear();
+            _strokeTris.Clear();
+
+            if (shadow != null && shadow.Offset > 0f)
+            {
+                float rad = shadow.DirDeg * Mathf.Deg2Rad;
+                Vector2 shift = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad)) * shadow.Offset;
+
+                for (int i = 0; i < _loops.Count; i++)
                 {
-                    PlacementRangeMaskGraphic g = GetOrCreateGraphic(graphicIndex++);
-                    g.SetMesh(localVerts, tris);
-                    committedRegions++;
+                    List<Vector2> src = _loops[i];
+                    _shadowLoop.Clear();
+                    for (int k = 0; k < src.Count; k++) _shadowLoop.Add(src[k] + shift);
+
+                    PlacementMaskOutline.BuildRibbon(
+                        _shadowLoop, _settings.StrokeHalfWidth, shadow.Tint,
+                        _strokeVerts, _strokeColors, _strokeTris,
+                        _settings.StrokeCoreRatio);
                 }
             }
 
-            if (VerboseLog)
-                Debug.Log($"[遮罩] Rebuild 完成：区域={regions.Count} 提交区域={committedRegions} " +
-                          $"格数={totalCells} 三角形={totalTris} 背面跳过格={dropBackface} " +
-                          $"| 图形对象={_pool.Count}", this);
+            for (int i = 0; i < _loops.Count; i++)
+            {
+                PlacementMaskOutline.BuildRibbon(
+                    _loops[i], _settings.StrokeHalfWidth, strokeColor,
+                    _strokeVerts, _strokeColors, _strokeTris,
+                    _settings.StrokeCoreRatio);
+            }
 
-            // 回收多余图形
-            for (int i = graphicIndex; i < _pool.Count; i++)
-                _pool[i].ClearMesh();
+            strokeGraphic.color = Color.white; // 逐顶点色生效时不参与，留白避免二次染色
+            strokeGraphic.SetMesh(_strokeVerts, _strokeTris, _strokeColors);
+        }
+
+        private List<Vector2> RentLoop()
+        {
+            int last = _loopPool.Count - 1;
+            if (last < 0) return new List<Vector2>();
+            List<Vector2> l = _loopPool[last];
+            _loopPool.RemoveAt(last);
+            l.Clear();
+            return l;
+        }
+
+        private void ReleaseLoops()
+        {
+            for (int i = 0; i < _loops.Count; i++) _loopPool.Add(_loops[i]);
+            _loops.Clear();
         }
 
         // ---------------- 投影与坐标换算 ----------------
 
-        /// <summary>单个世界点 → Canvas 本地坐标。相机背后(z<0)返回 false。</summary>
-        private bool ProjectPoint(Vector3 world, RectTransform canvasRect, Camera uiCam, out Vector2 local)
+        private bool TryProjectLocal(
+            Vector3 world, RectTransform canvasRect, Camera uiCam, out Vector2 local)
         {
-            local = default;
             Vector3 screen = _camera.WorldToScreenPoint(world);
-            if (screen.z < 0f) return false; // 背面点
+            if (screen.z < 0f) { local = default; return false; }
             return RectTransformUtility.ScreenPointToLocalPointInRectangle(
                 canvasRect, screen, uiCam, out local);
         }
@@ -234,8 +365,8 @@ namespace UI.PlacementMask
         {
             if (_camera == null) return false;
             Transform t = _camera.transform;
-            if ((t.position - _lastCamPos).sqrMagnitude > CamMoveSqrThreshold) return true;
-            if (Quaternion.Angle(t.rotation, _lastCamRot) > CamRotThresholdDeg) return true;
+            if ((t.position - _lastCamPos).sqrMagnitude > _settings.CamMoveSqrThreshold) return true;
+            if (Quaternion.Angle(t.rotation, _lastCamRot) > _settings.CamRotThresholdDeg) return true;
             return false;
         }
 
@@ -246,56 +377,53 @@ namespace UI.PlacementMask
             _lastCamRot = _camera.transform.rotation;
         }
 
-        // ---------------- 图形对象池 ----------------
+        // ---------------- 图形层 ----------------
 
         private void BuildRoot()
         {
             var go = new GameObject("PlacementRangeMaskRoot");
             _maskRoot = go.AddComponent<RectTransform>();
             go.transform.SetParent(_targetCanvas != null ? _targetCanvas.transform : null, false);
-            _maskRoot.anchorMin = Vector2.zero;
-            _maskRoot.anchorMax = Vector2.one;
-            _maskRoot.offsetMin = Vector2.zero;
-            _maskRoot.offsetMax = Vector2.zero;
-            _maskRoot.pivot = new Vector2(0.5f, 0.5f);
+            StretchFull(_maskRoot);
             // 排在业务 UI 之下、地图之上：作为第一个 sibling（渲染顺序靠前 = 被后续 UI 覆盖）。
             _maskRoot.SetAsFirstSibling();
 
-            if (VerboseLog)
-                Debug.Log($"[遮罩] BuildRoot：PlacementRangeMaskRoot 已挂到 " +
-                          $"{(_targetCanvas != null ? _targetCanvas.name : "NULL(未挂到任何 Canvas!)")}，" +
-                          $"siblingIndex={_maskRoot.GetSiblingIndex()}", this);
+            // 填充先建、描边后建：sibling 顺序即渲染顺序，描边必须压在填充之上。
+            // 红（不可放置）先、绿（可放置）后：两者是快照二分互补、互不重叠，顺序只影响 z 序。
+            _fillGraphic = CreateGraphic("PlacementMask_Fill");
+            _strokeGraphic = CreateGraphic("PlacementMask_Stroke");
+            _placeableFillGraphic = CreateGraphic("PlacementMask_Fill_Green");
+            _placeableStrokeGraphic = CreateGraphic("PlacementMask_Stroke_Green");
         }
 
-        private PlacementRangeMaskGraphic GetOrCreateGraphic(int index)
+        private PlacementRangeMaskGraphic CreateGraphic(string name)
         {
-            while (_pool.Count <= index)
-            {
-                var go = new GameObject($"RegionMask_{_pool.Count}");
-                go.transform.SetParent(_maskRoot, false);
-                var rt = go.AddComponent<RectTransform>();
-                rt.anchorMin = Vector2.zero;
-                rt.anchorMax = Vector2.one;
-                rt.offsetMin = Vector2.zero;
-                rt.offsetMax = Vector2.zero;
-                rt.pivot = new Vector2(0.5f, 0.5f);
-                // 显式补 CanvasRenderer（本工程 Graphic 子类不隐式补，见 Graphic 组件注释）。
-                go.AddComponent<CanvasRenderer>();
-                var g = go.AddComponent<PlacementRangeMaskGraphic>();
-                g.color = MaskColor;
-                g.raycastTarget = false; // 遮罩不吞点击（放置/收起卡牌交互不受影响）
-                _pool.Add(g);
-                if (VerboseLog)
-                    Debug.Log($"[遮罩] 新建图形对象 {go.name}：canvasRenderer={(g.GetComponent<CanvasRenderer>() != null ? "有" : "无(会永不出mesh!)")} " +
-                              $"color={g.color}", this);
-            }
-            return _pool[index];
+            var go = new GameObject(name);
+            go.transform.SetParent(_maskRoot, false);
+            StretchFull(go.AddComponent<RectTransform>());
+            // 显式补 CanvasRenderer：本工程（Unity 2022.3）AddComponent 建 Graphic 子类不隐式补，
+            // 缺了它 Graphic.Rebuild() 首行即早退、永不出 mesh 且不报错（见 UITrailRenderer.cs:269-276）。
+            go.AddComponent<CanvasRenderer>();
+            var g = go.AddComponent<PlacementRangeMaskGraphic>();
+            g.raycastTarget = false; // 遮罩不吞点击，放置/收起卡牌交互不受影响
+            return g;
         }
 
-        private void ClearAllGraphics()
+        private static void StretchFull(RectTransform rt)
         {
-            for (int i = 0; i < _pool.Count; i++)
-                _pool[i].ClearMesh();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+        }
+
+        private void ClearGraphics()
+        {
+            if (_fillGraphic != null) _fillGraphic.ClearMesh();
+            if (_strokeGraphic != null) _strokeGraphic.ClearMesh();
+            if (_placeableFillGraphic != null) _placeableFillGraphic.ClearMesh();
+            if (_placeableStrokeGraphic != null) _placeableStrokeGraphic.ClearMesh();
         }
     }
 }

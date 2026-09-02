@@ -19,16 +19,25 @@ namespace UI.PlacementMask
     {
         private readonly List<Vector2> _localVerts = new List<Vector2>();
         private readonly List<int> _triangles = new List<int>();
+        private readonly List<Color32> _vertexColors = new List<Color32>();
 
-        /// <summary>提交一块三角化后的多边形（Canvas 本地坐标）。空 = 清空。</summary>
-        public void SetMesh(List<Vector2> localVerts, List<int> triangles)
+        /// <summary>
+        /// 提交一块三角化后的多边形（Canvas 本地坐标）。空 = 清空。
+        /// vertexColors 非空时逐顶点取色（描边缎带的横向羽化依赖它）；
+        /// 为 null 时全部用 Graphic.color（填充层用这条）。
+        /// </summary>
+        public void SetMesh(List<Vector2> localVerts, List<int> triangles, List<Color32> vertexColors = null)
         {
             _localVerts.Clear();
             _triangles.Clear();
+            _vertexColors.Clear();
             if (localVerts != null && triangles != null && localVerts.Count >= 3 && triangles.Count >= 3)
             {
                 _localVerts.AddRange(localVerts);
                 _triangles.AddRange(triangles);
+                // 数量不匹配时忽略顶点色，退回单色，避免越界取色。
+                if (vertexColors != null && vertexColors.Count == localVerts.Count)
+                    _vertexColors.AddRange(vertexColors);
             }
             SetVerticesDirty();
         }
@@ -37,6 +46,7 @@ namespace UI.PlacementMask
         {
             _localVerts.Clear();
             _triangles.Clear();
+            _vertexColors.Clear();
             SetVerticesDirty();
         }
 
@@ -48,14 +58,13 @@ namespace UI.PlacementMask
                 return;
             }
 
-            Debug.Log($"[遮罩·Graphic] OnPopulateMesh 出 mesh：verts={_localVerts.Count} tris={_triangles.Count / 3} name={name} color={color}", this);
-
-            Color32 c = color;
+            bool perVertex = _vertexColors.Count == _localVerts.Count;
+            Color32 flat = color;
             for (int i = 0; i < _localVerts.Count; i++)
             {
                 UIVertex vert = UIVertex.simpleVert;
                 vert.position = _localVerts[i];
-                vert.color = c;
+                vert.color = perVertex ? _vertexColors[i] : flat;
                 vert.uv0 = Vector2.zero;
                 vh.AddVert(vert);
             }

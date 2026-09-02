@@ -110,6 +110,10 @@ public class ExplorationPillarPool : MonoBehaviour
 			case ExplorationEffectStyle.DiskSmash:
 				PlayDiskEffect(cell);
 				break;
+
+			case ExplorationEffectStyle.None:
+				_explorationService.SignalRewardPoint(cell);
+				break;
 		}
 	}
 

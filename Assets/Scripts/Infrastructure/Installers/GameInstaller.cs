@@ -52,6 +52,12 @@ public class GameInstaller : MonoInstaller
     [Header("卡牌拖拽落点提示（图标 + 连线）")]
     [SerializeField] private CardDragTargetMarkerView _cardDragTargetIconPrefab; // 世界空间落点图标 prefab
     [SerializeField] private CardDragLinkView _cardDragLinkPrefab;               // UI 连线 prefab（未绑定时仅图标工作）
+
+    [Header("提起态放置范围遮罩（红＝不可放置 / 绿＝可放置）")]
+    [Tooltip("显示开关与全部表现参数。PlacementRangeMaskUI 是运行时新建对象、其 Inspector 不随场景保存，"
+             + "故参数放在本 Installer 上：进 Play 前即可标定并存盘。")]
+    [SerializeField] private UI.PlacementMask.PlacementRangeMaskSettings _placementMaskSettings
+        = new UI.PlacementMask.PlacementRangeMaskSettings();
     public override void InstallBindings()
     {
         ValidateRequiredReferences();
@@ -207,12 +213,17 @@ public class GameInstaller : MonoInstaller
                  .WithGameObjectName("HexHighlightRenderer")
                  .AsSingle();
 
-        // 【不可放置区域红色遮罩】提起态屏幕空间遮罩（读取 PlayerInputHandler.RaisedUnplaceableCells）。
+        // 【放置范围遮罩】提起态屏幕空间双遮罩：红＝不可放置、绿＝可放置
+        // （读取 PlayerInputHandler.RaisedUnplaceableCells / RaisedPlaceableCells）。
         // NonLazy：无其他消费者解析它，必须立即构造才会开始每帧驱动。
+        // 显示开关与表现参数由本 Installer 的 _placementMaskSettings 注入
+        // （组件自身是运行时新建、Inspector 不随场景保存）。
         Container.Bind<UI.PlacementMask.PlacementRangeMaskUI>()
                  .FromNewComponentOnNewGameObject()
                  .WithGameObjectName("PlacementRangeMaskUI")
                  .AsSingle()
+                 .OnInstantiated<UI.PlacementMask.PlacementRangeMaskUI>(
+                     (ctx, mask) => mask.Settings = _placementMaskSettings)
                  .NonLazy();
 
         // ���������ɷ���
