@@ -107,7 +107,15 @@ public class UnitRemovalService
         }
 
         // 【多单位落点】按站位槽枚举查找并释放单位的站位（含旧字段同步）。
-        HexCellData occupiedCell = _mapDataService.GetCellByWorldPosition(unit.transform.position);
+        // 【多单位计划九.10】先按逻辑格查：槽位偏移后世界坐标常反查到隔壁格，
+        // 那会白白落入下面的 O(全图) LINQ 兜底扫描（卡顿分析·第七节），且正好在战斗最激烈时触发。
+        HexCellData occupiedCell = null;
+        if (controller != null)
+            occupiedCell = _mapDataService.GetCell(controller.CurrentHexCoordinate);
+
+        if (occupiedCell == null || !occupiedCell.GetStandingUnits().Contains(unit))
+            occupiedCell = _mapDataService.GetCellByWorldPosition(unit.transform.position);
+
         if (occupiedCell == null || !occupiedCell.GetStandingUnits().Contains(unit))
         {
             occupiedCell = _mapDataService.GetAllCells()?.FirstOrDefault(cell => cell.GetStandingUnits().Contains(unit));

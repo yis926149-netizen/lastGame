@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 41ebb27e865c0ff4bbfe5e1adec85113, type: 3}
   m_Name: barracks
   m_EditorClassIdentifier: 
-  cardSprite: {fileID: 21300000, guid: 3dc8c734f14ce2f4da0c6e54c7eb0673, type: 3}
+  cardSprite: {fileID: 21300000, guid: 44e0542dcb9aaea48bfb67af0a546ffc, type: 3}
+  grayCardSprite: {fileID: 21300000, guid: 3dc8c734f14ce2f4da0c6e54c7eb0673, type: 3}
   cardCost: 120
   buildingId: 4
   buildingType: 5

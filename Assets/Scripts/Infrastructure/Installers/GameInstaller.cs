@@ -53,11 +53,31 @@ public class GameInstaller : MonoInstaller
     [SerializeField] private CardDragTargetMarkerView _cardDragTargetIconPrefab; // 世界空间落点图标 prefab
     [SerializeField] private CardDragLinkView _cardDragLinkPrefab;               // UI 连线 prefab（未绑定时仅图标工作）
 
+    [Header("卡牌拖拽模型名牌（屏幕空间跟随）")]
+    [Tooltip("拖拽期显示在模型上方的名牌 prefab（根节点挂 Canvas + 文本，见 CardDragNameLabelView 注释）。未绑定时该功能关闭。")]
+    [SerializeField] private CardDragNameLabelView _cardDragNameLabelPrefab;
+
+    [Header("粒子特效")]
+    [Tooltip("世界空间一次性粒子特效的唯一注册表（VfxId → prefab）。新增特效改 VfxId 枚举与本 asset，无需改接线。未绑定时全部特效关闭。")]
+    [SerializeField] private VfxConfigSO _vfxConfigSO;
+
     [Header("提起态放置范围遮罩（红＝不可放置 / 绿＝可放置）")]
     [Tooltip("显示开关与全部表现参数。PlacementRangeMaskUI 是运行时新建对象、其 Inspector 不随场景保存，"
              + "故参数放在本 Installer 上：进 Play 前即可标定并存盘。")]
     [SerializeField] private UI.PlacementMask.PlacementRangeMaskSettings _placementMaskSettings
         = new UI.PlacementMask.PlacementRangeMaskSettings();
+
+    [Header("战术卡影响范围遮罩（拖拽态·触点 n 环）")]
+    [Tooltip("显示开关与全部表现参数。CardDragRangeMaskUI 是运行时新建对象、其 Inspector 不随场景保存，"
+             + "故参数放在本 Installer 上：进 Play 前即可标定并存盘。")]
+    [SerializeField] private UI.PlacementMask.TacticalRangeMaskSettings _tacticalRangeMaskSettings
+        = new UI.PlacementMask.TacticalRangeMaskSettings();
+
+    [Header("箭塔攻击范围遮罩（拖拽箭塔卡·触点 n 环）")]
+    [Tooltip("默认配色与战术卡一致、但默认精确贴合六边形地块（SimplifyEpsilonInR=0 / CornerRadiusInR=0）。"
+             + "与战术卡参数相互独立，可分别调整互不影响。")]
+    [SerializeField] private UI.PlacementMask.ArrowTowerRangeMaskSettings _arrowTowerRangeMaskSettings
+        = new UI.PlacementMask.ArrowTowerRangeMaskSettings();
     public override void InstallBindings()
     {
         ValidateRequiredReferences();
@@ -158,6 +178,11 @@ public class GameInstaller : MonoInstaller
         Container.Bind<IUIConfigProvider>().To<UIConfigProvider>().AsSingle();
         Container.Bind<ICardUnlockRuleProvider>().To<CardUnlockRuleProvider>().AsSingle();
 
+        // 粒子特效：VfxId → prefab 的统一播放服务。
+        // SO 经 WithArguments 传入（不用 FromInstance：未赋值时 Zenject 会对 null 实例抛异常，
+        // 而本服务的设计是配置缺失即告警降级）。
+        Container.Bind<IVfxService>().To<VfxService>().AsSingle().WithArguments(_vfxConfigSO);
+
         // �ؿ���Դ����ò
 
         // 【地图资源配置化 + Excel 数值化】地图资源数据库、提供者与统一消费服务
@@ -224,6 +249,22 @@ public class GameInstaller : MonoInstaller
                  .AsSingle()
                  .OnInstantiated<UI.PlacementMask.PlacementRangeMaskUI>(
                      (ctx, mask) => mask.Settings = _placementMaskSettings)
+                 .NonLazy();
+
+        // 【卡牌拖拽范围遮罩】拖拽态屏幕空间遮罩：圈出触点指向地块 + 其 n 环。
+        // 读 PlayerInputHandler.DraggingHoveredCell / DraggingDropHandler / DraggingCardData，
+        // 半径由卡类型决定：战术卡 effectRadius（TacticalCardPresenter.GetEffectRadius）或
+        // 箭塔有效射程（ArrowTowerShooter.GetEffectiveRange），与结算/索敌读同一份值。
+        // NonLazy：无其他消费者解析它，必须立即构造才会开始每帧驱动。
+        Container.Bind<UI.PlacementMask.CardDragRangeMaskUI>()
+                 .FromNewComponentOnNewGameObject()
+                 .WithGameObjectName("CardDragRangeMaskUI")
+                 .AsSingle()
+                 .OnInstantiated<UI.PlacementMask.CardDragRangeMaskUI>((ctx, mask) =>
+                 {
+                     mask.Settings = _tacticalRangeMaskSettings;
+                     mask.ArrowTowerSettings = _arrowTowerRangeMaskSettings;
+                 })
                  .NonLazy();
 
         // ���������ɷ���
@@ -384,7 +425,10 @@ public class GameInstaller : MonoInstaller
 
         // 卡牌拖拽世界空间预览：持握控制器（ITickable 逐帧跟随 + GameTime 驱动落位补间）。
         // BindInterfacesAndSelfTo 同时绑定 IDisposable，容器销毁时清理未落位实例与拖拽根节点。
-        Container.BindInterfacesAndSelfTo<CardDragWorldPreviewController>().AsSingle();
+        // 名牌 prefab 未赋值时不抛异常：控制器 LogWarning 后仅名牌关闭（拖拽预览本身照常）。
+        // 落地特效经 IVfxService 播放（容器解析），特效缺失时由 VfxService 自行降级。
+        Container.BindInterfacesAndSelfTo<CardDragWorldPreviewController>().AsSingle()
+            .WithArguments(_cardDragNameLabelPrefab);
 
         // 卡牌拖拽落点提示（落点图标与连线计划）：图标 + 连线的生命周期与状态入口。
         // BindInterfacesAndSelfTo 顺带绑定 IDisposable，容器销毁时视图随之清理。

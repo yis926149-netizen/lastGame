@@ -20,6 +20,7 @@ namespace GameConfig
         public float attackMultiplier;
         public float speedMultiplier;
         public float duration;
+        public int effectRadius;
         public int initialQuantity;
     }
 }

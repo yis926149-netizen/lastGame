@@ -33,6 +33,24 @@ public abstract class UnitBrainBase : MonoBehaviour
     // ── 忙碌标志 ──────────────────────────────────────────
     public bool IsBusy => Owner?.unitMovementController?.IsBusy ?? false;
 
+    /// <summary>
+    /// 本单位的**逻辑**格坐标。
+    /// 【卡顿分析·第八节 + 多单位计划九.10】策略层一律走这里，不要从 transform.position 反查：
+    /// 一来 CurrentHexCoordinate 是 O(1) 缓存，二来多单位同格时视觉槽位偏移会让世界坐标反推出错格。
+    /// 仅在 unitMovementController 缺失（测试桩等）时才退回世界坐标反查。
+    /// </summary>
+    public Vector3 SelfHexCoordinate
+    {
+        get
+        {
+            var umc = Owner?.unitMovementController;
+            if (umc != null) return umc.CurrentHexCoordinate;
+            return Owner?.model != null && MapData != null
+                ? MapData.WorldToHexCoordinate(Owner.model.transform.position)
+                : Vector3.zero;
+        }
+    }
+
     // ── 阵营 id（寻路迷雾判定用）──────────────────────────
     // 优先读 UnitMovementController.PlayerIndex（真相源，支持多 AI 阵营），
     // 缺失时退回 tag 判定（PlayerUnit=0，其余=1）。
@@ -329,7 +347,7 @@ public abstract class UnitBrainBase : MonoBehaviour
 
         // 直接用缓存表：寻路只读 allPoints，不需要防御性拷贝（拷贝会让 HexMapService 的缓存白做）
         List<Vector3> allPoints = MapData.GetAllHexCoordinates();
-        Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
+        Vector3 startHex = SelfHexCoordinate;
         if (startHex == default) return null;
 
         // 收集候选 → 升序 → 限量寻路（旧实现对每个宝箱跑一次完整 Dijkstra）
@@ -360,7 +378,7 @@ public abstract class UnitBrainBase : MonoBehaviour
     {
         if (Owner?.model == null || MapData == null) return null;
 
-        Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
+        Vector3 startHex = SelfHexCoordinate;
         if (startHex == default) return null;
 
         Vector3? best = null;

@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using DG.Tweening;
+using GameConfig;
 using UnityEngine;
 using Zenject;
 
@@ -9,6 +11,8 @@ using Zenject;
 /// 生命周期：Begin 持握 → Follow 更新触点 → ReleaseOwnership 交出实例（不销毁）→
 /// PlayLanding 落位补间 → Cancel 销毁未交出实例；Dispose 收尾全部状态。
 /// 所有方法按 token 校验，拒绝上一张卡的迟到回调。
+/// 名牌（方案二）：Begin 解析显示名并懒创建屏幕空间跟随标签（CardDragNameLabelView），
+/// Tick 逐帧贴合模型头顶（渲染器包围盒顶 + 间距），ReleaseOwnership / Cancel / Dispose 收起复用。
 /// </summary>
 public class CardDragWorldPreviewController : ITickable, System.IDisposable
 {
@@ -19,6 +23,9 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
 
     private readonly IMapRaycastService _mapRaycast;
     private readonly GameLoop _gameLoop;
+    private readonly BuildingBalanceDatabaseSO _buildingBalance;   // 建筑显示名（Excel 唯一主源；缺失时退化枚举名）
+    private readonly CardDragNameLabelView _nameLabelPrefab;       // 拖拽名牌 prefab（GameInstaller 绑定；null = 功能关闭）
+    private readonly IVfxService _vfxService;                      // 粒子特效服务（缺失时落地特效静默关闭）
 
     // ── 持握状态 ──
     private GameObject _instance;
@@ -30,6 +37,11 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
     private Transform _dragRoot;
     private Vector3 _originalLocalScale;
     private Animator[] _animators;
+
+    // ── 名牌（方案二：单个屏幕空间跟随标签）──
+    private CardDragNameLabelView _nameLabelView;   // 懒创建一次并复用
+    private Renderer[] _nameLabelRenderers;         // 视觉根下 Mesh/Skinned 渲染器缓存（Begin 一次性收集，逐帧禁 GetComponentsInChildren）
+    private bool _nameLabelAnchorValid;             // 触点射线命中地形时名牌可见
 
     // ── 拎起 scale-in（GameTime 驱动）──
     private float _appearDuration;
@@ -44,6 +56,7 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
     private float _landingDuration;
     private float _landingStartTime;
     private System.Action _landingOnComplete;
+    private bool _landingVfxSpawned;        // 本次落位是否已在撞击帧放过特效（每段落位只放一次）
 
     // ── 落位拉伸（Squash & Stretch，方案 B：缩放视觉子节点而非 root）──
     private Transform _stretchVisualRoot;   // 视觉子节点（ResolveVisualRoot 定位；null = 不拉伸）
@@ -54,10 +67,19 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
 
     private bool _isDisposed;
 
-    public CardDragWorldPreviewController(IMapRaycastService mapRaycast, GameLoop gameLoop)
+    public CardDragWorldPreviewController(IMapRaycastService mapRaycast, GameLoop gameLoop,
+        BuildingBalanceDatabaseSO buildingBalance = null, CardDragNameLabelView nameLabelPrefab = null,
+        IVfxService vfxService = null)
     {
         _mapRaycast = mapRaycast;
         _gameLoop = gameLoop;
+        _buildingBalance = buildingBalance;
+        _nameLabelPrefab = nameLabelPrefab;
+        _vfxService = vfxService;
+
+        if (_nameLabelPrefab == null)
+            Debug.LogWarning(
+                "[CardDragNameLabel] GameInstaller 未绑定名牌 prefab（Card Drag Name Label Prefab）：拖拽名牌功能关闭。");
     }
 
     /// <summary>当前是否有活动持握（供调试与断言使用）。</summary>
@@ -98,6 +120,7 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         _lastHoverPosition = new Vector3(0f, -500f, 0f);
         Follow(Input.mousePosition, token);
         TrySnapToTerrain();
+        EnsureNameLabel(instance);
     }
 
     /// <summary>更新最近触点（原始屏幕像素坐标）；射线由 Tick 每帧重算，内部统一走逻辑坐标。</summary>
@@ -123,6 +146,7 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         _instance = null;
         _token = null;
         _animators = null;
+        HideNameLabel();
 
         // 拎起 scale-in 若未播完：直接回到 prefab 原缩放，落位后不再改缩放。
         if (instance != null)
@@ -165,6 +189,7 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         _landingDuration = LandingDuration;
         _landingStartTime = Time.unscaledTime;
         _landingOnComplete = onComplete;
+        _landingVfxSpawned = false;
 
         // 进度由 unscaledTime 增量驱动（不受暂停/速度档位影响，暂停出牌也播完落位）；
         // driver 只承载每帧 OnUpdate；SetLoops(-1) 永不自然结束。
@@ -207,6 +232,13 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
             Object.Destroy(_dragRoot);
             _dragRoot = null;
         }
+
+        HideNameLabel();
+        if (_nameLabelView != null)
+        {
+            Object.Destroy(_nameLabelView.gameObject);
+            _nameLabelView = null;
+        }
     }
 
     /// <summary>
@@ -228,6 +260,12 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
                 _appearElapsed = Mathf.Min(_appearDuration, _appearElapsed + Time.unscaledDeltaTime);
                 float progress = Mathf.Clamp01(_appearElapsed / Mathf.Max(0.0001f, _appearDuration));
                 _instance.transform.localScale = _originalLocalScale * SmoothStep01(progress);
+            }
+
+            if (_nameLabelView != null)
+            {
+                if (_nameLabelAnchorValid) UpdateNameLabelPosition();
+                else _nameLabelView.Hide();
             }
 
             if (_animators != null)
@@ -254,6 +292,7 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         Vector2 logicPosition = CardController.GetCardDragLogicPosition(_lastPointer);
         if (_mapRaycast.RaycastMap(logicPosition, out RaycastHit hit, RaycastMaxDistance))
         {
+            _nameLabelAnchorValid = true;
             _lastHoverPosition = hit.point + Vector3.up * Mathf.Max(0f, FeelConfigProvider.CardDragPreviewHoverHeight);
 
             // 建筑统一吸附到所属地块中心：无论射线命中地块内哪个位置（槽位），
@@ -268,6 +307,10 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
                         + Vector3.up * Mathf.Max(0f, FeelConfigProvider.CardDragPreviewHoverHeight);
                 }
             }
+        }
+        else
+        {
+            _nameLabelAnchorValid = false;
         }
 
         _instance.transform.position = _lastHoverPosition;
@@ -298,6 +341,14 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         float progress = Mathf.Clamp01(elapsed / _landingDuration);
         _landingInstance.transform.position = Vector3.LerpUnclamped(_landingFrom, _landingTo, FallCurve(progress));
         ApplyLandingStretch(progress);
+
+        // 撞击帧放特效：LandingImpactProgress 是模型贴地、压扁起始的那一刻，
+        // 不是整段结束（其后 30% 是回弹）。跨过阈值只触发一次。
+        if (!_landingVfxSpawned && progress >= LandingImpactProgress)
+        {
+            _landingVfxSpawned = true;
+            _vfxService?.Play(VfxId.CardLanding, _landingTo);
+        }
 
         if (progress >= 1f) FinishLanding();
     }
@@ -340,6 +391,7 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         _landingInstance = null;
         _landingBrain = null;
         _landingOnComplete = null;
+        _landingVfxSpawned = false;
 
         ResetLandingStretch();
     }
@@ -353,12 +405,140 @@ public class CardDragWorldPreviewController : ITickable, System.IDisposable
         }
         _token = null;
         _animators = null;
+        HideNameLabel();
     }
 
     private void EnsureDragRoot()
     {
         if (_dragRoot != null) return;
         _dragRoot = new GameObject("CardDragWorldPreviewRoot").transform;
+    }
+
+    // ── 名牌（方案二：单个屏幕空间跟随标签）────────────────────────────
+
+    /// <summary>无渲染器可测时的兜底高度：悬停位置上方抬多少世界单位。</summary>
+    private const float NameLabelFallbackHeight = 1.5f;
+
+    /// <summary>名牌在模型包围盒顶以上的间距（世界单位）。</summary>
+    private const float NameLabelMarginAboveBounds = 2.6f;
+
+    /// <summary>
+    /// Begin 阶段接线名牌：解析显示名、懒创建视图（复用，不每次拖拽 Instantiate）、
+    /// 一次性缓存视觉根下的 3D 渲染器（供逐帧包围盒顶计算），随后立即定位一次。
+    /// 未绑定 prefab 或无名字时收起标签（功能整体关闭）。
+    /// </summary>
+    private void EnsureNameLabel(GameObject instance)
+    {
+        string displayName = ResolveDisplayName(_token as ICardView);
+        if (_nameLabelPrefab == null || string.IsNullOrEmpty(displayName))
+        {
+            HideNameLabel();
+            return;
+        }
+
+        if (_nameLabelView == null)
+        {
+            _nameLabelView = Object.Instantiate(_nameLabelPrefab);
+            _nameLabelView.name = "CardDragNameLabel";
+        }
+
+        _nameLabelView.Show();
+        _nameLabelView.SetDisplayName(displayName);
+        CacheNameLabelRenderers(instance);
+
+        if (_nameLabelAnchorValid) UpdateNameLabelPosition();
+        else _nameLabelView.Hide();
+    }
+
+    /// <summary>
+    /// 显示名解析：单位用 unitData.unitName（Excel displayName，与信息面板同源）；
+    /// 建筑用 Excel 平衡库 displayName，平衡库缺失时退化 buildingType 枚举名（不抛异常）。
+    /// </summary>
+    private string ResolveDisplayName(ICardView view)
+    {
+        NormalCardConfigSO config = view?.Data?.NormalCardConfig;
+        if (config == null) return null;
+
+        if (config is UnitConfigSO unit)
+        {
+            string name = unit.unitData != null ? unit.unitData.unitName : null;
+            return string.IsNullOrWhiteSpace(name) ? unit.name : name;
+        }
+
+        if (config is BuildingConfigSO building)
+        {
+            if (_buildingBalance != null
+                && _buildingBalance.TryGetByLegacyId(building.buildingId, out BuildingBalanceData balance)
+                && !string.IsNullOrWhiteSpace(balance.displayName))
+            {
+                return balance.displayName;
+            }
+            return building.buildingType.ToString();
+        }
+
+        return null;
+    }
+
+    /// <summary>缓存视觉根下的 Mesh/Skinned 渲染器（Begin 一次收集，Tick 只读 bounds，遵守逐帧禁 GetComponentsInChildren）。</summary>
+    private void CacheNameLabelRenderers(GameObject instance)
+    {
+        Transform visualRoot = ResolveVisualRoot(instance);
+        if (visualRoot == null)
+        {
+            _nameLabelRenderers = null;
+            return;
+        }
+
+        Renderer[] renderers = visualRoot.GetComponentsInChildren<Renderer>(true);
+        var meshes = new List<Renderer>();
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer r = renderers[i];
+            if (r != null && (r is MeshRenderer || r is SkinnedMeshRenderer))
+                meshes.Add(r);
+        }
+
+        _nameLabelRenderers = meshes.Count > 0 ? meshes.ToArray() : null;
+    }
+
+    /// <summary>
+    /// 逐帧把名牌贴合到模型头顶上方：锚点取渲染器包围盒世界顶部 + 间距；
+    /// 无渲染器（纯视觉异常 / 非网格结构）时退回悬停位置 + 兜底高度。
+    /// 主相机为空或锚点非法时由 CardDragNameLabelView.UpdateFollow 自行隐藏。
+    /// </summary>
+    private void UpdateNameLabelPosition()
+    {
+        if (_nameLabelView == null || _instance == null) return;
+
+        Vector3 anchor = _instance.transform.position + Vector3.up * NameLabelFallbackHeight;
+
+        if (_nameLabelRenderers != null && _nameLabelRenderers.Length > 0)
+        {
+            bool hasTop = false;
+            float topY = 0f;
+            for (int i = 0; i < _nameLabelRenderers.Length; i++)
+            {
+                Renderer r = _nameLabelRenderers[i];
+                if (r == null) continue;
+                float top = r.bounds.max.y;
+                if (!hasTop || top > topY)
+                {
+                    topY = top;
+                    hasTop = true;
+                }
+            }
+            if (hasTop) anchor.y = topY + NameLabelMarginAboveBounds;
+        }
+
+        _nameLabelView.UpdateFollow(anchor, Camera.main);
+    }
+
+    /// <summary>收起名牌并清空渲染器缓存（交出所有权 / 取消 / 销毁共用）。视图实例保留复用。</summary>
+    private void HideNameLabel()
+    {
+        _nameLabelRenderers = null;
+        _nameLabelAnchorValid = false;
+        if (_nameLabelView != null) _nameLabelView.Hide();
     }
 
     private static float SmoothStep01(float t)

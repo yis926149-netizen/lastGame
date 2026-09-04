@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 41ebb27e865c0ff4bbfe5e1adec85113, type: 3}
   m_Name: arrow_tower
   m_EditorClassIdentifier: 
-  cardSprite: {fileID: 21300000, guid: a918f51fbe556dc4f8432d5481b86d53, type: 3}
+  cardSprite: {fileID: 21300000, guid: d38407e51df5da04bb2f979bd97492b9, type: 3}
+  grayCardSprite: {fileID: 21300000, guid: a918f51fbe556dc4f8432d5481b86d53, type: 3}
   cardCost: 100
   buildingId: 5
   buildingType: 6

@@ -4,7 +4,8 @@ using DG.Tweening;
 //****************************************
 // 功能说明：弓箭手（远程单位）的箭矢飞行表现。
 //   实现与箭塔 ArrowTowerShooter.FireArrow 完全一致：
-//     实例化 arrow 预制体 → DOPath(CatmullRom) 三点弧线飞行 → DOScale 缩小 → 飞行中 LookAt 目标 → 到达后销毁。
+//     实例化 arrow 预制体（已改造为纯白 TrailRenderer 载体，无可见网格）→ DOPath(CatmullRom)
+//     三点弧线飞行，途中拉出一条纯白拖尾线 → 到达后停发拖尾并延迟销毁（拖尾自然淡出）。
 //   差异：本组件不直接扣血；伤害由调用方通过 onArrive 回调在箭到达目的地时结算
 //         （RangedStrategy 传入 CombatResolver 结算逻辑，命中时机对齐箭塔）。
 //
@@ -23,8 +24,11 @@ public class UnitRangedShooter : MonoBehaviour
     private float ArcHeight => CoreGameplayConfigProvider.ArrowTowerArcHeight;
     private float FlightDuration => CoreGameplayConfigProvider.ArrowTowerFlightDuration;
 
-    /// <summary>射出一支箭飞向目标；onArrive 在箭到达目的地时调用（用于命中结算）。</summary>
-    public void Shoot(GameObject target, System.Action onArrive = null)
+    /// <summary>
+    /// 射出一支箭飞向目标；onArrive 在箭到达目的地时调用（用于命中结算）。
+    /// speedMultiplier：随游戏速度档同步加速（暂停时 0 冻结飞行；由调用方从 GameLoop.SpeedMultiplier 传入）。
+    /// </summary>
+    public void Shoot(GameObject target, System.Action onArrive = null, float speedMultiplier = 1f)
     {
         if (target == null) return;
 
@@ -35,9 +39,10 @@ public class UnitRangedShooter : MonoBehaviour
         Vector3 startPos = shootPoint != null ? shootPoint.position : transform.position + Vector3.up * 1f;
         Vector3 endPos = target.transform.position + Vector3.up * 1f;
 
+        // 【拖尾线】arrow.prefab 已改造为纯白 TrailRenderer 载体（无可见网格）：
+        // 飞行体沿抛物线飞行，途中拉出一条纯白拖尾线代替实体箭矢（与箭塔一致）。
         GameObject arrow = Object.Instantiate(arrowPrefab);
         arrow.transform.position = startPos;
-        arrow.transform.LookAt(endPos);
         arrow.SetActive(true);
 
         Sequence seq = DOTween.Sequence();
@@ -47,22 +52,37 @@ public class UnitRangedShooter : MonoBehaviour
         path[1] = (startPos + endPos) * 0.5f + Vector3.up * ArcHeight;
         path[2] = endPos;
 
-        seq.Append(arrow.transform.DOPath(path, FlightDuration, PathType.CatmullRom).SetEase(Ease.Linear));
-        seq.Join(arrow.transform.DOScale(0.5f, FlightDuration).SetEase(Ease.InQuad));
+        // 箭矢飞行随速度档同步加速（暂停时 0 冻结，恢复后继续）
+        seq.timeScale = speedMultiplier;
 
-        seq.OnUpdate(() =>
-        {
-            if (arrow != null)
-                arrow.transform.LookAt(endPos);
-        });
+        seq.Append(arrow.transform.DOPath(path, FlightDuration, PathType.CatmullRom).SetEase(Ease.Linear));
 
         seq.OnComplete(() =>
         {
-            if (arrow != null)
-                Object.Destroy(arrow);
+            // 【拖尾线】停止发射并延迟销毁，让残留拖尾自然淡出后再回收（避免线瞬间断掉）。
+            FadeOutAndDestroyTrail(arrow);
 
             onArrive?.Invoke();
         });
+    }
+
+    /// <summary>
+    /// 【拖尾线】箭到落点后：停止拖尾发射并延迟销毁，等残留拖尾按 TrailRenderer.time 淡出后再回收，
+    /// 避免直接 Destroy 导致整条线瞬间消失。无 TrailRenderer 时退化为立即销毁。
+    /// </summary>
+    private static void FadeOutAndDestroyTrail(GameObject arrow)
+    {
+        if (arrow == null) return;
+
+        TrailRenderer trail = arrow.GetComponentInChildren<TrailRenderer>();
+        if (trail == null)
+        {
+            Object.Destroy(arrow);
+            return;
+        }
+
+        trail.emitting = false;
+        Object.Destroy(arrow, trail.time + 0.05f);
     }
 
     //****************************************
@@ -72,16 +92,16 @@ public class UnitRangedShooter : MonoBehaviour
     //****************************************
     private const float ShootDelaySeconds = 0.55f;
 
-    /// <summary>延迟 ShootDelaySeconds 秒后射箭（方案 B：近似对齐动画放箭帧）。</summary>
-    public void ShootDelayed(GameObject target, System.Action onArrive)
+    /// <summary>延迟 ShootDelaySeconds 秒后射箭（方案 B：近似对齐动画放箭帧）。speedMultiplier 透传给飞行加速。</summary>
+    public void ShootDelayed(GameObject target, System.Action onArrive, float speedMultiplier = 1f)
     {
-        StartCoroutine(DelayedShootCoroutine(target, onArrive));
+        StartCoroutine(DelayedShootCoroutine(target, onArrive, speedMultiplier));
     }
 
-    private System.Collections.IEnumerator DelayedShootCoroutine(GameObject target, System.Action onArrive)
+    private System.Collections.IEnumerator DelayedShootCoroutine(GameObject target, System.Action onArrive, float speedMultiplier)
     {
         yield return new WaitForSeconds(ShootDelaySeconds);
-        Shoot(target, onArrive);
+        Shoot(target, onArrive, speedMultiplier);
     }
 
     private static GameObject GetArrowPrefab()

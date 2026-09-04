@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aae3eff17432ad0439c74337ac13b25b, type: 3}
   m_Name: Boss2
   m_EditorClassIdentifier: 
-  cardSprite: {fileID: 21300000, guid: b1b3a1534d1eeb647a824f80b2d47271, type: 3}
+  cardSprite: {fileID: 21300000, guid: 66fed8eee7cb6e54faa21e3f36baf2be, type: 3}
+  grayCardSprite: {fileID: 21300000, guid: b1b3a1534d1eeb647a824f80b2d47271, type: 3}
   cardCost: 200
   unitData:
     id: 15

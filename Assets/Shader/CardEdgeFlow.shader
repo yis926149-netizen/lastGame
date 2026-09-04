@@ -35,6 +35,13 @@ Shader "Custom/CardEdgeFlow"
         [Toggle(_DRAW_SPRITE)] _DrawSprite ("绘制原图（接卡牌时必开，阶段一诊断时关）", Float) = 1
         _GlowMaster ("Glow Master (总开关 0~1)", Range(0, 1)) = 1
 
+        // ---- 金币不足：自上而下解锁的压暗覆盖（叠加在灰版卡面之上）----
+        // _DimFill = 1 - 金币/卡费 = 底部暗区占卡面高度的比例。
+        // 0 表示攒满（不压暗），1 表示整张压暗；顶部先恢复，暗区随金币增加从底部向上收缩。
+        _DimFill ("压暗覆盖比例 0~1（自上而下解锁）", Range(0, 1)) = 0
+        _DimColor ("压暗颜色（a=压暗强度）", Color) = (0, 0, 0, 0.55)
+        _DimEdge ("压暗边界过渡带宽度", Range(0, 0.25)) = 0.02
+
         // ---- UGUI 标准模板/剪裁参数 ----
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
@@ -131,6 +138,9 @@ Shader "Custom/CardEdgeFlow"
             float _OuterGlowAlpha;
             float _OuterGlowFalloff;
             float _GlowMaster;
+            float _DimFill;
+            fixed4 _DimColor;
+            float _DimEdge;
             float4 _ClipRect;
 
             v2f vert(appdata_t v)
@@ -257,10 +267,34 @@ Shader "Custom/CardEdgeFlow"
                 fixed4 col = fixed4(rgb, a);
 
                 #ifdef _DRAW_SPRITE
-                    // 接入卡牌：原图在下，流光在上。原图走 Image.color（含 tint 与压暗的 alpha），
+                    // 接入卡牌：原图在下，流光在上。原图走 Image.color（含 tint 与拖拽淡出的 alpha），
                     // 转预乘后与流光做 over 合成 —— 流光此时已按 _GlowMaster 缩放。
                     col *= _GlowMaster;
                     fixed4 src = tex2D(_MainTex, IN.texcoord) * IN.color;
+
+                    // 金币不足压暗：自顶向下解锁 —— 顶部先恢复，暗区留在底部并随金币增加而收缩。
+                    // IN.texcoord.y 自下而上 0→1；_DimFill = 1 - 金币/卡费 = 底部暗区占卡面高度的比例。
+                    // 即 y < _DimFill（靠近底边）压暗，y >= _DimFill（靠近顶边）保持原色。
+                    // 只改 rgb 不动 a：alpha 归拖拽淡出独占，两者互不干扰。
+                    // 压在 IN.color 之后 => 灰版卡面与压暗自然叠加（先灰后暗）。
+                    half dimMask;
+                    if (_DimFill <= 0.0001)
+                    {
+                        // 攒够金币：强制整卡不压暗。避免 smoothstep 过渡带越过 y=0 边界，
+                        // 在底边留下一条挥之不去的半透明假暗线。
+                        dimMask = 0;
+                    }
+                    else if (_DimFill >= 0.9999)
+                    {
+                        // 完全买不起：强制整卡压暗到底，同理避免 y=1 顶边的过渡带假象。
+                        dimMask = 1;
+                    }
+                    else
+                    {
+                        dimMask = 1.0 - smoothstep(_DimFill - _DimEdge, _DimFill + _DimEdge, IN.texcoord.y);
+                    }
+                    src.rgb = lerp(src.rgb, _DimColor.rgb, dimMask * _DimColor.a);
+
                     fixed4 baseCol = fixed4(src.rgb * src.a, src.a);
                     col = baseCol * (1.0 - col.a) + col;
                 #endif

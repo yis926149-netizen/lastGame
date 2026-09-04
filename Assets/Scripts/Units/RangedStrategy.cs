@@ -10,6 +10,8 @@ using UnityEngine;
 //                   目标被水域隔绝时趋近最近岸格（到位后可隔海射击），完全无目标时随机游走。
 //
 // 【批次 D】DoCombat 改用 CombatResolver + PlayRangedAttackAnim。
+// 【性能】CanAttack / DoCombat 的射程内选目标统一走 FindNearestTargetInRange 邻居环遍历，
+//         不再逐帧扫全图。
 //****************************************
 
 public class RangedStrategy : IUnitStrategy
@@ -25,7 +27,7 @@ public class RangedStrategy : IUnitStrategy
         var movement = brain.Movement;
         // 直接用缓存表：寻路只读 allPoints，不需要防御性拷贝
         List<Vector3> allPoints = mapData.GetAllHexCoordinates();
-        Vector3 startHex = mapData.WorldToHexCoordinate(brain.Owner.model.transform.position);
+        Vector3 startHex = brain.SelfHexCoordinate;
 
         Vector3? directionHint = brain.FindApproximateDirectionToHiddenBuilding();
         if (directionHint.HasValue && movement.CalculateMinMovementCostBetweenTwoHexes(
@@ -75,73 +77,16 @@ public class RangedStrategy : IUnitStrategy
     {
         if (brain?.Owner?.model == null || brain.MapData == null) return false;
 
-        bool isPlayer = brain.Owner.model.CompareTag("PlayerUnit");
-        string enemyUnitTag = isPlayer ? "EnemyUnit" : "PlayerUnit";
-        string enemyBuildingTag = isPlayer ? "EnemyBuilding" : "PlayerBuilding";
-
-        Vector3 selfHex = brain.MapData.WorldToHexCoordinate(brain.Owner.model.transform.position);
-        int attackRange = GetEffectiveRange(brain, selfHex);
-
-        foreach (var cell in brain.MapData.GetAllCells())
-        {
-            float dist = HexDistance(selfHex, cell.HexCoordinate);
-            if (dist > attackRange || dist < 0.1f) continue;
-
-            // 【多单位落点】枚举格内全部站位单位。
-            foreach (GameObject u in cell.GetStandingUnits())
-            {
-                if (u != null && u.CompareTag(enemyUnitTag)) return true;
-            }
-
-            GameObject b = cell.BulidingTypeOnHex_Building.Value;
-            if (IsAttackableBuilding(b, enemyBuildingTag)) return true;
-        }
-
-        return false;
+        Vector3 selfHex = brain.SelfHexCoordinate;
+        return FindNearestTargetInRange(brain, selfHex, out _, out _);
     }
 
     public void DoCombat(UnitBrainBase brain)
     {
         if (brain?.Owner?.model == null || brain.MapData == null) return;
 
-        bool isPlayer = brain.Owner.model.CompareTag("PlayerUnit");
-        string enemyUnitTag = isPlayer ? "EnemyUnit" : "PlayerUnit";
-        string enemyBuildingTag = isPlayer ? "EnemyBuilding" : "PlayerBuilding";
-
-        Vector3 selfHex = brain.MapData.WorldToHexCoordinate(brain.Owner.model.transform.position);
-        int attackRange = GetEffectiveRange(brain, selfHex);
-
-        float bestDist = float.MaxValue;
-        GameObject bestTarget = null;
-        bool bestIsUnit = false;
-
-        foreach (var cell in brain.MapData.GetAllCells())
-        {
-            float dist = HexDistance(selfHex, cell.HexCoordinate);
-            if (dist > attackRange || dist < 0.1f) continue;
-
-            // 【多单位落点】枚举格内全部站位单位，取最近敌方单位；命中后跳过本格建筑。
-            bool foundUnit = false;
-            foreach (GameObject u in cell.GetStandingUnits())
-            {
-                if (u != null && u.CompareTag(enemyUnitTag) && dist < bestDist)
-                {
-                    bestDist = dist;
-                    bestTarget = u;
-                    bestIsUnit = true;
-                    foundUnit = true;
-                }
-            }
-            if (foundUnit) continue;
-
-            GameObject b = cell.BulidingTypeOnHex_Building.Value;
-            if (IsAttackableBuilding(b, enemyBuildingTag) && dist < bestDist)
-            {
-                bestDist = dist;
-                bestTarget = b;
-                bestIsUnit = false;
-            }
-        }
+        Vector3 selfHex = brain.SelfHexCoordinate;
+        if (!FindNearestTargetInRange(brain, selfHex, out GameObject bestTarget, out bool bestIsUnit)) return;
 
         if (bestTarget == null) return;
 
@@ -155,6 +100,7 @@ public class RangedStrategy : IUnitStrategy
         var rangedShooter = umc.GetComponent<UnitRangedShooter>();
         if (rangedShooter == null)
             rangedShooter = umc.gameObject.AddComponent<UnitRangedShooter>();
+        float speedMultiplier = brain.GameLoop != null ? brain.GameLoop.SpeedMultiplier : 1f;
         rangedShooter.ShootDelayed(bestTarget, () =>
         {
             if (brain == null || brain.Combat == null || brain.Owner == null || bestTarget == null) return;
@@ -176,6 +122,80 @@ public class RangedStrategy : IUnitStrategy
         // 启动攻速冷却
         brain.MarkAttacked();
     }
+
+    /// <summary>
+    /// 从自身格向外按半径 1..attackRange 逐环遍历，返回射程内最近的可攻击目标。
+    /// 【性能】旧实现扫全图（O(格数)，约 600）再按距离过滤；现在只访问射程环内的
+    /// 3*R*(R+1) 格，每格一次字典查询，与地图大小无关。
+    /// 同一环内优先敌方单位、其次可攻击建筑（旧实现按格子枚举顺序决定，无稳定语义）。
+    /// </summary>
+    private static bool FindNearestTargetInRange(UnitBrainBase brain, Vector3 selfHex,
+        out GameObject bestTarget, out bool bestIsUnit)
+    {
+        bestTarget = null;
+        bestIsUnit = false;
+
+        bool isPlayer = brain.Owner.model.CompareTag("PlayerUnit");
+        string enemyUnitTag = isPlayer ? "EnemyUnit" : "PlayerUnit";
+        string enemyBuildingTag = isPlayer ? "EnemyBuilding" : "PlayerBuilding";
+
+        int attackRange = GetEffectiveRange(brain, selfHex);
+        var mapData = brain.MapData;
+
+        for (int radius = 1; radius <= attackRange; radius++)
+        {
+            GameObject ringBuilding = null;
+
+            // 环遍历：从正西方向第 radius 格出发，沿六个方向各走 radius 步绕行一周
+            Vector3 hex = selfHex + CubeDirections[4] * radius;
+            for (int dir = 0; dir < 6; dir++)
+            {
+                for (int step = 0; step < radius; step++)
+                {
+                    HexCellData cell = mapData.GetCell(hex);
+                    hex += CubeDirections[dir];
+                    if (cell == null) continue;
+
+                    // 【多单位落点】枚举格内全部站位单位。
+                    foreach (GameObject u in cell.GetStandingUnits())
+                    {
+                        if (u != null && u.CompareTag(enemyUnitTag))
+                        {
+                            bestTarget = u;
+                            bestIsUnit = true;
+                            return true;
+                        }
+                    }
+
+                    if (ringBuilding == null)
+                    {
+                        GameObject b = cell.BulidingTypeOnHex_Building.Value;
+                        if (IsAttackableBuilding(b, enemyBuildingTag)) ringBuilding = b;
+                    }
+                }
+            }
+
+            if (ringBuilding != null)
+            {
+                bestTarget = ringBuilding;
+                bestIsUnit = false;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // 立方坐标六方向，顺序须与 HexMapService.GetNeighbor 的 NE/E/SE/SW/W/NW 一致（环遍历依赖其循环性）
+    private static readonly Vector3[] CubeDirections =
+    {
+        new Vector3(0, -1, 1),  // NE
+        new Vector3(1, -1, 0),  // E
+        new Vector3(1, 0, -1),  // SE
+        new Vector3(0, 1, -1),  // SW
+        new Vector3(-1, 1, 0),  // W
+        new Vector3(-1, 0, 1),  // NW
+    };
 
     private static int GetEffectiveRange(UnitBrainBase brain, Vector3 selfHex)
     {

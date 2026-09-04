@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 /// <summary>
 /// 探索金币奖励漂字特效（方案二 AddCoinsUI）：从地块下方漂升到顶点 →
@@ -23,7 +24,7 @@ public class ExplorationAddCoinsUIEffect : MonoBehaviour
 	[SerializeField] private float _fadeTime = 0.4f;
 
 	[Header("金额文本")]
-	[SerializeField] private GameObject _amountTextObject; // 该物体的 Text 组件显示金币数量
+	[SerializeField] private GameObject _amountTextObject; // 该物体的 TMP_Text 组件显示金币数量
 
 	private enum Phase
 	{
@@ -35,7 +36,7 @@ public class ExplorationAddCoinsUIEffect : MonoBehaviour
 
 	private RectTransform _rectTransform;
 	private CanvasGroup _canvasGroup;
-	private Text _amountText;
+	private TMP_Text _amountText;
 	private Camera _camera;
 	private RectTransform _canvasRect; // 父 Canvas 的 RectTransform，用于屏幕映射
 	private Vector3 _worldAnchor;      // 地块世界坐标
@@ -52,7 +53,7 @@ public class ExplorationAddCoinsUIEffect : MonoBehaviour
 		if (_canvasGroup == null) _canvasGroup = gameObject.AddComponent<CanvasGroup>();
 		if (_amountTextObject != null)
 		{
-			_amountText = _amountTextObject.GetComponent<Text>();
+			_amountText = _amountTextObject.GetComponent<TMP_Text>();
 		}
 		_camera = Camera.main;
 	}

@@ -405,6 +405,8 @@ public class UnitMovementSystem : ITickable
                     startCell.UnitSlots.TryAcquireStandingSlot(unitGo, startCell.RealCenterWorldCoordinate, startCell.RealCenterWorldCoordinate, out _, out pos, startCell.RealCenterWorldCoordinate, preferLine: false);
             }
             unitGo.transform.position = pos;
+            // 【卡顿分析·第八节】回退起点是跨格改写，缓存必须作废
+            movingUnit.Unit?.InvalidateHexCoordinateCache();
 
             // 同步旧字段（primary owner）
             if (!startCell.IsHaveUnit()) startCell.SetHaveUnit(true, unitGo);
@@ -568,6 +570,9 @@ public class UnitMovementSystem : ITickable
         {
             unit.transform.position = target.RealCenterWorldCoordinate;
         }
+
+        // 【卡顿分析·第八节】迁移是跨格改写且不经 OnMoveFinished，缓存必须作废
+        unit.GetComponent<UnitMovementController>()?.InvalidateHexCoordinateCache();
     }
 
     /// <summary>变化格上的站立单位吸附到各自槽位（Y 跟随新 RealCenterWorldCoordinate，XZ 保留槽位偏移；移动中单位跳过）。</summary>

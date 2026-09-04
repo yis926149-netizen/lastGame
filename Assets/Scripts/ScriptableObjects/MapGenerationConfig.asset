@@ -27,7 +27,7 @@ MonoBehaviour:
   xNumber: 20
   zNumber: 30
   useFixedSeed: 1
-  randomSeed: 20260902
+  randomSeed: 20260903
   generatorVersion: 2
   noiseSource: {fileID: 2800000, guid: 7efb954bf2db8fb44b4d9fb0ce9458f2, type: 3}
   visualPerturbFrequency: 0.1
@@ -60,8 +60,8 @@ MonoBehaviour:
   waterSurfaceOffset: 0.45
   elevationStep: 1.8
   verticalPerturbRatio: 0.4
-  heightGenerationMode: 0
-  heightPaletteMap: {fileID: 2800000, guid: 058032dbeb1c59642afd474b24a1dd9e, type: 3}
+  heightGenerationMode: 1
+  heightPaletteMap: {fileID: 2800000, guid: fa5b064a043ce944789d6fe8e66879c3, type: 3}
   heightNoiseAmplitude: 0.5
   heightNoiseFrequency: 0.01
   useHeightBasedSubdivision: 1
@@ -79,11 +79,11 @@ MonoBehaviour:
   fogEdgeSoftness: 3
   fogEdgeAnimSpeed: 2
   fogEdgeTransparency: 0
-  fogUnexploredBlend: 1
-  fogUnexploredDesaturate: 1
+  fogUnexploredBlend: 0
+  fogUnexploredDesaturate: 0
   fogCoverOcean: 0
-  fogCoverRiver: 1
-  fogCoverOceanBlend: 1
+  fogCoverRiver: 0
+  fogCoverOceanBlend: 0
   mountainConfig: {fileID: 11400000, guid: 93c6c6aa29bc24946a1fde8cdd47afb9, type: 2}
   mountainHeightScale: 3
   ArenaActivateTime: 5

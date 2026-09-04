@@ -128,6 +128,7 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
                 NormalCardConfig = config,
                 ID = unitConfig.Id,
                 CardSprite = config.cardSprite,
+                GrayCardSprite = config.grayCardSprite,
                 CardCost = cost,
                 IsUnit = true,
             };
@@ -139,11 +140,12 @@ public class CardPresenter : IInitializable, IPlayerUnitSpawnService, IPlayerBui
                 NormalCardConfig = config,
                 ID = buildingConfig.buildingId,
                 CardSprite = config.cardSprite,
+                GrayCardSprite = config.grayCardSprite,
                 CardCost = cost,
                 IsUnit = false,
             };
         }
-        return new CardData { NormalCardConfig = config, CardSprite = config.cardSprite, CardCost = cost };
+        return new CardData { NormalCardConfig = config, CardSprite = config.cardSprite, GrayCardSprite = config.grayCardSprite, CardCost = cost };
     }
 
     private int GetCardCost(NormalCardConfigSO config)

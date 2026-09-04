@@ -157,16 +157,17 @@
         { "name": "attackMultiplier", "type": "float", "required": true, "min": 0, "note": "攻击乘数（BattleOrder：1.3=+30%）" },
         { "name": "speedMultiplier", "type": "float", "required": true, "min": 0, "note": "移速乘数（BattleOrder：1.3=+30%）" },
         { "name": "duration", "type": "float", "required": true, "min": 0, "note": "持续时间（秒，BattleOrder 用）" },
+        { "name": "effectRadius", "type": "int", "required": true, "min": 0, "note": "影响范围半径（n 环）：1=落点及周围 6 格，2=19 格口径；遮罩与结算共用" },
         { "name": "initialQuantity", "type": "int", "required": true, "min": 0, "note": "初始发放数量" }
       ],
       "rules": [],
       "seed": [
         { "cardId": "tactical.battle_order", "legacyId": 0, "displayName": "战斗号令", "description": "临时提升单位攻击与移速",
           "enabled": false, "effectType": "BattleOrder", "healRatio": 0, "attackMultiplier": 1.3, "speedMultiplier": 1.3,
-          "duration": 5, "initialQuantity": 1 },
+          "duration": 5, "effectRadius": 1, "initialQuantity": 1 },
         { "cardId": "tactical.repair", "legacyId": 1, "displayName": "维修", "description": "群体回血",
           "enabled": true, "effectType": "Repair", "healRatio": 0.3, "attackMultiplier": 0, "speedMultiplier": 0,
-          "duration": 0, "initialQuantity": 1 }
+          "duration": 0, "effectRadius": 1, "initialQuantity": 1 }
       ]
     },
     {

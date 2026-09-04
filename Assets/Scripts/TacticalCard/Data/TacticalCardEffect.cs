@@ -18,4 +18,7 @@ public struct TacticalCardEffect
 
     [Tooltip("持续时间（战斗号令用），秒")]
     public float duration;
+
+    [Tooltip("影响范围半径（n 环）。1 = 落点及其周围 6 格，2 = 19 格口径…… 遮罩与结算共用同一值")]
+    public int effectRadius;
 }

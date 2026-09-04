@@ -23,4 +23,7 @@ public interface IUnitMovement
 
     /// <summary>�ƶ����ʱ�Ļص�����ϵͳ���ã�</summary>
     void OnMoveFinished();
+
+    /// <summary>���߼���껺�棨��ϵͳ��� OnMoveFinished ��д transform.position �ҿ��ʱ���ã�</summary>
+    void InvalidateHexCoordinateCache();
 }

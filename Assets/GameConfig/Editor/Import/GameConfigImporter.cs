@@ -254,6 +254,7 @@ namespace GameConfig.Editor
                     attackMultiplier = GetFloat(v, col, "attackMultiplier", 0f),
                     speedMultiplier = GetFloat(v, col, "speedMultiplier", 0f),
                     duration = GetFloat(v, col, "duration", 0f),
+                    effectRadius = GetInt(v, col, "effectRadius", 1),
                     initialQuantity = GetInt(v, col, "initialQuantity", 0),
                 });
             }

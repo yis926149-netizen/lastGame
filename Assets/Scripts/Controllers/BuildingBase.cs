@@ -182,7 +182,10 @@ public abstract class BuildingBase : MonoBehaviour
     protected virtual float ComputeDamage(CharacterData attacker, BuildingData target)
     {
         HexCellData targetHex = _mapDataService.GetCellByWorldPosition(transform.position);
-        HexCellData attackerHex = _mapDataService.GetCellByWorldPosition(attacker.model.transform.position);
+        // 【多单位计划九.10】攻击者是单位，按逻辑格取，槽位偏移不参与伤害公式
+        HexCellData attackerHex = attacker.unitMovementController != null
+            ? _mapDataService.GetCell(attacker.unitMovementController.CurrentHexCoordinate)
+            : _mapDataService.GetCellByWorldPosition(attacker.model.transform.position);
 
         // 防御雕像：周围一环城市无敌
         float defenseModifier = 1f;

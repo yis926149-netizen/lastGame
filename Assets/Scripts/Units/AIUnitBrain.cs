@@ -45,7 +45,7 @@ public class AIUnitBrain : UnitBrainBase
 
         // 直接用缓存表：寻路只读 allPoints，不需要防御性拷贝
         List<Vector3> allPoints = MapData.GetAllHexCoordinates();
-        Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
+        Vector3 startHex = SelfHexCoordinate;
         if (startHex == default) return null;
 
         // 收集候选 → 升序 → 限量寻路（旧实现对每个敌方单位跑一次完整 Dijkstra）
@@ -68,7 +68,7 @@ public class AIUnitBrain : UnitBrainBase
 
         // 直接用缓存表：寻路只读 allPoints，不需要防御性拷贝
         List<Vector3> allPoints = MapData.GetAllHexCoordinates();
-        Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
+        Vector3 startHex = SelfHexCoordinate;
         if (startHex == default) return null;
 
         // 收集候选 → 升序 → 限量寻路（旧实现对每个建筑格跑一次完整 Dijkstra）
@@ -117,7 +117,7 @@ public class AIUnitBrain : UnitBrainBase
     {
         if (Owner?.model == null || MapData == null) return null;
 
-        Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
+        Vector3 startHex = SelfHexCoordinate;
         if (startHex == default) return null;
 
         Vector3? best = null;
@@ -145,7 +145,7 @@ public class AIUnitBrain : UnitBrainBase
     {
         if (Owner?.model == null || MapData == null) return null;
 
-        Vector3 startHex = Owner.unitMovementController?.CurrentHexCoordinate ?? MapData.WorldToHexCoordinate(Owner.model.transform.position);
+        Vector3 startHex = SelfHexCoordinate;
         if (startHex == default) return null;
 
         Vector3? best = null;

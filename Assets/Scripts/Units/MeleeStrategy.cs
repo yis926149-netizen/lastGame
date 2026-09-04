@@ -28,7 +28,7 @@ public class MeleeStrategy : IUnitStrategy
         var movement = brain.Movement;
         // 直接用缓存表：寻路只读 allPoints，不需要防御性拷贝
         List<Vector3> allPoints = mapData.GetAllHexCoordinates();
-        Vector3 startHex = mapData.WorldToHexCoordinate(brain.Owner.model.transform.position);
+        Vector3 startHex = brain.SelfHexCoordinate;
 
         // 1. 公共建筑方向提示（已发现但未占领）
         Vector3? directionHint = brain.FindApproximateDirectionToHiddenBuilding();
@@ -127,7 +127,7 @@ public class MeleeStrategy : IUnitStrategy
     {
         if (brain?.Owner?.model == null || brain.MapData == null) return false;
 
-        HexCellData selfCell = brain.MapData.GetCellByWorldPosition(brain.Owner.model.transform.position);
+        HexCellData selfCell = brain.MapData.GetCell(brain.SelfHexCoordinate);
         if (selfCell == null) return false;
 
         bool isPlayer = brain.Owner.model.CompareTag("PlayerUnit");
@@ -146,7 +146,7 @@ public class MeleeStrategy : IUnitStrategy
     {
         if (brain?.Owner?.model == null || brain.MapData == null) return;
 
-        HexCellData selfCell = brain.MapData.GetCellByWorldPosition(brain.Owner.model.transform.position);
+        HexCellData selfCell = brain.MapData.GetCell(brain.SelfHexCoordinate);
         if (selfCell == null) return;
 
         var umc = brain.Owner.unitMovementController;

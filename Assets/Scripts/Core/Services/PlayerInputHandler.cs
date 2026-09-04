@@ -201,6 +201,25 @@ public class PlayerInputHandler : ITickable, System.IDisposable
         return CanDeployToCell(_draggingDropHandler, _draggingCardData, cell);
     }
 
+    // ---------- 拖拽态触点数据（纯提取，供战术卡影响范围遮罩读取） ----------
+
+    /// <summary>
+    /// 拖拽态下触点当前指向的地块（无命中 / 非拖拽态为 null）。纯数据，不产生任何视觉。
+    /// 复用 HighlightGridOnMouseHover 每帧维护的缓存，与落点图标 / 单格高亮同源同帧。
+    /// </summary>
+    public HexCellData DraggingHoveredCell => _isDraggingCard ? _lastDraggingHighlightCell : null;
+
+    /// <summary>
+    /// 拖拽态下当前被拖卡牌的 DropHandler（非拖拽态为 null）。用于判断「拖的是不是战术卡」
+    /// 并复用 ICardDropHandler.CanDeployTo 做合法性判定（与拖牌高亮同一入口）。
+    /// </summary>
+    public ICardDropHandler DraggingDropHandler => _isDraggingCard ? _draggingDropHandler : null;
+
+    /// <summary>
+    /// 拖拽态下当前被拖卡牌的 CardData（非拖拽态为 null）。与 DraggingDropHandler 同源同帧。
+    /// </summary>
+    public CardData DraggingCardData => _isDraggingCard ? _draggingCardData : null;
+
     // ---------- 提起态放置范围（纯逻辑，无任何视觉） ----------
 
     /// <summary>提起态放置范围快照（可放置格）。无提起卡或拖拽中为空；供后续视觉表达方案读取。</summary>

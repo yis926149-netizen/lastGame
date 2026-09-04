@@ -157,6 +157,17 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         }
     }
 
+    /// <summary>
+    /// 作废逻辑格缓存，下次读 CurrentHexCoordinate 时重算。
+    /// 【卡顿分析·第八节】凡是绕开 OnMoveFinished 直接改写 transform.position 且**跨格**的路径
+    /// （中止移动回退起点、拥挤弹出迁移等）都必须调用，否则缓存会停留在旧格。
+    /// 同格内的槽位重排（RefreshStandingUnitPositions）不需要调用 —— 逻辑格没变。
+    /// </summary>
+    public void InvalidateHexCoordinateCache()
+    {
+        _hexCoordCached = false;
+    }
+
     public float RemainingMovement
     {
         get => currentMovementPoints;
@@ -236,13 +247,16 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         if (selfCell != null && WaterLevelConfig.ClassifyHeight(selfCell.Height) == 2)
             effectiveRange = characterData.unitData.BasicAttackRange + BattleFormulaRule.HighGroundRangeBonus;
 
-        Vector3 targetHex = _mapDataService.WorldToHexCoordinate(target.transform.position);
+        // 【多单位计划九.10】目标是单位时读逻辑格，槽位偏移不参与射程判定
+        var targetUnit = target.GetComponent<UnitMovementController>();
+        Vector3 targetHex = targetUnit != null
+            ? targetUnit.CurrentHexCoordinate
+            : _mapDataService.WorldToHexCoordinate(target.transform.position);
         float distance = (Mathf.Abs(currentHex.x - targetHex.x) +
                           Mathf.Abs(currentHex.y - targetHex.y) +
                           Mathf.Abs(currentHex.z - targetHex.z)) * 0.5f;
         if (distance > effectiveRange) return false;
 
-        var targetUnit = target.GetComponent<UnitMovementController>();
         if (targetUnit != null && (targetUnit.characterData == null || targetUnit.characterData.currentHp <= 0)) return false;
 
         var targetBuilding = target.GetComponent<BuildingBase>();
@@ -476,8 +490,14 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     //攻击数据计算
     public float AttackDataComputation(CharacterData attacker, CharacterData theAttacked)
     {
-        HexCellData h = _mapDataService.GetCellByWorldPosition(theAttacked.model.transform.position);
-        HexCellData attackerHex = _mapDataService.GetCellByWorldPosition(attacker.model.transform.position);
+        // 【多单位计划九.10】按逻辑格取，槽位偏移不参与伤害公式
+        HexCellData h = _mapDataService.GetCell(theAttacked.unitMovementController != null
+            ? theAttacked.unitMovementController.CurrentHexCoordinate
+            : _mapDataService.WorldToHexCoordinate(theAttacked.model.transform.position));
+        HexCellData attackerHex = _mapDataService.GetCell(attacker.unitMovementController != null
+            ? attacker.unitMovementController.CurrentHexCoordinate
+            : _mapDataService.WorldToHexCoordinate(attacker.model.transform.position));
+        if (h == null || attackerHex == null) return 0;
 
         // 【地图地貌配置化】与 CombatResolver 共用同一地貌效果规则（原 BigBones 缓存字段已删除）
         float landFormDefenseBonus = LandFormEffectRule.GetDefenseBonus(h.landForm);
@@ -797,8 +817,9 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         }
 
         // 记录当前所在 Hex 的中心
-        HexCellData cell = _mapDataService.GetCellByWorldPosition(transform.position);
-        attackerPosition = cell.RealCenterWorldCoordinate;
+        // 【多单位计划九.10】按逻辑格取，不从可能带槽位偏移的 transform.position 反查
+        HexCellData cell = _mapDataService.GetCell(CurrentHexCoordinate);
+        attackerPosition = cell != null ? cell.RealCenterWorldCoordinate : transform.position;
 
         Vector3 lookTarget = attackedUnit.transform.position;
         lookTarget.y = transform.position.y;
@@ -858,7 +879,7 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
         attackTarget = target.tag;
         isAttackingInProgress = true;
 
-        HexCellData cell = _mapDataService.GetCellByWorldPosition(transform.position);
+        HexCellData cell = _mapDataService.GetCell(CurrentHexCoordinate);
         attackerPosition = cell != null ? cell.RealCenterWorldCoordinate : transform.position;
 
         Vector3 lookTarget = target.transform.position;
@@ -903,7 +924,8 @@ public class UnitMovementController : MonoBehaviour, IUnitMovement
     {
         if (characterData == null || characterData.unitData == null) return;
 
-        HexCellData currentCell = _mapDataService.GetCellByWorldPosition(transform.position);
+        // 【多单位计划九.10】采集必须按逻辑格，槽位偏移不能让单位采到隔壁格的资源
+        HexCellData currentCell = _mapDataService.GetCell(CurrentHexCoordinate);
         if (currentCell == null) return;
 
         // 【地图资源配置化】拾取效果/特效/音效统一由 MapResourceCollectionService 按 MapResourceSO 配置执行

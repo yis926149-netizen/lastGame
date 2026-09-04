@@ -18,13 +18,13 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     [Inject(Optional = true)] private IMapRaycastService _mapRaycastService;
     [Inject] private GoldWallet _goldWallet;
 
-    /// <summary>金币不足时卡面压暗的透明度倍率（已迁移至 FeelConfigProvider）。</summary>
-    // 【Excel 数值化】原 const UnaffordableDim = 0.45f 迁移至 FeelConfigProvider。
+    /// <summary>金币不足时切换为灰版卡面（NormalCardConfigSO.grayCardSprite）。</summary>
+    // 原「压暗」方案（FeelConfigProvider.UnaffordableCardDim）已废弃，改为切图。
 
     /// <summary>当前是否买得起（金币 >= 卡牌费用）。战术卡（无金币约束）恒为 true。</summary>
     private bool _isAffordable = true;
 
-    /// <summary>各 Graphic 的原始颜色（含 alpha），用于压暗/还原。SetData 时采样。</summary>
+    /// <summary>各 Graphic 的原始颜色（含 alpha），用于拖拽淡出/还原。SetData 时采样。</summary>
     private readonly Dictionary<Graphic, Color> _graphicBaseColors = new Dictionary<Graphic, Color>();
 
     /// <summary>
@@ -33,7 +33,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     /// </summary>
     private ICardDragVisualHandler _dragVisual;
 
-    /// <summary>拖拽淡出倍率（§3 cardAlpha）。与可负担压暗、原始 alpha 相乘后统一写入。</summary>
+    /// <summary>拖拽淡出倍率（§3 cardAlpha）。与原始 alpha 相乘后统一写入。</summary>
     private float _dragAlpha = 1f;
 
     /// <summary>本卡所在 Canvas 的参考高度；OnBeginDrag 缓存一次，避免逐帧 GetComponentInParent。</summary>
@@ -43,10 +43,12 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     private float _upwardDistance;
     private float _cardProgress;
 
-    /// <summary>拖拽增益倍率：落点位移 = 触点相对起点的位移 × 本值（纵向与横向同倍率）。
-    /// 1 = 恒等（落点跟手，即无遮挡缓解）。第一版恒定，不随行程变化。
-    /// 【临时改动】横向本应按效果文档 §4.4 直通（1×），此处临时改为与纵向同倍率，真机验证后决定去留。</summary>
-    private const float CardDragLogicGain = 2.0f;
+    /// <summary>纵向增益倍率：落点纵向位移 = 触点纵向位移 × 本值。
+    /// 1 = 恒等（落点跟手，即无遮挡缓解）。第一版恒定，不随行程变化。</summary>
+    private const float CardDragLogicGainY = 1.5f;
+
+    /// <summary>横向增益倍率：1 = 直通（落点横向跟手），对应效果文档 §4.4。</summary>
+    private const float CardDragLogicGainX = 1.0f;
 
     /// <summary>本次拖拽的增益映射起点（屏幕像素）。OnBeginDrag 采样，ReleaseDragCapture 清除。
     /// 必须是静态的：PlayerInputHandler（轮询式）与 CardDragWorldPreviewController（只持 token）
@@ -62,13 +64,14 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     public const float CardDragRaycastMaxDistance = 300f;
 
     /// <summary>返回用于地图射线的逻辑位置（屏幕像素坐标）。
-    /// 以拖拽起点为原点，纵向与横向位移同倍率放大 CardDragLogicGain。
+    /// 以拖拽起点为原点，纵向位移放大 CardDragLogicGainY 倍，横向按 CardDragLogicGainX（1× 直通）。
     /// 起点未就绪时退化为恒等映射。</summary>
     public static Vector2 GetCardDragLogicPosition(Vector2 pointerPosition)
     {
         if (!_hasDragOrigin) return pointerPosition;
 
-        return _dragOriginScreenPoint + (pointerPosition - _dragOriginScreenPoint) * CardDragLogicGain;
+        Vector2 delta = pointerPosition - _dragOriginScreenPoint;
+        return _dragOriginScreenPoint + new Vector2(delta.x * CardDragLogicGainX, delta.y * CardDragLogicGainY);
     }
 
     /// <summary>允许外部覆盖 drop handler（战术卡等非默认材质）。应在 Zenject 注入之后、首次拖拽之前调用。</summary>
@@ -134,6 +137,17 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     /// <summary>流光淡入/淡出时长（秒）。淡入与提起上移同步，淡出略快，避免落下后余光滞留。</summary>
     private const float GlowFadeInDuration = 0.18f;
     private const float GlowFadeOutDuration = 0.12f;
+
+    // ===== 金币不足·自顶向下压暗（CardEdgeFlow.shader 的 _DimFill）=====
+
+    /// <summary>压暗覆盖比例的材质属性 ID（_DimFill：0 = 不压暗，1 = 整张压暗）。</summary>
+    private static readonly int DimFillID = Shader.PropertyToID("_DimFill");
+
+    /// <summary>压暗比例补间句柄，用于定点清理。</summary>
+    private Tween _dimTween;
+
+    /// <summary>压暗比例过渡时长（秒）。金币可能连续到账，取短值保证跟手。</summary>
+    private const float DimFillDuration = 0.18f;
 
     public static bool IsAnyCardDragging => _activeDraggingCard != null;
 
@@ -235,7 +249,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         // 在计算可负担性之前采样原始颜色，避免把预制体内隐形的大型 Button 显形。
         CaptureBaseColors();
 
-        // 订阅金币变动以实时刷新“买不起 → 压暗 + 禁用交互”状态。
+        // 订阅金币变动以实时刷新“买不起 → 灰版卡面 + 禁用交互”状态。
         if (_goldWallet != null)
         {
             _goldWallet.OnGoldChanged -= OnGoldChanged;
@@ -244,16 +258,16 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         RefreshAffordability();
     }
 
-    /// <summary>金币变动回调：仅在跨越“买得起/买不起”阈值时更新视觉与交互。</summary>
+    /// <summary>金币变动回调：刷新压暗进度；跨越“买得起/买不起”阈值时另做视觉与交互切换。</summary>
     private void OnGoldChanged(int _)
     {
         RefreshAffordability();
     }
 
-    /// <summary>根据当前金币与卡牌费用刷新可用性；压暗卡面并阻断悬浮/拖拽。</summary>
+    /// <summary>根据当前金币与卡牌费用刷新可用性；切换灰版卡面并阻断悬浮/拖拽。</summary>
     private void RefreshAffordability()
     {
-        // 预告卡与战术卡（负数 ID / 无金币约束）不做金币压暗。
+        // 预告卡与战术卡（负数 ID / 无金币约束）不做灰化。
         if (_data == null || IsNextCard || _data.ID < 0)
         {
             SetAffordable(true);
@@ -264,7 +278,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         SetAffordable(affordable);
     }
 
-    /// <summary>采样根 Image 及所有子级可见 Graphic 的原始颜色，作为压暗/还原的基准。</summary>
+    /// <summary>采样根 Image 及所有子级可见 Graphic 的原始颜色，作为拖拽淡出/还原的基准。</summary>
     private void CaptureBaseColors()
     {
         _graphicBaseColors.Clear();
@@ -272,22 +286,32 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         {
             if (g == null) continue;
             // 预制体内隐藏着一块超大但完全透明的 Button Image（用于表现层），
-            // 其 alpha=0；若纳入压暗集合会被显形为半透明白板，因此跳过完全透明的组件。
+            // 其 alpha=0；若纳入淡出集合会被显形为半透明白板，因此跳过完全透明的组件。
             if (g.color.a <= 0f) continue;
             _graphicBaseColors[g] = g.color;
         }
     }
 
+    /// <summary>
+    /// 刷新可负担状态。
+    /// 【重要】本方法每次金币变动都会被调用（哪怕仍然买不起），因为压暗进度是连续量。
+    /// 因此复位位置 / CancelDrag 这类**一次性副作用**必须只在跨越阈值时触发，
+    /// 否则金币每跳一次就会重播一遍 0.2s 位移补间。
+    /// </summary>
     private void SetAffordable(bool affordable)
     {
+        bool crossed = _isAffordable != affordable;
         _isAffordable = affordable;
 
+        ApplyCardFaceSprite();
         ApplyGraphicAlpha();
+        // 压暗是连续量（随金币逐格下移），每次都要刷新，不受 crossed 限制。
+        ApplyDimFill();
 
-        // 买不起时停止接收射线（悬浮/拖拽），并复位悬浮上移；若在拖拽中立即取消。
+        // 买不起时停止接收射线（悬浮/拖拽）。幂等赋值，可每次执行。
         if (_image != null) _image.raycastTarget = affordable;
 
-        if (!affordable)
+        if (!affordable && crossed)
         {
             // 悬浮中变为买不起时，UI 射线不再触发 OnPointerExit，需主动复位位置。
             if (!_isDragging)
@@ -303,14 +327,65 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         }
     }
 
+    /// <summary>压暗覆盖比例的上限（金币比例=0 时的压暗值）。留 10% 不压暗，避免整卡全黑看不清卡面。</summary>
+    private const float MaxDimFill = 0.9f;
+
     /// <summary>
-    /// alpha 唯一写入口（实施计划 §5.3）：最终 alpha = 原始 alpha × 可负担倍率 × 拖拽淡出倍率。
-    /// 三个来源都只改自己那一项因子，再由本方法统一合成，避免互相覆盖。
+    /// 非线性映射指数（&lt;1）。线性映射下，条带随金币接近卡费而匀速变薄，
+    /// 最后一小段金币里条带薄到肉眼难以察觉，会让人误以为「提前解除了压暗」（灰图切换是二值，
+    /// 只在攒满瞬间才切，二者观感脱节）。指数 &lt;1 把"薄片期"压缩到金币的最后一小段，
+    /// 之前的大部分区间条带都保持足够厚度，两个通道的视觉节奏更贴近。
+    /// </summary>
+    private const float DimFillCurveExponent = 0.5f;
+
+    /// <summary>
+    /// 刷新压暗覆盖比例：_DimFill = (1 - 金币/卡费)^DimFillCurveExponent × MaxDimFill（截断到 [0, MaxDimFill]）。
+    /// 自上而下解锁 —— 顶部先恢复原色，暗区留在底部并随金币增加而收缩。
+    /// 买得起时恒为 0。叠加在灰版卡面之上，两者互不替代。
+    /// 材质缺失（预制体未挂 CardEdgeFlow）时静默跳过，与流光一致。
+    /// </summary>
+    private void ApplyDimFill()
+    {
+        if (!EnsureGlowMaterial()) return;
+
+        float target = 0f;
+        if (!_isAffordable && _data != null && _data.CardCost > 0 && _goldWallet != null)
+        {
+            float remain = Mathf.Clamp01(1f - (float)_goldWallet.Gold / _data.CardCost);
+            target = Mathf.Pow(remain, DimFillCurveExponent) * MaxDimFill;
+        }
+
+        _dimTween?.Kill();
+        _dimTween = DOTween
+            .To(() => _glowMaterialInstance.GetFloat(DimFillID),
+                v => _glowMaterialInstance.SetFloat(DimFillID, v),
+                target, DimFillDuration)
+            .SetEase(Ease.OutQuad)
+            .OnComplete(() => _dimTween = null);
+    }
+
+    /// <summary>
+    /// 卡面精灵唯一写入口：买不起时切到灰版卡面，买得起时切回彩色卡面。
+    /// 灰图未配置（null）则始终沿用彩色卡面，避免出现空白卡。
+    /// </summary>
+    private void ApplyCardFaceSprite()
+    {
+        if (_image == null || _data == null) return;
+
+        Sprite target = (!_isAffordable && _data.GrayCardSprite != null)
+            ? _data.GrayCardSprite
+            : _data.CardSprite;
+
+        if (target != null && _image.sprite != target) _image.sprite = target;
+    }
+
+    /// <summary>
+    /// alpha 唯一写入口：最终 alpha = 原始 alpha × 拖拽淡出倍率。
+    /// 「买不起」已改为切换灰版卡面（见 ApplyCardFaceSprite），不再参与 alpha 合成。
     /// </summary>
     private void ApplyGraphicAlpha()
     {
-        float affordMul = _isAffordable ? 1f : FeelConfigProvider.UnaffordableCardDim;
-        float mul = affordMul * _dragAlpha;
+        float mul = _dragAlpha;
 
         foreach (var kv in _graphicBaseColors)
         {
@@ -409,7 +484,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
             _dragProxy.localScale = _uiConfig.CardSize;
         }
 
-        // 复位拖拽淡出因子并重新合成 alpha（可负担压暗由 _isAffordable 继续生效）。
+        // 复位拖拽淡出因子并重新合成 alpha（买不起的灰版卡面由 ApplyCardFaceSprite 独立维持）。
         _dragAlpha = 1f;
         _upwardDistance = 0f;
         _cardProgress = 0f;
@@ -500,7 +575,7 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
 
     /// <summary>
     /// 克隆本卡独占的材质实例（幂等）。在 Construct 中即调用一次，确保开局就把 _GlowMaster
-    /// 压成 0 —— 共享材质资源里存的值不可信（见 Construct 内注释）。
+    /// 与 _DimFill 压成 0 —— 共享材质资源里存的值不可信（见 Construct 内注释）。
     /// 预制体未挂流光材质（或挂的是别的 shader）时返回 false，调用方静默跳过。
     /// </summary>
     private bool EnsureGlowMaterial()
@@ -515,6 +590,8 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _glowMaterialInstance = new Material(_image.material);
         _image.material = _glowMaterialInstance;
         _glowMaterialInstance.SetFloat(GlowMasterID, 0f);
+        // 同理压掉 _DimFill：Inspector 里预览过滑条的脏值会让开局所有卡带着压暗。
+        _glowMaterialInstance.SetFloat(DimFillID, 0f);
         return true;
     }
 
@@ -543,6 +620,15 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         _glowTween = null;
         if (_glowMaterialInstance != null)
             _glowMaterialInstance.SetFloat(GlowMasterID, 0f);
+    }
+
+    /// <summary>立即清除压暗并杀掉补间，不播过渡。用于失活/销毁等"来不及过渡"的路径。</summary>
+    private void KillDimImmediate()
+    {
+        _dimTween?.Kill();
+        _dimTween = null;
+        if (_glowMaterialInstance != null)
+            _glowMaterialInstance.SetFloat(DimFillID, 0f);
     }
 
     /// <summary>退出提起态并回落原位。对外供 PlayerInputHandler 在"点击卡外"时调用。</summary>
@@ -762,6 +848,9 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
         // ReleaseRaiseCapture 会起一个淡出补间，但失活路径上没有下一帧可播；
         // 直接掐掉，避免补间残留（实例复用时还会把上一次的淡出接着播完）。
         KillGlowImmediate();
+        // 压暗同理：实例复用时残留的补间会把上一张卡的压暗接着播完。
+        // 复位为 0 后，下次 SetData → RefreshAffordability 会按新卡重算。
+        KillDimImmediate();
         // 下面的 DOKill 会跳过入场补间的 OnComplete，锁不会自行解开；
         // 若该实例被回收复用，残留的 true 会让它永远无法提起。
         IsTweening = false;
@@ -773,6 +862,8 @@ public class CardController : MonoBehaviour, ICardView, IPointerEnterHandler, IP
     {
         _glowTween?.Kill();
         _glowTween = null;
+        _dimTween?.Kill();
+        _dimTween = null;
         if (_glowMaterialInstance != null)
         {
             Destroy(_glowMaterialInstance);

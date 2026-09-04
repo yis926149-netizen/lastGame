@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aae3eff17432ad0439c74337ac13b25b, type: 3}
   m_Name: swordsman
   m_EditorClassIdentifier: 
-  cardSprite: {fileID: 21300000, guid: a479ba87f68a687418410061514bfc31, type: 3}
+  cardSprite: {fileID: 21300000, guid: 771bc54a267837a4595d0eb2d8930bec, type: 3}
+  grayCardSprite: {fileID: 21300000, guid: a479ba87f68a687418410061514bfc31, type: 3}
   cardCost: 40
   unitData:
     id: 13

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 using Zenject;
 
 /// <summary>
@@ -171,7 +172,7 @@ public class CostLabelRenderer : MonoBehaviour
 
         foreach (var cell in allCells)
         {
-            if (cell == null || cell.IsExplored || cell.IsUnexplorable || cell.HexType == Enums.HexType.LakeOrSea) continue;
+            if (cell == null || cell.IsExploredByAnyFaction || cell.IsUnexplorable || cell.HexType == Enums.HexType.LakeOrSea) continue;
             // 【程序化山脉-阶段6.8】有效山格不显示探索费用标签/可交互 marker（决策 ⑩）：
             // 山格免雾但不可探索，费用标签会误导玩家以为可点击探索；山格探索由探索系统
             // 统一处理，不通过标签入口。
@@ -199,7 +200,7 @@ public class CostLabelRenderer : MonoBehaviour
             int cost = _costProvider.GetCost(cell).Amount;
             bool canAfford = _goldWallet.Gold >= cost;
 
-            var text = label.GetComponentInChildren<Text>();
+            var text = label.GetComponentInChildren<TMP_Text>();
             if (text != null)
             {
                 text.text = cost.ToString();

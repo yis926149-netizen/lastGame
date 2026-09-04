@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using DG.Tweening;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 using Zenject;
 using GameConfig;
 
@@ -17,7 +18,7 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
 
     private readonly Transform _anchor1;
     private readonly Transform _anchor2;
-    private readonly Text[] _quantityTexts = new Text[MaxAnchorCount];
+    private readonly TMP_Text[] _quantityTexts = new TMP_Text[MaxAnchorCount];
     private readonly List<TacticalCardInstance> _instances = new();
     private List<CardController> _cardViews;
     private GameObject _cardPrefab;
@@ -37,8 +38,8 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
     {
         _anchor1 = tacticalCardAnchor1;
         _anchor2 = tacticalCardAnchor2;
-        _quantityTexts[0] = quantityBadge1 != null ? quantityBadge1.GetComponent<Text>() : null;
-        _quantityTexts[1] = quantityBadge2 != null ? quantityBadge2.GetComponent<Text>() : null;
+        _quantityTexts[0] = quantityBadge1 != null ? quantityBadge1.GetComponent<TMP_Text>() : null;
+        _quantityTexts[1] = quantityBadge2 != null ? quantityBadge2.GetComponent<TMP_Text>() : null;
     }
 
     public void Initialize()
@@ -484,6 +485,25 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
         return cell != null;
     }
 
+    /// <summary>
+    /// 读取指定战术卡（以 CardData.ID 定位槽位）的效果半径 effectRadius。
+    /// 仅 Excel 数值（阶段6 唯一主源）。非战术卡 / 未命中 / 数值库缺失返回 0。
+    /// 供影响范围遮罩读取与结算同一份半径（R1：遮罩画的 = 打出来的）。
+    /// </summary>
+    public int GetEffectRadius(CardData data)
+    {
+        if (data == null || _balance == null) return 0;
+
+        int slot = -data.ID - 1; // 战术卡 CardData.ID = -(slotIndex+1)
+        if (slot < 0 || slot >= _instances.Count) return 0;
+        TacticalCardInstance instance = _instances[slot];
+        if (instance == null || instance.IsEmpty || instance.Config == null) return 0;
+
+        return _balance.TryGetCard(instance.Config.cardId, out TacticalCardBalanceData b)
+            ? b.effectRadius
+            : 0;
+    }
+
     /// <summary>归还借出卡：数量 +1、销毁幽灵、恢复槽位徽标。</summary>
     private void ReturnBorrowedCard(int slot)
     {
@@ -561,16 +581,17 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
 
     private void TryExecuteRepair(HexCellData cell, TacticalCardSO config)
     {
-        // 【群体回血】范围：落点格及其周围一环（6 个相邻格）内的己方建筑与单位。
-        List<BuildingBase> ownBuildings = FindOwnBuildingsInOneRing(cell);
-        List<CharacterData> ownUnits = FindOwnUnitsInOneRing(cell);
+        TacticalCardEffect effect = GetEffect(config);
+        // 【群体回血】范围：落点格及其 n 环（effectRadius）内的己方建筑与单位。
+        int radius = Mathf.Max(0, effect.effectRadius);
+        List<BuildingBase> ownBuildings = FindOwnBuildingsInRange(cell, radius);
+        List<CharacterData> ownUnits = FindOwnUnitsInRange(cell, radius);
         if (ownBuildings.Count == 0 && ownUnits.Count == 0)
         {
             Debug.Log("[TacticalCardPresenter] Repair: no own building or unit found in drop cell and its ring, card consumed without effect.");
             return;
         }
 
-        TacticalCardEffect effect = GetEffect(config);
         float healRatio = effect.healRatio;
         float unitHealRatio = effect.unitHealRatio > 0f ? effect.unitHealRatio : effect.healRatio;
         int healedCount = 0;
@@ -606,8 +627,9 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
     {
         var effect = GetEffect(config);
 
-        // 作用范围：落点及其周围一环内的己方单位（与「群体回血」一致）
-        List<CharacterData> targets = FindOwnUnitsInOneRing(cell);
+        // 作用范围：落点及其 n 环（effectRadius）内的己方单位（与「群体回血」一致）
+        int radius = Mathf.Max(0, effect.effectRadius);
+        List<CharacterData> targets = FindOwnUnitsInRange(cell, radius);
         if (targets.Count == 0)
         {
             Debug.Log("[TacticalCardPresenter] BattleOrder: no own unit found in drop cell and its ring, card consumed without effect.");
@@ -658,6 +680,7 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
             attackMultiplier = b.attackMultiplier,
             speedMultiplier = b.speedMultiplier,
             duration = b.duration,
+            effectRadius = b.effectRadius,
         };
     }
 
@@ -666,19 +689,19 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
         return s == "BattleOrder" ? TacticalEffectType.BattleOrder : TacticalEffectType.Repair;
     }
 
-    /// <summary>收集落点格及其周围一环（6 个相邻格）内的己方建筑（去重）。</summary>
-    private List<BuildingBase> FindOwnBuildingsInOneRing(HexCellData cell)
+    /// <summary>
+    /// 收集落点格及其 n 环内的己方建筑（去重）。「哪些格」这一层由 HexRange.CollectInRange
+    /// 统一枚举，与影响范围遮罩读同一份 effectRadius、调同一个枚举函数（R1 唯一真源）。
+    /// </summary>
+    private List<BuildingBase> FindOwnBuildingsInRange(HexCellData cell, int radius)
     {
         List<BuildingBase> result = new List<BuildingBase>();
         if (cell == null) return result;
 
-        AddOwnBuildingOnCell(cell, result);
-        for (int d = 0; d < 6; d++)
-        {
-            HexCellData neighbor = _mapDataService.GetNeighbor(cell, (Enums.HexDirection)d);
-            if (neighbor == null) continue;
-            AddOwnBuildingOnCell(neighbor, result);
-        }
+        var cells = new List<HexCellData>();
+        HexRange.CollectInRange(_mapDataService, cell, radius, cells);
+        for (int i = 0; i < cells.Count; i++)
+            AddOwnBuildingOnCell(cells[i], result);
         return result;
     }
 
@@ -695,19 +718,16 @@ public class TacticalCardPresenter : IInitializable, ICardDropHandler
             result.Add(building);
     }
 
-    /// <summary>收集落点格及其周围一环（6 个相邻格）内的己方单位（去重）。</summary>
-    private List<CharacterData> FindOwnUnitsInOneRing(HexCellData cell)
+    /// <summary>收集落点格及其 n 环内的己方单位（去重）。n 环枚举与遮罩共用 HexRange.CollectInRange。</summary>
+    private List<CharacterData> FindOwnUnitsInRange(HexCellData cell, int radius)
     {
         List<CharacterData> result = new List<CharacterData>();
         if (cell == null) return result;
 
-        AddOwnUnitOnCell(cell, result);
-        for (int d = 0; d < 6; d++)
-        {
-            HexCellData neighbor = _mapDataService.GetNeighbor(cell, (Enums.HexDirection)d);
-            if (neighbor == null) continue;
-            AddOwnUnitOnCell(neighbor, result);
-        }
+        var cells = new List<HexCellData>();
+        HexRange.CollectInRange(_mapDataService, cell, radius, cells);
+        for (int i = 0; i < cells.Count; i++)
+            AddOwnUnitOnCell(cells[i], result);
         return result;
     }
 

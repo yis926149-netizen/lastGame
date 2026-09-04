@@ -6,6 +6,7 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using TMPro;
 using Zenject;
 using UIToolkitDemo;
 
@@ -161,7 +162,7 @@ public class UIController : MonoBehaviour
         // 金币显示 HUD（方案 B：显示值 = 真实钱包 - 飞行中金币数，飞币落地逐枚追平）
         if (UIType == "GoldWallet")
         {
-            var goldText = transform.GetChild(0)?.GetComponent<Text>();
+            var goldText = transform.GetChild(0)?.GetComponent<TMP_Text>();
             if (goldText != null)
             {
                 RefreshGoldText(goldText);
@@ -172,7 +173,7 @@ public class UIController : MonoBehaviour
                 }
             }
 
-            var incomeText = transform.GetChild(2)?.GetComponent<Text>();
+            var incomeText = transform.GetChild(2)?.GetComponent<TMP_Text>();
             if (incomeText != null)
             {
                 RefreshIncomeText(incomeText);
@@ -358,12 +359,13 @@ public class UIController : MonoBehaviour
         if (baseRange <= 1) return;
 
         int attackRange = baseRange;
-        Vector3 attackerHex = _mapDataService.WorldToHexCoordinate(attacker.transform.position);
+        // 【多单位计划九.10】按逻辑格取；同一坐标只算一次（原来 attackerHex / startHex 是两次同样的反查）
+        Vector3 attackerHex = controller.CurrentHexCoordinate;
         HexCellData attackerCell = _mapDataService.GetCell(attackerHex);
         if (attackerCell != null && WaterLevelConfig.ClassifyHeight(attackerCell.Height) == 2)
             attackRange = baseRange + BattleFormulaRule.HighGroundRangeBonus;
 
-        Vector3 startHex = _mapDataService.WorldToHexCoordinate(attacker.transform.position);
+        Vector3 startHex = attackerHex;
         List<Vector3> reachableHexes = _mapDataService.GetAllCells()
             .Where(cell => cell != null && HexDistance(startHex, cell.HexCoordinate) > 0f && HexDistance(startHex, cell.HexCoordinate) <= attackRange)
             .Select(cell => cell.HexCoordinate)
@@ -447,7 +449,11 @@ public class UIController : MonoBehaviour
                 if (enemy == null) continue;
 
                 // 【探索重构-阶段1】所有敌方单位始终可见，无需 IsVisible 过滤
-                HexCellData cell = _mapDataService.GetCellByWorldPosition(enemy.transform.position);
+                // 【多单位计划九.10】cell 在此仅作「在图内」的有效性判定，按逻辑格取更准也更快
+                var enemyUmc = enemy.GetComponent<UnitMovementController>();
+                HexCellData cell = enemyUmc != null
+                    ? _mapDataService.GetCell(enemyUmc.CurrentHexCoordinate)
+                    : _mapDataService.GetCellByWorldPosition(enemy.transform.position);
                 if (cell == null) continue;
 
                 var indicator = _enemyIndicatorPool.Get(prefab, indicatorParent);
@@ -500,7 +506,7 @@ public class UIController : MonoBehaviour
     }
 
     /// <summary>金币 HUD 显示值 = 真实钱包 - 飞行中金币数（方案 B：显示层延迟，飞币落地逐枚追平）。</summary>
-    private void RefreshGoldText(Text goldText)
+    private void RefreshGoldText(TMP_Text goldText)
     {
         if (goldText == null || _goldWallet == null) return;
         int inFlight = _coinFlyPresenter != null ? _coinFlyPresenter.InFlightGold : 0;
@@ -509,7 +515,7 @@ public class UIController : MonoBehaviour
         goldText.text = display.ToString();
     }
 
-    private void RefreshIncomeText(Text incomeText)
+    private void RefreshIncomeText(TMP_Text incomeText)
     {
         if (incomeText == null) return;
         int income = _goldIncomeService != null

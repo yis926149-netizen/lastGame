@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aae3eff17432ad0439c74337ac13b25b, type: 3}
   m_Name: archer
   m_EditorClassIdentifier: 
-  cardSprite: {fileID: 21300000, guid: a2753e8d3d6526148af9465a1419c7cc, type: 3}
+  cardSprite: {fileID: 21300000, guid: 39760782c31b60a48bf52a5b918bddc7, type: 3}
+  grayCardSprite: {fileID: 21300000, guid: a2753e8d3d6526148af9465a1419c7cc, type: 3}
   cardCost: 50
   unitData:
     id: 12

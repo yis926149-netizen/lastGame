@@ -14,7 +14,7 @@ public class ArrowTowerShooter : MonoBehaviour
     [Inject(Optional = true)] private DamageEventBroker _damageEventBroker;
 
     // 【Excel 数值化】箭塔射程/间隔/伤害/弹道/飞行时长迁移至 CoreGameplayConfigProvider（旧 Inspector 字段已删除）。
-    private int _attackRange => CoreGameplayConfigProvider.ArrowTowerRange;
+    // 射程统一走静态 GetEffectiveRange（见下），不再保留实例快捷属性。
     private float _attackInterval => CoreGameplayConfigProvider.ArrowTowerAttackInterval;
     private float _damage => CoreGameplayConfigProvider.ArrowTowerDamage;
     private float _arcHeight => CoreGameplayConfigProvider.ArrowTowerArcHeight;
@@ -29,8 +29,6 @@ public class ArrowTowerShooter : MonoBehaviour
     private float _timer;
     private GameObject _lockedTarget;
     private CharacterData _lockedTargetData;
-    private int _effectiveRange;
-    private bool _rangeCalculated;
 
     private void Awake()
     {
@@ -144,27 +142,46 @@ public class ArrowTowerShooter : MonoBehaviour
         if (target == null || _mapDataService == null) return false;
 
         HexCellData towerCell = _mapDataService.GetCellByWorldPosition(transform.position);
-        HexCellData targetCell = _mapDataService.GetCellByWorldPosition(target.transform.position);
+        // 【多单位计划九.10】目标是单位时读逻辑格，避免同格槽位偏移把射程判定推到隔壁格
+        var targetUmc = target.GetComponent<UnitMovementController>();
+        HexCellData targetCell = targetUmc != null
+            ? _mapDataService.GetCell(targetUmc.CurrentHexCoordinate)
+            : _mapDataService.GetCellByWorldPosition(target.transform.position);
         if (towerCell == null || targetCell == null) return false;
 
         int range = GetEffectiveRange(towerCell);
         return HexDistance(towerCell.HexCoordinate, targetCell.HexCoordinate) <= range;
     }
 
-    private int GetEffectiveRange(HexCellData towerCell)
+    /// <summary>
+    /// 箭塔有效射程（战斗索敌用，无实例依赖）：基础射程 + 高地加成。
+    /// 已放置箭塔必在玩家可见格，高地信息对玩家已知，不涉迷雾。
+    /// </summary>
+    public static int GetEffectiveRange(HexCellData towerCell)
     {
-        if (!_rangeCalculated)
-        {
-            _effectiveRange = IsHighGround(towerCell) ? _attackRange + BattleFormulaRule.HighGroundRangeBonus : _attackRange;
-            _rangeCalculated = true;
-        }
-        return _effectiveRange;
+        return ComputeEffectiveRange(towerCell, allowHighGroundBonus: true);
     }
 
-    private bool IsHighGround(HexCellData towerCell)
+    /// <summary>
+    /// 箭塔预览射程（卡牌拖拽用）：allowHighGroundBonus=false 时忽略高地加成，统一按平地口径。
+    /// 拖拽到迷雾格必须传 false——否则玩家能拿范围遮罩「探」出迷雾下的高地（变相作弊）。
+    /// </summary>
+    public static int GetPreviewRange(HexCellData towerCell, bool allowHighGroundBonus)
     {
-        if (towerCell == null) return false;
-        return WaterLevelConfig.ClassifyHeight(towerCell.Height) == 2;
+        return ComputeEffectiveRange(towerCell, allowHighGroundBonus);
+    }
+
+    private static int ComputeEffectiveRange(HexCellData towerCell, bool allowHighGroundBonus)
+    {
+        int baseRange = CoreGameplayConfigProvider.ArrowTowerRange;
+        if (allowHighGroundBonus && IsHighGround(towerCell))
+            return baseRange + BattleFormulaRule.HighGroundRangeBonus;
+        return baseRange;
+    }
+
+    private static bool IsHighGround(HexCellData towerCell)
+    {
+        return towerCell != null && WaterLevelConfig.ClassifyHeight(towerCell.Height) == 2;
     }
 
     private void ClearTargetLock()
@@ -180,9 +197,10 @@ public class ArrowTowerShooter : MonoBehaviour
 
         if (_arrowPrefab == null) return;
 
+        // 【拖尾线】arrow.prefab 已改造为纯白 TrailRenderer 载体（无可见网格）：
+        // 飞行体沿抛物线飞行，途中拉出一条纯白拖尾线代替实体箭矢。
         GameObject arrow = Object.Instantiate(_arrowPrefab);
         arrow.transform.position = startPos;
-        arrow.transform.LookAt(endPos);
         arrow.SetActive(true);
 
         Sequence seq = DOTween.Sequence();
@@ -196,17 +214,11 @@ public class ArrowTowerShooter : MonoBehaviour
         seq.timeScale = _gameLoop != null ? _gameLoop.SpeedMultiplier : 1f;
 
         seq.Append(arrow.transform.DOPath(path, _arrowFlightDuration, PathType.CatmullRom).SetEase(Ease.Linear));
-        seq.Join(arrow.transform.DOScale(0.5f, _arrowFlightDuration).SetEase(Ease.InQuad));
-
-        seq.OnUpdate(() =>
-        {
-            if (arrow != null)
-                arrow.transform.LookAt(endPos);
-        });
 
         seq.OnComplete(() =>
         {
-            Object.Destroy(arrow);
+            // 【拖尾线】停止发射新拖尾段并延迟销毁，让残留拖尾自然淡出后再回收（避免线瞬间断掉）。
+            FadeOutAndDestroyTrail(arrow);
 
             if (!TryGetEnemyTargetData(target, out CharacterData currentData) ||
                 currentData != targetData ||
@@ -243,6 +255,26 @@ public class ArrowTowerShooter : MonoBehaviour
                 if (target == _lockedTarget) ClearTargetLock();
             }
         });
+    }
+
+    /// <summary>
+    /// 【拖尾线】箭到落点后：停止拖尾发射并延迟销毁，等残留拖尾按 TrailRenderer.time 淡出后再回收，
+    /// 避免直接 Destroy 导致整条线瞬间消失。无 TrailRenderer 时退化为立即销毁。
+    /// </summary>
+    private static void FadeOutAndDestroyTrail(GameObject arrow)
+    {
+        if (arrow == null) return;
+
+        TrailRenderer trail = arrow.GetComponentInChildren<TrailRenderer>();
+        if (trail == null)
+        {
+            Object.Destroy(arrow);
+            return;
+        }
+
+        trail.emitting = false;
+        // 停在落点让已有拖尾自然老化；销毁延迟略大于拖尾存活时长，确保完全淡出。
+        Object.Destroy(arrow, trail.time + 0.05f);
     }
 
     private HashSet<HexCellData> CollectCellsInRange(HexCellData center, int maxRange)

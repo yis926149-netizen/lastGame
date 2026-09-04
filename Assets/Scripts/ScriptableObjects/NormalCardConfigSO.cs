@@ -10,6 +10,9 @@ public abstract class NormalCardConfigSO : ScriptableObject
     [Tooltip("卡面图")]
     public Sprite cardSprite;
 
+    [Tooltip("金币不足时的灰版卡面图；留空则不切图（沿用彩色卡面）")]
+    public Sprite grayCardSprite;
+
     [Tooltip("使用价格")]
     public int cardCost = 10;
 }

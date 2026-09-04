@@ -112,11 +112,26 @@ public class CombatResolver
         return null;
     }
 
+    /// <summary>
+    /// 取单位所在的**逻辑**格。
+    /// 【多单位计划九.10】伤害公式里的地貌/高度/攻击雕像加成必须按逻辑格算：
+    /// 多单位同格时视觉槽位偏移会让 transform.position 反查到隔壁格，导致战斗数值错乱。
+    /// 同时 CurrentHexCoordinate 是 O(1) 缓存，省掉一次世界坐标反查。
+    /// </summary>
+    private HexCellData GetLogicalCell(CharacterData unit)
+    {
+        if (unit?.model == null) return null;
+        var umc = unit.unitMovementController;
+        return umc != null
+            ? _mapDataService.GetCell(umc.CurrentHexCoordinate)
+            : _mapDataService.GetCellByWorldPosition(unit.model.transform.position);
+    }
+
     // ── 单位伤害公式（搬移自 UnitMovementController.AttackDataComputation）─────────
     private float ComputeUnitDamage(CharacterData attacker, CharacterData theAttacked)
     {
-        HexCellData h = _mapDataService.GetCellByWorldPosition(theAttacked.model.transform.position);
-        HexCellData attackerHex = _mapDataService.GetCellByWorldPosition(attacker.model.transform.position);
+        HexCellData h = GetLogicalCell(theAttacked);
+        HexCellData attackerHex = GetLogicalCell(attacker);
         if (h == null || attackerHex == null) return 0;
 
         // 【地图地貌配置化】地貌防御加成按被攻击者所在格配置查询（原 BigBones 缓存字段已删除）

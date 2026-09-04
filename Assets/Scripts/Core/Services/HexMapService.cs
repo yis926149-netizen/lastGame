@@ -12,6 +12,14 @@ public class HexMapService : IMapDataService
     private GameObject _mapGameObject;
     private float? _cachedCellRadius;
 
+    // ---------- 世界坐标 → 格心 的空间哈希索引 ----------
+    // 【卡顿分析·第八节】原实现每次反查都线性扫描全部格心（约 600 个），且全代码库约 40 处调用、
+    // 部分在每帧路径上。改为按 xz 平面分桶：桶边长 = 相邻格心间距 d，而接受阈值是外接圆半径
+    // cellRadius = d/√3 < d，所以「最近且距离 ≤ cellRadius 的格心」必定落在查询点所在桶的 3×3 邻域内，
+    // 与线性扫描结果完全等价（仅在恰好等距的退化情形下可能选中另一个同距格心）。
+    private Dictionary<long, List<Vector3>> _centerSpatialGrid;
+    private float _spatialCellSize;
+
     //��ͼ����
     private Vector3[] _hexVertices;
 
@@ -45,6 +53,45 @@ public class HexMapService : IMapDataService
         _cachedAllHexCoords = null;
 
         _cachedCellRadius = ComputeCellRadius();
+        BuildCenterSpatialGrid();
+    }
+
+    /// <summary>
+    /// 构建格心空间哈希。桶边长取相邻格心间距 d = cellRadius * √3，
+    /// 保证任何距查询点 ≤ cellRadius 的格心一定落在查询点所在桶的 3×3 邻域内。
+    /// </summary>
+    private void BuildCenterSpatialGrid()
+    {
+        _centerSpatialGrid = null;
+        _spatialCellSize = 0f;
+
+        if (_centerWorldCoordinates == null || _centerWorldCoordinates.Count == 0) return;
+
+        float cellRadius = _cachedCellRadius ?? 0f;
+        // 单格地图（cellRadius == 0）没有可用的桶尺寸，保持索引为空，反查退回线性路径。
+        if (cellRadius <= 0f) return;
+
+        _spatialCellSize = cellRadius * Mathf.Sqrt(3f);
+        _centerSpatialGrid = new Dictionary<long, List<Vector3>>(_centerWorldCoordinates.Count);
+
+        foreach (var center in _centerWorldCoordinates)
+        {
+            long key = BucketKey(
+                Mathf.FloorToInt(center.x / _spatialCellSize),
+                Mathf.FloorToInt(center.z / _spatialCellSize));
+
+            if (!_centerSpatialGrid.TryGetValue(key, out var bucket))
+            {
+                bucket = new List<Vector3>(2);
+                _centerSpatialGrid[key] = bucket;
+            }
+            bucket.Add(center);
+        }
+    }
+
+    private static long BucketKey(int bx, int bz)
+    {
+        return ((long)bx << 32) ^ (uint)bz;
     }
 
     public HexCellData GetCell(Vector3 hexCoordinate)
@@ -93,19 +140,60 @@ public class HexMapService : IMapDataService
         if (_centerWorldCoordinates == null || _centerWorldCoordinates.Count == 0 || _centerWorldToHex == null)
             return false;
 
-        float minDist = float.MaxValue;
-        Vector3 closestCenter = _centerWorldCoordinates[0];
-        foreach (var center in _centerWorldCoordinates)
+        float cellRadius = GetCellRadius();
+
+        float minDist;
+        Vector3 closestCenter;
+
+        if (_centerSpatialGrid != null && _spatialCellSize > 0f)
         {
-            float dist = (new Vector2(center.x, center.z) - new Vector2(worldPosition.x, worldPosition.z)).sqrMagnitude;
-            if (dist < minDist)
+            // O(1)：只检查查询点所在桶的 3×3 邻域。桶边长 > 接受阈值 cellRadius，
+            // 因此阈值内的格心不可能落在邻域之外。
+            minDist = float.MaxValue;
+            closestCenter = _centerWorldCoordinates[0];
+
+            int bx = Mathf.FloorToInt(worldPosition.x / _spatialCellSize);
+            int bz = Mathf.FloorToInt(worldPosition.z / _spatialCellSize);
+
+            for (int dx = -1; dx <= 1; dx++)
             {
-                minDist = dist;
-                closestCenter = center;
+                for (int dz = -1; dz <= 1; dz++)
+                {
+                    if (!_centerSpatialGrid.TryGetValue(BucketKey(bx + dx, bz + dz), out var bucket)) continue;
+
+                    for (int i = 0; i < bucket.Count; i++)
+                    {
+                        Vector3 center = bucket[i];
+                        float ddx = center.x - worldPosition.x;
+                        float ddz = center.z - worldPosition.z;
+                        float dist = ddx * ddx + ddz * ddz;
+                        if (dist < minDist)
+                        {
+                            minDist = dist;
+                            closestCenter = center;
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            // 兜底：单格地图等无法建索引的情形，退回线性扫描。
+            minDist = float.MaxValue;
+            closestCenter = _centerWorldCoordinates[0];
+            foreach (var center in _centerWorldCoordinates)
+            {
+                float ddx = center.x - worldPosition.x;
+                float ddz = center.z - worldPosition.z;
+                float dist = ddx * ddx + ddz * ddz;
+                if (dist < minDist)
+                {
+                    minDist = dist;
+                    closestCenter = center;
+                }
             }
         }
 
-        float cellRadius = GetCellRadius();
         if (minDist > cellRadius * cellRadius || !_centerWorldToHex.TryGetValue(closestCenter, out hexCoordinate))
             return false;
 
